@@ -3,6 +3,7 @@
  * Servicios para consultas geográficas de establecimientos DENUE
  */
 
+const prismaGeo = require("../config/database-geo");
 const prisma = require("../config/database");
 const logger = require("../config/logger");
 
@@ -48,7 +49,7 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
     ];
   }
 
-  const establishments = await prisma.establishment.findMany({
+  const establishments = await prismaGeo.establishment.findMany({
     where,
     take: limit,
     skip: offset,
@@ -79,7 +80,7 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
  * Obtener un establecimiento por ID con todos los detalles
  */
 async function getEstablishmentById(id) {
-  return prisma.establishment.findUnique({
+  return prismaGeo.establishment.findUnique({
     where: { id },
     include: {
       prospects: {
@@ -115,7 +116,7 @@ async function getClusteredData(bounds, zoom) {
   }
 
   // Agrupar por región
-  const clusters = await prisma.establishment.groupBy({
+  const clusters = await prismaGeo.establishment.groupBy({
     by: groupBy,
     where: {
       latitude: { gte: south, lte: north },
@@ -150,7 +151,7 @@ async function getHeatmapData(bounds, filters = {}) {
   if (filters.stateCode) where.stateCode = filters.stateCode;
 
   // Obtener puntos para el heatmap
-  const points = await prisma.establishment.findMany({
+  const points = await prismaGeo.establishment.findMany({
     where,
     select: {
       latitude: true,
@@ -190,7 +191,7 @@ function getEmployeeWeight(range) {
 async function getGeoZones(type = null) {
   const where = type ? { type } : {};
   
-  return prisma.geoZone.findMany({
+  return prismaGeo.geoZone.findMany({
     where,
     orderBy: { totalEstablishments: "desc" },
   });
@@ -205,7 +206,7 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
   if (municipalityCode) where.municipalityCode = municipalityCode;
 
   // Estadísticas de establecimientos
-  const stats = await prisma.establishment.groupBy({
+  const stats = await prismaGeo.establishment.groupBy({
     by: ["activityCode", "activityName"],
     where,
     _count: { id: true },
@@ -214,7 +215,7 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
   });
 
   // Estadísticas por tamaño
-  const sizeStats = await prisma.establishment.groupBy({
+  const sizeStats = await prismaGeo.establishment.groupBy({
     by: ["employeeRange"],
     where,
     _count: { id: true },
@@ -222,10 +223,10 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
   });
 
   // Total
-  const total = await prisma.establishment.count({ where });
+  const total = await prismaGeo.establishment.count({ where });
 
   // Prospects asignados vs disponibles
-  const prospectsStats = await prisma.leadProspect.groupBy({
+  const prospectsStats = await prismaGeo.leadProspect.groupBy({
     by: ["status"],
     where: {
       establishment: where,
@@ -258,7 +259,7 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
  */
 async function assignProspect(establishmentId, partnerId, notes = null) {
   // Verificar si ya existe un prospect
-  let prospect = await prisma.leadProspect.findFirst({
+  let prospect = await prismaGeo.leadProspect.findFirst({
     where: { establishmentId },
   });
 
@@ -268,7 +269,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
     }
     
     // Actualizar prospect existente
-    prospect = await prisma.leadProspect.update({
+    prospect = await prismaGeo.leadProspect.update({
       where: { id: prospect.id },
       data: {
         partnerId,
@@ -283,7 +284,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
     });
   } else {
     // Crear nuevo prospect
-    prospect = await prisma.leadProspect.create({
+    prospect = await prismaGeo.leadProspect.create({
       data: {
         establishmentId,
         partnerId,
@@ -306,7 +307,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
  * Convertir prospect a lead
  */
 async function convertProspectToLead(prospectId, additionalData = {}) {
-  const prospect = await prisma.leadProspect.findUnique({
+  const prospect = await prismaGeo.leadProspect.findUnique({
     where: { id: prospectId },
     include: { establishment: true },
   });
@@ -336,7 +337,7 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
   });
 
   // Actualizar prospect
-  await prisma.leadProspect.update({
+  await prismaGeo.leadProspect.update({
     where: { id: prospectId },
     data: {
       status: "CONVERTED",
@@ -355,7 +356,7 @@ async function getPartnerProspects(partnerId, status = null) {
   const where = { partnerId };
   if (status) where.status = status;
 
-  return prisma.leadProspect.findMany({
+  return prismaGeo.leadProspect.findMany({
     where,
     include: {
       establishment: {
@@ -380,7 +381,7 @@ async function getPartnerProspects(partnerId, status = null) {
  * Buscar establecimientos por texto
  */
 async function searchEstablishments(query, limit = 50) {
-  return prisma.establishment.findMany({
+  return prismaGeo.establishment.findMany({
     where: {
       OR: [
         { name: { contains: query, mode: "insensitive" } },
