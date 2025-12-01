@@ -1,0 +1,422 @@
+// Prisma Schema para EasyOrder Partners API
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== USUARIOS Y AUTENTICACION ==========
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?   @map("password_hash")
+  name          String
+  role          UserRole  @default(PARTNER)
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  partner  Partner?
+  accounts Account[]
+  sessions Session[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  PARTNER
+  PENDING
+}
+
+// ========== PARTNER ==========
+
+model Partner {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+  code   String @unique // Codigo unico: EO-ABC123
+
+  type   PartnerType
+  tier   PartnerTier   @default(REGISTERED)
+  status PartnerStatus @default(PENDING)
+
+  // Datos de empresa
+  companyName String? @map("company_name")
+  companyType String? @map("company_type")
+  taxId       String? @map("tax_id") // RFC
+  website     String?
+  phone       String?
+
+  // Direccion
+  country String  @default("MX")
+  state   String?
+  city    String?
+  address String?
+
+  // Contacto adicional
+  contactName  String? @map("contact_name")
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+
+  // Comisiones
+  commissionRate Decimal @default(0.15) @map("commission_rate") @db.Decimal(5, 4)
+  paymentMethod  String? @map("payment_method")
+  paymentDetails Json?   @map("payment_details")
+
+  // Tracking
+  referralLink    String  @unique @map("referral_link")
+  totalLeads      Int     @default(0) @map("total_leads")
+  totalDeals      Int     @default(0) @map("total_deals")
+  totalRevenue    Decimal @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  totalCommission Decimal @default(0) @map("total_commission") @db.Decimal(12, 2)
+
+  // Fechas
+  approvedAt     DateTime? @map("approved_at")
+  firstSaleAt    DateTime? @map("first_sale_at")
+  lastActivityAt DateTime? @map("last_activity_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leads        Lead[]
+  deals        Deal[]
+  commissions  Commission[]
+  activities   Activity[]
+  referredBy   Partner?     @relation("PartnerReferrals", fields: [referredById], references: [id])
+  referredById String?      @map("referred_by_id")
+  referrals    Partner[]    @relation("PartnerReferrals")
+
+  @@index([code])
+  @@index([type])
+  @@index([tier])
+  @@index([status])
+  @@index([createdAt])
+  @@map("partners")
+}
+
+enum PartnerType {
+  AFFILIATE
+  REFERRAL
+  RESELLER
+  SOLUTIONS
+  TECHNOLOGY
+}
+
+enum PartnerTier {
+  REGISTERED
+  SILVER
+  GOLD
+  ELITE
+}
+
+enum PartnerStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+// ========== LEADS ==========
+
+model Lead {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+
+  // Datos del lead
+  businessName String @map("business_name")
+  contactName  String @map("contact_name")
+  email        String
+  phone        String?
+
+  // Detalles del negocio
+  businessType  String?  @map("business_type")
+  location      String?
+  monthlyOrders String?  @map("monthly_orders")
+  interests     String[]
+
+  // Tracking UTM
+  utmSource   String? @map("utm_source")
+  utmMedium   String? @map("utm_medium")
+  utmCampaign String? @map("utm_campaign")
+  utmTerm     String? @map("utm_term")
+  utmContent  String? @map("utm_content")
+  landingPage String? @map("landing_page")
+  referrer    String?
+
+  // Estado
+  status       LeadStatus @default(NEW)
+  qualityScore Int?       @map("quality_score") // 1-100
+  notes        String?    @db.Text
+
+  // Valor estimado
+  estimatedValue Decimal? @map("estimated_value") @db.Decimal(10, 2)
+  estimatedMrr   Decimal? @map("estimated_mrr") @db.Decimal(10, 2)
+
+  // Fechas
+  contactedAt DateTime? @map("contacted_at")
+  qualifiedAt DateTime? @map("qualified_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner    Partner    @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  deal       Deal?
+  activities Activity[]
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([email])
+  @@index([utmCampaign])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  NEGOTIATION
+  WON
+  LOST
+}
+
+// ========== DEALS (Ventas Cerradas) ==========
+
+model Deal {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+  leadId    String @unique @map("lead_id")
+
+  // Cliente
+  customerId   String? @map("customer_id") // ID en sistema EasyOrder
+  businessName String  @map("business_name")
+
+  // Plan y valor
+  planType   String  @map("plan_type") // starter, growth, premium
+  planPrice  Decimal @map("plan_price") @db.Decimal(10, 2) // MRR del plan
+  setupFee   Decimal @default(0) @map("setup_fee") @db.Decimal(10, 2)
+  totalValue Decimal @map("total_value") @db.Decimal(10, 2) // Valor total 12 meses
+
+  // Comision
+  commissionRate   Decimal @map("commission_rate") @db.Decimal(5, 4)
+  commissionAmount Decimal @map("commission_amount") @db.Decimal(10, 2)
+  commissionPaid   Decimal @default(0) @map("commission_paid") @db.Decimal(10, 2)
+
+  // Estado
+  status DealStatus @default(PENDING)
+
+  // Fechas
+  closedAt    DateTime  @map("closed_at")
+  activatedAt DateTime? @map("activated_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner     Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  commissions Commission[]
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([closedAt])
+  @@map("deals")
+}
+
+enum DealStatus {
+  PENDING
+  ACTIVE
+  CHURNED
+}
+
+// ========== COMISIONES ==========
+
+model Commission {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+  dealId    String @map("deal_id")
+
+  // Tipo y monto
+  type     CommissionType
+  amount   Decimal        @db.Decimal(10, 2)
+  currency String         @default("MXN")
+
+  // Periodo (para comisiones recurrentes)
+  periodStart DateTime? @map("period_start")
+  periodEnd   DateTime? @map("period_end")
+
+  // Estado de pago
+  status     CommissionStatus @default(PENDING)
+  paidAt     DateTime?        @map("paid_at")
+  paymentRef String?          @map("payment_ref")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  deal    Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("commissions")
+}
+
+enum CommissionType {
+  SIGNUP_BONUS
+  RECURRING
+  BONUS
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+// ========== ACTIVIDADES ==========
+
+model Activity {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+  leadId    String? @map("lead_id")
+
+  type        ActivityType
+  description String
+  metadata    Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("activities")
+}
+
+enum ActivityType {
+  PARTNER_REGISTERED
+  PARTNER_APPROVED
+  PARTNER_TIER_UPGRADE
+  LEAD_CREATED
+  LEAD_STATUS_CHANGED
+  DEAL_CLOSED
+  COMMISSION_EARNED
+  COMMISSION_PAID
+  LOGIN
+  RESOURCE_DOWNLOADED
+}
+
+// ========== RECURSOS DE MARKETING ==========
+
+model Resource {
+  id String @id @default(uuid())
+
+  name         String
+  description  String?
+  category     String // sales-deck, email-template, one-pager, video
+  type         String // pdf, pptx, docx, mp4, png
+  url          String
+  thumbnailUrl String? @map("thumbnail_url")
+
+  // Permisos
+  minTier      PartnerTier   @default(REGISTERED) @map("min_tier")
+  partnerTypes PartnerType[] @map("partner_types")
+
+  // Stats
+  downloads Int @default(0)
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([minTier])
+  @@index([isActive])
+  @@map("resources")
+}
+
+// ========== CONFIGURACION DEL PROGRAMA ==========
+
+model ProgramConfig {
+  id String @id @default(uuid())
+
+  key         String  @unique
+  value       Json
+  description String?
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("program_config")
+}
+
+// ========== NextAuth Tables ==========
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ========== API KEYS ==========
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  name        String
+  description String?   @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  expiresAt   DateTime? @map("expires_at")
+
+  @@index([key])
+  @@index([isActive])
+  @@map("api_keys")
+}
