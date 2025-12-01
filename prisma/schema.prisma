@@ -93,6 +93,7 @@ model Partner {
   referredBy   Partner?     @relation("PartnerReferrals", fields: [referredById], references: [id])
   referredById String?      @map("referred_by_id")
   referrals    Partner[]    @relation("PartnerReferrals")
+  prospects    LeadProspect[] // GeoInsights prospects
 
   @@index([code])
   @@index([type])
@@ -419,4 +420,139 @@ model ApiKey {
   @@index([key])
   @@index([isActive])
   @@map("api_keys")
+}
+
+// ========== GEOINSIGHTS - ESTABLECIMIENTOS DENUE ==========
+
+model Establishment {
+  id           String  @id // ID DENUE original
+  clee         String? @unique // Clave unica INEGI
+  name         String  // nom_estab
+  businessName String? @map("business_name") // raz_social
+  activityCode String  @map("activity_code") // codigo_act (SCIAN)
+  activityName String  @map("activity_name") // nombre_act
+
+  // Personal
+  employeeRange String? @map("employee_range") // per_ocu
+
+  // Direccion completa
+  streetType    String? @map("street_type") // tipo_vial
+  streetName    String? @map("street_name") // nom_vial
+  exteriorNum   String? @map("exterior_num") // numero_ext
+  interiorNum   String? @map("interior_num") // numero_int
+  neighborhood  String? // nomb_asent
+  postalCode    String? @map("postal_code") // cod_postal
+
+  // Ubicacion geografica
+  stateCode        String @map("state_code") // cve_ent
+  stateName        String @map("state_name") // entidad
+  municipalityCode String @map("municipality_code") // cve_mun
+  municipalityName String @map("municipality_name") // municipio
+  localityCode     String? @map("locality_code") // cve_loc
+  localityName     String? @map("locality_name") // localidad
+  ageb             String? // Area geoestadistica basica
+  block            String? // manzana
+
+  // Coordenadas GPS
+  latitude  Float
+  longitude Float
+
+  // Contacto
+  phone   String?
+  email   String?
+  website String?
+
+  // Metadata
+  establishmentType String? @map("establishment_type") // tipoUniEco (Fijo/Semifijo)
+  addedDate         String? @map("added_date") // fecha_alta
+
+  // Relaciones
+  prospects LeadProspect[]
+
+  // Indices para busquedas geograficas rapidas
+  @@index([stateCode])
+  @@index([municipalityCode])
+  @@index([activityCode])
+  @@index([latitude, longitude])
+  @@index([postalCode])
+  @@map("establishments")
+}
+
+// ========== PROSPECTS DESDE DENUE ==========
+
+model LeadProspect {
+  id              String @id @default(uuid())
+  establishmentId String @map("establishment_id")
+  partnerId       String? @map("partner_id")
+
+  status   ProspectStatus @default(AVAILABLE)
+  priority Int            @default(0) // Score de prioridad 0-100
+
+  // Seguimiento
+  assignedAt  DateTime? @map("assigned_at")
+  contactedAt DateTime? @map("contacted_at")
+  convertedAt DateTime? @map("converted_at")
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  establishment Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+  partner       Partner?      @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([establishmentId])
+  @@map("lead_prospects")
+}
+
+enum ProspectStatus {
+  AVAILABLE
+  ASSIGNED
+  CONTACTED
+  CONVERTED
+  NOT_INTERESTED
+  INVALID
+}
+
+// ========== ZONAS GEOGRAFICAS ==========
+
+model GeoZone {
+  id   String   @id @default(uuid())
+  name String
+  type ZoneType
+
+  // Codigos de referencia (para states/municipalities)
+  stateCode        String? @map("state_code")
+  municipalityCode String? @map("municipality_code")
+
+  // Geometria GeoJSON para zonas custom
+  geometry Json?
+
+  // Metricas agregadas
+  totalEstablishments Int   @default(0) @map("total_establishments")
+  totalProspects      Int   @default(0) @map("total_prospects")
+  assignedProspects   Int   @default(0) @map("assigned_prospects")
+  convertedProspects  Int   @default(0) @map("converted_prospects")
+  conversionRate      Float @default(0) @map("conversion_rate")
+
+  // Centro de la zona (para centrar el mapa)
+  centerLat Float? @map("center_lat")
+  centerLng Float? @map("center_lng")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([stateCode])
+  @@index([municipalityCode])
+  @@map("geo_zones")
+}
+
+enum ZoneType {
+  STATE
+  MUNICIPALITY
+  CUSTOM
 }

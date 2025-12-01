@@ -3,3 +3,9 @@ node_modules
 .env
 
 /generated/prisma
+data/
+data.zip
+body.json
+.env
+.env.backup
+.env.local

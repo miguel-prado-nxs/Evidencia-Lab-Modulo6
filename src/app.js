@@ -13,6 +13,7 @@ const leadsRoutes = require("./routes/leads");
 const dealsRoutes = require("./routes/deals");
 const commissionsRoutes = require("./routes/commissions");
 const analyticsRoutes = require("./routes/analytics");
+const geoRoutes = require("./routes/geo");
 
 // Crear aplicación Express
 const app = express();
@@ -87,6 +88,7 @@ app.get("/api/v1", (req, res) => {
       deals: "/api/v1/deals",
       commissions: "/api/v1/commissions",
       analytics: "/api/v1/analytics",
+      geo: "/api/v1/geo",
     },
     authentication: "JWT Bearer token en header Authorization",
     documentation: "Ver README.md",
@@ -103,6 +105,7 @@ app.use("/api/v1/leads", leadsRoutes);
 app.use("/api/v1/deals", dealsRoutes);
 app.use("/api/v1/commissions", commissionsRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
+app.use("/api/v1/geo", geoRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
