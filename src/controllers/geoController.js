@@ -332,6 +332,111 @@ async function searchEstablishments(req, res, next) {
   }
 }
 
+/**
+ * GET /api/v1/geo/smart-search
+ * Búsqueda inteligente con resultados priorizados (estados > municipios > negocios)
+ */
+async function smartSearch(req, res, next) {
+  try {
+    const { q, activity, limit } = req.query;
+
+    if (!q || q.length < 2) {
+      return res.json({
+        success: true,
+        data: { states: [], municipalities: [], establishments: [] },
+        count: 0,
+      });
+    }
+
+    const options = {
+      activityCode: activity,
+      limit: limit ? parseInt(limit) : 10,
+    };
+
+    const results = await geoService.smartSearch(q, options);
+
+    const totalCount = 
+      results.states.length + 
+      results.municipalities.length + 
+      results.establishments.length;
+
+    res.json({
+      success: true,
+      data: results,
+      count: totalCount,
+    });
+  } catch (error) {
+    logger.error("Error en smartSearch:", error);
+    next(error);
+  }
+}
+
+/**
+ * GET /api/v1/geo/activities
+ * Obtener categorías de actividad ordenadas por frecuencia
+ */
+async function getActivities(req, res, next) {
+  try {
+    const activities = await geoService.getActivities();
+
+    res.json({
+      success: true,
+      data: activities,
+      count: activities.length,
+    });
+  } catch (error) {
+    logger.error("Error en getActivities:", error);
+    next(error);
+  }
+}
+
+/**
+ * GET /api/v1/geo/states
+ * Obtener lista de estados con conteo de establecimientos
+ */
+async function getStates(req, res, next) {
+  try {
+    const states = await geoService.getStatesWithCount();
+
+    res.json({
+      success: true,
+      data: states,
+      count: states.length,
+    });
+  } catch (error) {
+    logger.error("Error en getStates:", error);
+    next(error);
+  }
+}
+
+/**
+ * GET /api/v1/geo/states/:stateCode/municipalities
+ * Obtener municipios de un estado
+ */
+async function getMunicipalities(req, res, next) {
+  try {
+    const { stateCode } = req.params;
+
+    if (!stateCode) {
+      return res.status(400).json({
+        success: false,
+        error: "Se requiere el código del estado",
+      });
+    }
+
+    const municipalities = await geoService.getMunicipalitiesByState(stateCode);
+
+    res.json({
+      success: true,
+      data: municipalities,
+      count: municipalities.length,
+    });
+  } catch (error) {
+    logger.error("Error en getMunicipalities:", error);
+    next(error);
+  }
+}
+
 module.exports = {
   getEstablishments,
   getEstablishmentById,
@@ -343,4 +448,8 @@ module.exports = {
   convertProspect,
   getMyProspects,
   searchEstablishments,
+  smartSearch,
+  getActivities,
+  getStates,
+  getMunicipalities,
 };

@@ -60,6 +60,35 @@ router.get("/stats", geoController.getStats);
  */
 router.get("/search", geoController.searchEstablishments);
 
+/**
+ * GET /api/v1/geo/smart-search
+ * Búsqueda inteligente con resultados priorizados
+ * Query params: q (min 2 chars), activity, limit
+ * Returns: { states: [], municipalities: [], establishments: [] }
+ */
+router.get("/smart-search", geoController.smartSearch);
+
+/**
+ * GET /api/v1/geo/activities
+ * Obtener categorías de actividad ordenadas por frecuencia
+ * Returns: [{ code, name, count }]
+ */
+router.get("/activities", geoController.getActivities);
+
+/**
+ * GET /api/v1/geo/states
+ * Obtener lista de estados con conteo de establecimientos
+ * Returns: [{ id, name, stateCode, totalEstablishments, centerLat, centerLng }]
+ */
+router.get("/states", geoController.getStates);
+
+/**
+ * GET /api/v1/geo/states/:stateCode/municipalities
+ * Obtener municipios de un estado específico
+ * Returns: [{ id, name, municipalityCode, totalEstablishments, centerLat, centerLng }]
+ */
+router.get("/states/:stateCode/municipalities", geoController.getMunicipalities);
+
 // ============================================
 // RUTAS PROTEGIDAS (Requieren autenticación)
 // ============================================

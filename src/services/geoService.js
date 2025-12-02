@@ -37,7 +37,15 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
   };
 
   // Filtros opcionales
-  if (activityCode) where.activityCode = activityCode;
+  // Soportar múltiples códigos de actividad separados por coma
+  if (activityCode) {
+    const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+    if (codes.length === 1) {
+      where.activityCode = codes[0];
+    } else if (codes.length > 1) {
+      where.activityCode = { in: codes };
+    }
+  }
   if (stateCode) where.stateCode = stateCode;
   if (municipalityCode) where.municipalityCode = municipalityCode;
   if (employeeRange) where.employeeRange = employeeRange;
@@ -403,6 +411,199 @@ async function searchEstablishments(query, limit = 50) {
   });
 }
 
+/**
+ * Búsqueda inteligente con resultados priorizados
+ * Prioridad: 1. Estados, 2. Municipios, 3. Negocios
+ */
+async function smartSearch(query, options = {}) {
+  const { activityCode, limit = 10 } = options;
+  
+  if (!query || query.length < 2) {
+    return { states: [], municipalities: [], establishments: [] };
+  }
+
+  const searchTerm = query.toLowerCase().trim();
+
+  // 1. Buscar estados que coincidan
+  const statesQuery = prismaGeo.geoZone.findMany({
+    where: {
+      type: "STATE",
+      name: { contains: searchTerm, mode: "insensitive" },
+    },
+    select: {
+      id: true,
+      name: true,
+      stateCode: true,
+      totalEstablishments: true,
+      centerLat: true,
+      centerLng: true,
+    },
+    orderBy: { totalEstablishments: "desc" },
+    take: 5,
+  });
+
+  // 2. Buscar municipios que coincidan
+  const municipalitiesQuery = prismaGeo.geoZone.findMany({
+    where: {
+      type: "MUNICIPALITY",
+      name: { contains: searchTerm, mode: "insensitive" },
+    },
+    select: {
+      id: true,
+      name: true,
+      stateCode: true,
+      municipalityCode: true,
+      totalEstablishments: true,
+      centerLat: true,
+      centerLng: true,
+    },
+    orderBy: { totalEstablishments: "desc" },
+    take: 8,
+  });
+
+  // 3. Buscar negocios que coincidan
+  const establishmentWhere = {
+    OR: [
+      { name: { contains: searchTerm, mode: "insensitive" } },
+      { activityName: { contains: searchTerm, mode: "insensitive" } },
+    ],
+  };
+  
+  if (activityCode) {
+    establishmentWhere.activityCode = activityCode;
+  }
+
+  const establishmentsQuery = prismaGeo.establishment.findMany({
+    where: establishmentWhere,
+    select: {
+      id: true,
+      name: true,
+      activityName: true,
+      latitude: true,
+      longitude: true,
+      municipalityName: true,
+      stateName: true,
+      stateCode: true,
+      municipalityCode: true,
+    },
+    take: limit,
+  });
+
+  // Ejecutar todas las consultas en paralelo
+  const [states, municipalities, establishments] = await Promise.all([
+    statesQuery,
+    municipalitiesQuery,
+    establishmentsQuery,
+  ]);
+
+  // Enriquecer municipios con nombre del estado
+  const enrichedMunicipalities = await Promise.all(
+    municipalities.map(async (muni) => {
+      const state = await prismaGeo.geoZone.findFirst({
+        where: { type: "STATE", stateCode: muni.stateCode },
+        select: { name: true },
+      });
+      return {
+        ...muni,
+        stateName: state?.name || "",
+      };
+    })
+  );
+
+  return {
+    states: states.map(s => ({
+      type: "state",
+      id: s.id,
+      name: s.name,
+      code: s.stateCode,
+      count: s.totalEstablishments,
+      latitude: s.centerLat,
+      longitude: s.centerLng,
+      zoom: 7,
+    })),
+    municipalities: enrichedMunicipalities.map(m => ({
+      type: "municipality",
+      id: m.id,
+      name: m.name,
+      stateName: m.stateName,
+      stateCode: m.stateCode,
+      code: m.municipalityCode,
+      count: m.totalEstablishments,
+      latitude: m.centerLat,
+      longitude: m.centerLng,
+      zoom: 11,
+    })),
+    establishments: establishments.map(e => ({
+      type: "establishment",
+      id: e.id,
+      name: e.name,
+      activityName: e.activityName,
+      municipalityName: e.municipalityName,
+      stateName: e.stateName,
+      latitude: e.latitude,
+      longitude: e.longitude,
+      zoom: 15,
+    })),
+  };
+}
+
+/**
+ * Obtener categorías de actividad ordenadas por frecuencia
+ */
+async function getActivities() {
+  const activities = await prismaGeo.establishment.groupBy({
+    by: ["activityCode", "activityName"],
+    _count: { id: true },
+    orderBy: { _count: { id: "desc" } },
+    take: 15,
+  });
+
+  return activities.map(a => ({
+    code: a.activityCode,
+    name: a.activityName,
+    count: a._count.id,
+  }));
+}
+
+/**
+ * Obtener estados con conteo para dropdown
+ */
+async function getStatesWithCount() {
+  return prismaGeo.geoZone.findMany({
+    where: { type: "STATE" },
+    select: {
+      id: true,
+      name: true,
+      stateCode: true,
+      totalEstablishments: true,
+      centerLat: true,
+      centerLng: true,
+    },
+    orderBy: { totalEstablishments: "desc" },
+  });
+}
+
+/**
+ * Obtener municipios de un estado
+ */
+async function getMunicipalitiesByState(stateCode) {
+  return prismaGeo.geoZone.findMany({
+    where: { 
+      type: "MUNICIPALITY",
+      stateCode: stateCode,
+    },
+    select: {
+      id: true,
+      name: true,
+      municipalityCode: true,
+      totalEstablishments: true,
+      centerLat: true,
+      centerLng: true,
+    },
+    orderBy: { totalEstablishments: "desc" },
+  });
+}
+
 module.exports = {
   getEstablishmentsInBounds,
   getEstablishmentById,
@@ -414,4 +615,8 @@ module.exports = {
   convertProspectToLead,
   getPartnerProspects,
   searchEstablishments,
+  smartSearch,
+  getActivities,
+  getStatesWithCount,
+  getMunicipalitiesByState,
 };
