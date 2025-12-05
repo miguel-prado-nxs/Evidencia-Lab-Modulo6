@@ -4,6 +4,7 @@
   "description": "Backend API para el sistema de partners de EasyOrder",
   "main": "src/app.js",
   "scripts": {
+    "build": "prisma generate && prisma migrate deploy",
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "db:generate": "prisma generate",
