@@ -245,8 +245,8 @@ Te recomendamos contactarlo lo antes posible.
     <p>Tu lead <strong>{{businessName}}</strong> se ha convertido en cliente de EasyOrder.</p>
     <div class="highlight">
       <p><strong>Negocio:</strong> {{businessName}}</p>
-      <p><strong>Valor Total:</strong> ${{totalValue}} MXN</p>
-      <p style="font-size: 18px; color: #FF8C00;"><strong>Tu Comisión:</strong> ${{commissionAmount}} MXN</p>
+      <p><strong>Valor Total:</strong> \${{totalValue}} MXN</p>
+      <p style="font-size: 18px; color: #FF8C00;"><strong>Tu Comisión:</strong> \${{commissionAmount}} MXN</p>
     </div>
     <p>La comisión será procesada y recibirás una notificación cuando esté lista para ser pagada.</p>
     <div style="text-align: center;">
@@ -266,8 +266,8 @@ Te recomendamos contactarlo lo antes posible.
 Cerraste una venta:
 
 Negocio: {{businessName}}
-Valor Total: ${{totalValue}} MXN
-Tu Comisión: ${{commissionAmount}} MXN
+Valor Total: \${{totalValue}} MXN
+Tu Comisión: \${{commissionAmount}} MXN
 
 La comisión será procesada pronto.
 
@@ -276,7 +276,7 @@ La comisión será procesada pronto.
   },
   {
     name: "commission_approved",
-    subject: "✅ Comisión Aprobada: ${{amount}} MXN",
+    subject: "✅ Comisión Aprobada: \${{amount}} MXN",
     htmlBody: `
 <!DOCTYPE html>
 <html>
@@ -293,7 +293,7 @@ La comisión será procesada pronto.
     <p>Hola <strong>{{name}}</strong>,</p>
     <h2>Tu comisión ha sido aprobada</h2>
     <div class="highlight">
-      <p style="font-size: 24px; color: #FF8C00; text-align: center;"><strong>${{amount}} MXN</strong></p>
+      <p style="font-size: 24px; color: #FF8C00; text-align: center;"><strong>\${{amount}} MXN</strong></p>
     </div>
     <p>Esta comisión ha sido aprobada y será procesada para pago en el próximo ciclo de pagos.</p>
     <p>Te notificaremos cuando el pago haya sido depositado en tu cuenta.</p>
@@ -312,14 +312,14 @@ La comisión será procesada pronto.
 
 Hola {{name}},
 
-Tu comisión de ${{amount}} MXN ha sido aprobada y será procesada para pago pronto.
+Tu comisión de \${{amount}} MXN ha sido aprobada y será procesada para pago pronto.
 
 -- EasyOrder Partners`,
     variables: { name: "Nombre del partner", amount: "Monto de la comisión", actionUrl: "URL de comisiones" },
   },
   {
     name: "commission_paid",
-    subject: "💰 ¡Pago Realizado! ${{amount}} MXN",
+    subject: "💰 ¡Pago Realizado! \${{amount}} MXN",
     htmlBody: `
 <!DOCTYPE html>
 <html>
@@ -336,7 +336,7 @@ Tu comisión de ${{amount}} MXN ha sido aprobada y será procesada para pago pro
     <p>Hola <strong>{{name}}</strong>,</p>
     <h2>Tu comisión ha sido depositada</h2>
     <div class="highlight">
-      <p style="font-size: 24px; color: #22c55e; text-align: center;"><strong>${{amount}} MXN</strong></p>
+      <p style="font-size: 24px; color: #22c55e; text-align: center;"><strong>\${{amount}} MXN</strong></p>
       {{#if paymentRef}}<p style="text-align: center; font-size: 13px; color: #666;">Referencia: {{paymentRef}}</p>{{/if}}
     </div>
     <p>El pago ha sido procesado y depositado en tu cuenta registrada.</p>
@@ -356,7 +356,7 @@ Tu comisión de ${{amount}} MXN ha sido aprobada y será procesada para pago pro
 
 Hola {{name}},
 
-Tu comisión de ${{amount}} MXN ha sido depositada.
+Tu comisión de \${{amount}} MXN ha sido depositada.
 {{#if paymentRef}}Referencia: {{paymentRef}}{{/if}}
 
 Gracias por ser parte de EasyOrder Partners.
