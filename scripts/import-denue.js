@@ -10,6 +10,7 @@ const { PrismaClient } = require("@prisma/client");
 const fs = require("fs");
 const path = require("path");
 const readline = require("readline");
+const iconv = require("iconv-lite"); // Para encoding Latin1
 
 const prisma = new PrismaClient();
 
@@ -103,7 +104,8 @@ function mapRowToEstablishment(values, headers) {
 async function processCSVFile(filePath, stats) {
   console.log(`\n📂 Procesando: ${path.basename(filePath)}`);
 
-  const fileStream = fs.createReadStream(filePath, { encoding: "utf8" });
+  // Leer archivo con encoding Latin1 (ISO-8859-1) - el formato nativo de INEGI
+  const fileStream = fs.createReadStream(filePath).pipe(iconv.decodeStream("latin1"));
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity,

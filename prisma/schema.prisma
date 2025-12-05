@@ -21,9 +21,10 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  partner  Partner?
-  accounts Account[]
-  sessions Session[]
+  partner       Partner?
+  accounts      Account[]
+  sessions      Session[]
+  notifications Notification[]
 
   @@index([email])
   @@index([role])
@@ -94,6 +95,12 @@ model Partner {
   referredById String?      @map("referred_by_id")
   referrals    Partner[]    @relation("PartnerReferrals")
   prospects    LeadProspect[] // GeoInsights prospects
+  
+  // LMS relations
+  enrollments    CourseEnrollment[]
+  lessonProgress LessonProgress[]
+  quizAttempts   QuizAttempt[]
+  certificates   Certificate[]
 
   @@index([code])
   @@index([type])
@@ -327,17 +334,25 @@ model Resource {
 
   name         String
   description  String?
-  category     String // sales-deck, email-template, one-pager, video
+  category     ResourceCategory
   type         String // pdf, pptx, docx, mp4, png
-  url          String
+  url          String? // URL externa (opcional)
   thumbnailUrl String? @map("thumbnail_url")
+
+  // Archivos subidos localmente
+  fileName     String?  @map("file_name")
+  fileSize     Int?     @map("file_size") // bytes
+  mimeType     String?  @map("mime_type")
+  storagePath  String?  @map("storage_path")
 
   // Permisos
   minTier      PartnerTier   @default(REGISTERED) @map("min_tier")
   partnerTypes PartnerType[] @map("partner_types")
 
-  // Stats
-  downloads Int @default(0)
+  // Metadata
+  tags         String[]
+  downloads    Int @default(0)
+  viewCount    Int @default(0) @map("view_count")
 
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
@@ -347,6 +362,19 @@ model Resource {
   @@index([minTier])
   @@index([isActive])
   @@map("resources")
+}
+
+enum ResourceCategory {
+  SALES_DECK
+  ONE_PAGER
+  EMAIL_TEMPLATE
+  SOCIAL_MEDIA
+  VIDEO
+  CASE_STUDY
+  PRICE_LIST
+  BRAND_ASSETS
+  CONTRACT_TEMPLATE
+  OTHER
 }
 
 // ========== CONFIGURACION DEL PROGRAMA ==========
@@ -555,4 +583,214 @@ enum ZoneType {
   STATE
   MUNICIPALITY
   CUSTOM
+}
+
+// ========== NOTIFICACIONES ==========
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  read      Boolean          @default(false)
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  LEAD_NEW
+  LEAD_STATUS_CHANGED
+  DEAL_CLOSED
+  COMMISSION_APPROVED
+  COMMISSION_PAID
+  PARTNER_APPROVED
+  PARTNER_TIER_UPGRADE
+  SYSTEM
+}
+
+// ========== PLANTILLAS DE EMAIL ==========
+
+model EmailTemplate {
+  id        String  @id @default(uuid())
+  name      String  @unique
+  subject   String
+  htmlBody  String  @map("html_body") @db.Text
+  textBody  String  @map("text_body") @db.Text
+  variables Json    // Variables disponibles para el template
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
+// ========== SISTEMA LMS (CAPACITACIÓN) ==========
+
+model Course {
+  id           String           @id @default(uuid())
+  title        String
+  slug         String           @unique
+  description  String           @db.Text
+  thumbnailUrl String?          @map("thumbnail_url")
+  duration     Int              // minutos totales estimados
+  difficulty   CourseDifficulty
+  minTier      PartnerTier      @default(REGISTERED) @map("min_tier")
+  partnerTypes PartnerType[]    @map("partner_types")
+  isPublished  Boolean          @default(false) @map("is_published")
+  order        Int              @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  lessons      Lesson[]
+  enrollments  CourseEnrollment[]
+  certificates Certificate[]
+
+  @@index([slug])
+  @@index([isPublished])
+  @@map("courses")
+}
+
+enum CourseDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model Lesson {
+  id          String  @id @default(uuid())
+  courseId    String  @map("course_id")
+  title       String
+  slug        String
+  description String?
+  content     String  @db.Text // Markdown
+  videoUrl    String? @map("video_url") // YouTube/Vimeo embed
+  duration    Int     // minutos
+  order       Int
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quizzes  Quiz[]
+  progress LessonProgress[]
+
+  @@unique([courseId, slug])
+  @@index([courseId])
+  @@map("lessons")
+}
+
+model Quiz {
+  id           String @id @default(uuid())
+  lessonId     String @map("lesson_id")
+  title        String
+  passingScore Int    @default(70) @map("passing_score")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  lesson    Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@index([lessonId])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String  @id @default(uuid())
+  quizId        String  @map("quiz_id")
+  question      String
+  options       Json    // [{id, text}]
+  correctOption String  @map("correct_option")
+  explanation   String?
+  order         Int
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+  @@map("quiz_questions")
+}
+
+model CourseEnrollment {
+  id          String           @id @default(uuid())
+  partnerId   String           @map("partner_id")
+  courseId    String           @map("course_id")
+  status      EnrollmentStatus @default(IN_PROGRESS)
+  progress    Int              @default(0) // porcentaje 0-100
+  startedAt   DateTime         @default(now()) @map("started_at")
+  completedAt DateTime?        @map("completed_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, courseId])
+  @@index([partnerId])
+  @@index([courseId])
+  @@map("course_enrollments")
+}
+
+enum EnrollmentStatus {
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+}
+
+model LessonProgress {
+  id          String    @id @default(uuid())
+  partnerId   String    @map("partner_id")
+  lessonId    String    @map("lesson_id")
+  completed   Boolean   @default(false)
+  completedAt DateTime? @map("completed_at")
+  watchTime   Int       @default(0) @map("watch_time") // segundos
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, lessonId])
+  @@index([partnerId])
+  @@index([lessonId])
+  @@map("lesson_progress")
+}
+
+model QuizAttempt {
+  id          String   @id @default(uuid())
+  partnerId   String   @map("partner_id")
+  quizId      String   @map("quiz_id")
+  score       Int
+  passed      Boolean
+  answers     Json     // {questionId: answerId}
+  attemptedAt DateTime @default(now()) @map("attempted_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([quizId])
+  @@map("quiz_attempts")
+}
+
+model Certificate {
+  id        String   @id @default(uuid())
+  partnerId String   @map("partner_id")
+  courseId  String   @map("course_id")
+  code      String   @unique // Código verificable
+  issuedAt  DateTime @default(now()) @map("issued_at")
+  pdfUrl    String?  @map("pdf_url")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, courseId])
+  @@index([code])
+  @@map("certificates")
 }

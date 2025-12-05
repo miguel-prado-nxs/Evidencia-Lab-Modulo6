@@ -43,5 +43,9 @@ router.post("/login", validate(loginSchema), authController.login);
 router.get("/me", authenticateJWT, authController.me);
 router.post("/change-password", authenticateJWT, validate(changePasswordSchema), authController.changePassword);
 
+// OAuth routes
+router.post("/oauth/callback", authController.oauthCallback);
+router.post("/link-account", authenticateJWT, authController.linkOAuthAccount);
+
 module.exports = router;
 

@@ -2,9 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const http = require("http");
 const config = require("./config/env");
 const logger = require("./config/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
+const { initSocket } = require("./config/socket");
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
@@ -14,9 +16,19 @@ const dealsRoutes = require("./routes/deals");
 const commissionsRoutes = require("./routes/commissions");
 const analyticsRoutes = require("./routes/analytics");
 const geoRoutes = require("./routes/geo");
+const notificationsRoutes = require("./routes/notifications");
+const exportRoutes = require("./routes/export");
+const resourcesRoutes = require("./routes/resources");
+const trainingRoutes = require("./routes/training");
 
 // Crear aplicación Express
 const app = express();
+
+// Crear servidor HTTP para Socket.io
+const server = http.createServer(app);
+
+// Inicializar Socket.io
+initSocket(server);
 
 // ===========================================
 // MIDDLEWARE DE SEGURIDAD Y CONFIGURACIÓN
@@ -106,6 +118,10 @@ app.use("/api/v1/deals", dealsRoutes);
 app.use("/api/v1/commissions", commissionsRoutes);
 app.use("/api/v1/analytics", analyticsRoutes);
 app.use("/api/v1/geo", geoRoutes);
+app.use("/api/v1/notifications", notificationsRoutes);
+app.use("/api/v1/export", exportRoutes);
+app.use("/api/v1/resources", resourcesRoutes);
+app.use("/api/v1/training", trainingRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
@@ -123,11 +139,13 @@ app.use(errorHandler);
 
 const PORT = config.server.port;
 
-app.listen(PORT, () => {
+// Usar server en lugar de app para soportar WebSocket
+server.listen(PORT, () => {
   logger.info(`🚀 EasyOrder Partners API iniciada en puerto ${PORT}`);
   logger.info(`🌍 Ambiente: ${config.server.nodeEnv}`);
   logger.info(`📊 API: http://localhost:${PORT}/api/v1`);
   logger.info(`🏥 Health check: http://localhost:${PORT}/health`);
+  logger.info(`🔌 WebSocket: ws://localhost:${PORT}`);
 });
 
 // Manejo de errores no capturados
@@ -141,5 +159,5 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-module.exports = app;
+module.exports = { app, server };
 
