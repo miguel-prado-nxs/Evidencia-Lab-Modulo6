@@ -43,13 +43,13 @@ const createPartner = async (data, autoApprove = false) => {
   // Generar link de referido
   const referralLink = `https://easyorder.mx/?ref=${code}`;
 
-  // Determinar comisión según tipo
+  // Determinar comisión según tipo (máximo 15%)
   const commissionRates = {
-    AFFILIATE: 0.15,
-    REFERRAL: 0.10,
-    RESELLER: 0.20,
-    SOLUTIONS: 0.15,
-    TECHNOLOGY: 0.10,
+    AFFILIATE: 0.10,
+    REFERRAL: 0.08,
+    RESELLER: 0.15,
+    SOLUTIONS: 0.12,
+    TECHNOLOGY: 0.08,
   };
 
   // Determinar status y role según autoApprove
@@ -272,12 +272,12 @@ const updatePartnerTier = async (id, tier) => {
   const partner = await prisma.partner.findUnique({ where: { id } });
   if (!partner) throw new Error("Partner no encontrado");
 
-  // Actualizar comisión según tier
+  // Actualizar comisión según tier (bonos +5/10/15%)
   const commissionRates = {
     REGISTERED: partner.commissionRate,
-    SILVER: Math.min(partner.commissionRate + 0.05, 0.25),
-    GOLD: Math.min(partner.commissionRate + 0.10, 0.30),
-    ELITE: Math.min(partner.commissionRate + 0.15, 0.40),
+    SILVER: partner.commissionRate + 0.05,
+    GOLD: partner.commissionRate + 0.10,
+    ELITE: partner.commissionRate + 0.15,
   };
 
   await prisma.activity.create({
