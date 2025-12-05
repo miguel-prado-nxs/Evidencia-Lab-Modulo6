@@ -1,6 +1,80 @@
 const partnerService = require("../services/partnerService");
 const logger = require("../config/logger");
 
+// Crear partner (admin)
+const create = async (req, res, next) => {
+  try {
+    const { 
+      email, 
+      password, 
+      name, 
+      type, 
+      companyName, 
+      phone, 
+      website, 
+      country, 
+      state, 
+      city,
+      status // opcional: ACTIVE para aprobar directamente
+    } = req.body;
+
+    // Validar campos requeridos
+    if (!email || !password || !name || !type) {
+      return res.status(400).json({
+        success: false,
+        error: "Campos requeridos: email, password, name, type",
+      });
+    }
+
+    // Crear partner con opción de auto-aprobar
+    const autoApprove = status === "ACTIVE";
+    const { user, partner } = await partnerService.createPartner({
+      email,
+      password,
+      name,
+      type,
+      companyName,
+      phone,
+      website,
+      country,
+      state,
+      city,
+    }, autoApprove);
+
+    logger.info(`Partner creado por admin: ${email} (autoApprove: ${autoApprove})`);
+
+    res.status(201).json({
+      success: true,
+      message: autoApprove 
+        ? "Partner creado y activado exitosamente"
+        : "Partner creado exitosamente (pendiente de aprobación)",
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        },
+        partner: {
+          id: partner.id,
+          code: partner.code,
+          type: partner.type,
+          tier: partner.tier,
+          status: partner.status,
+        },
+      },
+    });
+  } catch (error) {
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        success: false,
+        error: "Ya existe un usuario con este email",
+      });
+    }
+    next(error);
+  }
+};
+
 // Listar partners (admin)
 const list = async (req, res, next) => {
   try {
@@ -161,6 +235,7 @@ const validateCode = async (req, res, next) => {
 };
 
 module.exports = {
+  create,
   list,
   getById,
   update,

@@ -13,7 +13,8 @@ const generatePartnerCode = () => {
 };
 
 // Crear nuevo partner
-const createPartner = async (data) => {
+// autoApprove: si true, crea el partner ya activo (para creación desde admin)
+const createPartner = async (data, autoApprove = false) => {
   const {
     email,
     password,
@@ -51,6 +52,10 @@ const createPartner = async (data) => {
     TECHNOLOGY: 0.10,
   };
 
+  // Determinar status y role según autoApprove
+  const initialStatus = autoApprove ? "ACTIVE" : "PENDING";
+  const initialRole = autoApprove ? "PARTNER" : "PENDING";
+
   // Crear usuario y partner en una transacción
   const result = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
@@ -58,7 +63,7 @@ const createPartner = async (data) => {
         email,
         passwordHash,
         name,
-        role: "PENDING",
+        role: initialRole,
       },
     });
 
@@ -68,7 +73,7 @@ const createPartner = async (data) => {
         code,
         type,
         tier: "REGISTERED",
-        status: "PENDING",
+        status: initialStatus,
         companyName,
         phone,
         website,
@@ -77,6 +82,7 @@ const createPartner = async (data) => {
         city,
         commissionRate: commissionRates[type] || 0.15,
         referralLink,
+        ...(autoApprove && { approvedAt: new Date() }),
       },
     });
 
@@ -84,8 +90,10 @@ const createPartner = async (data) => {
     await tx.activity.create({
       data: {
         partnerId: partner.id,
-        type: "PARTNER_REGISTERED",
-        description: `Partner ${name} registrado como ${type}`,
+        type: autoApprove ? "PARTNER_CREATED_BY_ADMIN" : "PARTNER_REGISTERED",
+        description: autoApprove 
+          ? `Partner ${name} creado y activado por admin como ${type}`
+          : `Partner ${name} registrado como ${type}`,
       },
     });
 

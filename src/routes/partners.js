@@ -12,6 +12,9 @@ router.use(authenticateJWT);
 // Lista de partners (admin)
 router.get("/", requireAdmin, partnersController.list);
 
+// Crear partner (admin)
+router.post("/", requireAdmin, partnersController.create);
+
 // Obtener partner por ID
 router.get("/:id", partnersController.getById);
 
