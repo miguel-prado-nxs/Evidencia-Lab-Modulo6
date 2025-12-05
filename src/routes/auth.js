@@ -35,13 +35,40 @@ const changePasswordSchema = z.object({
   }),
 });
 
+const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email("Email inválido"),
+  }),
+});
+
+const resetPasswordSchema = z.object({
+  body: z.object({
+    token: z.string().min(1, "Token requerido"),
+    newPassword: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+  }),
+});
+
+const verifyEmailSchema = z.object({
+  body: z.object({
+    token: z.string().min(1, "Token requerido"),
+  }),
+});
+
 // Rutas públicas
 router.post("/register", validate(registerSchema), authController.register);
 router.post("/login", validate(loginSchema), authController.login);
 
+// Recuperación de contraseña (públicas)
+router.post("/forgot-password", validate(forgotPasswordSchema), authController.forgotPassword);
+router.post("/reset-password", validate(resetPasswordSchema), authController.resetPassword);
+
+// Verificación de email (pública para el token)
+router.post("/verify-email", validate(verifyEmailSchema), authController.verifyEmail);
+
 // Rutas protegidas
 router.get("/me", authenticateJWT, authController.me);
 router.post("/change-password", authenticateJWT, validate(changePasswordSchema), authController.changePassword);
+router.post("/send-verification", authenticateJWT, authController.sendVerificationEmail);
 
 // OAuth routes
 router.post("/oauth/callback", authController.oauthCallback);

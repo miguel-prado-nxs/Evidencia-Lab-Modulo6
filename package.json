@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "db:seed": "node prisma/seed.js"
+    "db:seed": "node prisma/seed.js",
+    "seed:emails": "node prisma/seed-email-templates.js"
   },
   "keywords": [
     "partners",
@@ -36,8 +37,8 @@
     "iconv-lite": "^0.7.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "nodemailer": "^7.0.11",
     "pdfkit": "^0.17.2",
+    "resend": "^6.5.2",
     "sharp": "^0.34.5",
     "socket.io": "^4.8.1",
     "uuid": "^9.0.1",

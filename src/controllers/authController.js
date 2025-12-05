@@ -1,7 +1,10 @@
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const prisma = require("../config/database");
 const { generateToken } = require("../middleware/auth");
 const partnerService = require("../services/partnerService");
+const emailService = require("../services/emailService");
+const notificationService = require("../services/notificationService");
 const logger = require("../config/logger");
 const { v4: uuidv4 } = require("uuid");
 
@@ -37,6 +40,10 @@ const register = async (req, res, next) => {
     });
 
     logger.info(`Nuevo partner registrado: ${email}`);
+
+    // Enviar email de bienvenida (async, no bloquea)
+    notificationService.notifyPartnerRegistered(user.id, partner)
+      .catch(err => logger.error("Error sending welcome email:", err));
 
     res.status(201).json({
       success: true,
@@ -476,6 +483,254 @@ const linkOAuthAccount = async (req, res, next) => {
   }
 };
 
+// ========================================
+// RECUPERACIÓN DE CONTRASEÑA
+// ========================================
+
+// Solicitar recuperación de contraseña
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    // Buscar usuario
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    // Siempre devolver éxito para no revelar si el email existe
+    if (!user) {
+      logger.info(`Forgot password attempt for non-existent email: ${email}`);
+      return res.json({
+        success: true,
+        message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña.",
+      });
+    }
+
+    // Invalidar tokens anteriores no usados
+    await prisma.passwordResetToken.updateMany({
+      where: {
+        userId: user.id,
+        usedAt: null,
+      },
+      data: {
+        usedAt: new Date(), // Marcar como usado para invalidarlo
+      },
+    });
+
+    // Generar nuevo token
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+
+    await prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    // Enviar email
+    try {
+      await emailService.sendPasswordResetEmail(user.email, user.name, token);
+      logger.info(`Password reset email sent to: ${email}`);
+    } catch (emailError) {
+      logger.error(`Failed to send password reset email to ${email}:`, emailError);
+      // No fallar la solicitud si el email falla
+    }
+
+    res.json({
+      success: true,
+      message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Restablecer contraseña con token
+const resetPassword = async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    // Buscar token válido
+    const resetToken = await prisma.passwordResetToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    if (!resetToken) {
+      return res.status(400).json({
+        success: false,
+        error: "El enlace de recuperación es inválido.",
+      });
+    }
+
+    if (resetToken.usedAt) {
+      return res.status(400).json({
+        success: false,
+        error: "Este enlace ya fue utilizado. Solicita uno nuevo.",
+      });
+    }
+
+    if (resetToken.expiresAt < new Date()) {
+      return res.status(400).json({
+        success: false,
+        error: "El enlace ha expirado. Solicita uno nuevo.",
+      });
+    }
+
+    // Actualizar contraseña
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: resetToken.userId },
+        data: { passwordHash },
+      }),
+      prisma.passwordResetToken.update({
+        where: { id: resetToken.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    logger.info(`Password reset successful for user: ${resetToken.user.email}`);
+
+    res.json({
+      success: true,
+      message: "Tu contraseña ha sido actualizada exitosamente.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ========================================
+// VERIFICACIÓN DE EMAIL
+// ========================================
+
+// Enviar email de verificación
+const sendVerificationEmail = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "Usuario no encontrado",
+      });
+    }
+
+    if (user.emailVerified) {
+      return res.json({
+        success: true,
+        message: "Tu email ya está verificado.",
+      });
+    }
+
+    // Invalidar tokens anteriores
+    await prisma.emailVerificationToken.deleteMany({
+      where: { userId: user.id },
+    });
+
+    // Generar nuevo token
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+    await prisma.emailVerificationToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    // Enviar email
+    try {
+      await emailService.sendVerificationEmail(user.email, user.name, token);
+      logger.info(`Verification email sent to: ${user.email}`);
+    } catch (emailError) {
+      logger.error(`Failed to send verification email to ${user.email}:`, emailError);
+      return res.status(500).json({
+        success: false,
+        error: "Error al enviar el email de verificación. Intenta más tarde.",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Se ha enviado un email de verificación a tu correo.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Verificar email con token
+const verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+
+    // Buscar token válido
+    const verificationToken = await prisma.emailVerificationToken.findUnique({
+      where: { token },
+      include: { user: true },
+    });
+
+    if (!verificationToken) {
+      return res.status(400).json({
+        success: false,
+        error: "El enlace de verificación es inválido.",
+      });
+    }
+
+    if (verificationToken.expiresAt < new Date()) {
+      // Eliminar token expirado
+      await prisma.emailVerificationToken.delete({
+        where: { id: verificationToken.id },
+      });
+      return res.status(400).json({
+        success: false,
+        error: "El enlace ha expirado. Solicita uno nuevo.",
+      });
+    }
+
+    if (verificationToken.user.emailVerified) {
+      // Ya verificado, eliminar token
+      await prisma.emailVerificationToken.delete({
+        where: { id: verificationToken.id },
+      });
+      return res.json({
+        success: true,
+        message: "Tu email ya está verificado.",
+      });
+    }
+
+    // Verificar email
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: verificationToken.userId },
+        data: { emailVerified: new Date() },
+      }),
+      prisma.emailVerificationToken.delete({
+        where: { id: verificationToken.id },
+      }),
+    ]);
+
+    logger.info(`Email verified for user: ${verificationToken.user.email}`);
+
+    res.json({
+      success: true,
+      message: "Tu email ha sido verificado exitosamente.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -483,5 +738,9 @@ module.exports = {
   changePassword,
   oauthCallback,
   linkOAuthAccount,
+  forgotPassword,
+  resetPassword,
+  sendVerificationEmail,
+  verifyEmail,
 };
 

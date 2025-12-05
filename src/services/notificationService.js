@@ -34,6 +34,11 @@ const NOTIFICATION_CONFIG = {
     sendEmail: true,
     emailTemplate: "commission_paid",
   },
+  PARTNER_REGISTERED: {
+    title: "¡Bienvenido a EasyOrder Partners!",
+    sendEmail: true,
+    emailTemplate: "welcome",
+  },
   PARTNER_APPROVED: {
     title: "¡Bienvenido al Programa!",
     sendEmail: true,
@@ -371,6 +376,31 @@ async function notifyCommissionPaid(partnerId, commission) {
 }
 
 /**
+ * Notificar partner registrado (email de bienvenida)
+ */
+async function notifyPartnerRegistered(userId, partner) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, name: true },
+  });
+
+  if (user) {
+    // Enviar email de bienvenida directamente
+    try {
+      await emailService.sendWelcomeEmail(
+        user.email,
+        user.name,
+        partner.code,
+        partner.referralLink
+      );
+      logger.info(`Welcome email sent to: ${user.email}`);
+    } catch (error) {
+      logger.error(`Failed to send welcome email to ${user.email}:`, error);
+    }
+  }
+}
+
+/**
  * Notificar partner aprobado
  */
 async function notifyPartnerApproved(userId, partner) {
@@ -418,6 +448,7 @@ module.exports = {
   notifyDealClosed,
   notifyCommissionApproved,
   notifyCommissionPaid,
+  notifyPartnerRegistered,
   notifyPartnerApproved,
   notifyTierUpgrade,
 };
