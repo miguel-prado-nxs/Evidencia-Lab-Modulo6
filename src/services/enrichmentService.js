@@ -1,7 +1,7 @@
 /**
  * Enrichment Service
  * Servicios para enriquecimiento de establecimientos con información adicional
- * Gestiona los niveles: ESTABLISHMENT -> CONTACT -> PROSPECT -> LEAD
+ * Gestiona los niveles: ESTABLISHMENT -> CONTACT -> PROSPECT -> LEAD -> CLIENT
  */
 
 const prismaGeo = require("../config/database-geo");
@@ -11,9 +11,14 @@ const logger = require("../config/logger");
  * Calcular el nivel de un establecimiento basado en sus datos
  * @param {Object} establishment - Datos del establecimiento DENUE
  * @param {Object|null} enrichment - Datos de enriquecimiento adicionales
- * @returns {string} - Nivel: ESTABLISHMENT | CONTACT | PROSPECT | LEAD
+ * @returns {string} - Nivel: ESTABLISHMENT | CONTACT | PROSPECT | LEAD | CLIENT
  */
 function calculateLevel(establishment, enrichment = null) {
+  // Nivel CLIENT: tiene fecha de compra y producto adquirido
+  if (enrichment?.purchaseDate && enrichment?.productPurchased) {
+    return "CLIENT";
+  }
+
   // Nivel LEAD: tiene toda la información de cualificación
   if (
     enrichment?.intent &&
@@ -99,15 +104,25 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
 
     // Preparar datos de enriquecimiento
     const enrichmentData = {
+      // Datos de prospecto (tomador de decisiones)
       decisionMakerName: data.decisionMakerName || null,
       decisionMakerPosition: data.decisionMakerPosition || null,
       decisionMakerPhone: data.decisionMakerPhone || null,
       decisionMakerWhatsApp: data.decisionMakerWhatsApp || null,
       decisionMakerEmail: data.decisionMakerEmail || null,
+      // Datos de lead (cualificación)
       intent: data.intent || null,
       fear: data.fear || null,
       pain: data.pain || null,
       desire: data.desire || null,
+      // Datos de cliente
+      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
+      productPurchased: data.productPurchased || null,
+      purchaseAmount: data.purchaseAmount ? parseFloat(data.purchaseAmount) : null,
+      clientSince: data.clientSince ? new Date(data.clientSince) : null,
+      clientStatus: data.clientStatus || null,
+      clientNotes: data.clientNotes || null,
+      // Metadata
       lastUpdatedBy: partnerId,
     };
 
@@ -270,6 +285,7 @@ async function getStatsByLevel() {
       CONTACT: totalContacts,
       PROSPECT: enrichmentByLevel.PROSPECT || 0,
       LEAD: enrichmentByLevel.LEAD || 0,
+      CLIENT: enrichmentByLevel.CLIENT || 0,
     };
   } catch (error) {
     logger.error("Error obteniendo estadísticas por nivel:", error);

@@ -606,7 +606,7 @@ async function getMunicipalitiesByState(stateCode) {
 
 /**
  * Obtener establecimientos filtrados por nivel de enriquecimiento
- * Niveles: ESTABLISHMENT (todos), CONTACT (con datos de contacto), PROSPECT (con tomador de decisiones), LEAD (con cualificación)
+ * Niveles: ESTABLISHMENT (todos), CONTACT (con datos de contacto), PROSPECT (con tomador de decisiones), LEAD (con cualificación), CLIENT (clientes)
  */
 async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {}) {
   const { north, south, east, west } = bounds;
@@ -631,16 +631,23 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
       break;
 
     case "PROSPECT":
-      // Establecimientos con enriquecimiento nivel PROSPECT o LEAD
+      // Establecimientos con enriquecimiento nivel PROSPECT, LEAD o CLIENT
       where.enrichment = {
-        level: { in: ["PROSPECT", "LEAD"] },
+        level: { in: ["PROSPECT", "LEAD", "CLIENT"] },
       };
       break;
 
     case "LEAD":
-      // Solo establecimientos con enriquecimiento nivel LEAD
+      // Establecimientos con enriquecimiento nivel LEAD o CLIENT
       where.enrichment = {
-        level: "LEAD",
+        level: { in: ["LEAD", "CLIENT"] },
+      };
+      break;
+
+    case "CLIENT":
+      // Solo establecimientos con enriquecimiento nivel CLIENT
+      where.enrichment = {
+        level: "CLIENT",
       };
       break;
 
@@ -671,8 +678,8 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     ];
   }
 
-  // Incluir enrichment para niveles PROSPECT y LEAD
-  const includeEnrichment = level === "PROSPECT" || level === "LEAD";
+  // Incluir enrichment para niveles PROSPECT, LEAD y CLIENT
+  const includeEnrichment = level === "PROSPECT" || level === "LEAD" || level === "CLIENT";
 
   const establishments = await prismaGeo.establishment.findMany({
     where,
@@ -708,6 +715,13 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
           fear: true,
           pain: true,
           desire: true,
+          // Campos de cliente
+          purchaseDate: true,
+          productPurchased: true,
+          purchaseAmount: true,
+          clientSince: true,
+          clientStatus: true,
+          clientNotes: true,
         },
       } : false,
     },
