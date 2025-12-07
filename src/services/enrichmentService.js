@@ -294,6 +294,38 @@ async function getStatsByLevel() {
 }
 
 /**
+ * Obtener estadísticas por nivel de enriquecimiento para un partner específico
+ * @param {string} partnerId - ID del partner
+ * @returns {Promise<Object>} - Conteo por cada nivel del partner
+ */
+async function getStatsByLevelForPartner(partnerId) {
+  try {
+    // Contar enriquecimientos del partner por nivel
+    const enrichmentStats = await prismaGeo.establishmentEnrichment.groupBy({
+      by: ["level"],
+      where: { enrichedBy: partnerId },
+      _count: { id: true },
+    });
+
+    // Convertir a objeto con todos los niveles inicializados en 0
+    const enrichmentByLevel = enrichmentStats.reduce((acc, stat) => {
+      acc[stat.level] = stat._count.id;
+      return acc;
+    }, {});
+
+    return {
+      CONTACT: enrichmentByLevel.CONTACT || 0,
+      PROSPECT: enrichmentByLevel.PROSPECT || 0,
+      LEAD: enrichmentByLevel.LEAD || 0,
+      CLIENT: enrichmentByLevel.CLIENT || 0,
+    };
+  } catch (error) {
+    logger.error("Error obteniendo estadísticas del partner por nivel:", error);
+    throw error;
+  }
+}
+
+/**
  * Obtener enriquecimientos de un partner específico
  * @param {string} partnerId - ID del partner
  * @param {string|null} level - Filtrar por nivel
@@ -373,6 +405,7 @@ module.exports = {
   createOrUpdateEnrichment,
   bulkImportEnrichments,
   getStatsByLevel,
+  getStatsByLevelForPartner,
   getEnrichmentsByPartner,
   deleteEnrichment,
 };

@@ -180,6 +180,33 @@ async function getMyEnrichments(req, res, next) {
 }
 
 /**
+ * GET /api/v1/geo/enrichment/my/stats
+ * Obtener estadísticas por nivel del partner autenticado
+ */
+async function getMyStats(req, res, next) {
+  try {
+    const partnerId = req.user.partner?.id;
+
+    if (!partnerId) {
+      return res.status(403).json({
+        success: false,
+        error: "Solo partners pueden ver sus estadísticas",
+      });
+    }
+
+    const stats = await enrichmentService.getStatsByLevelForPartner(partnerId);
+
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    logger.error("Error en getMyStats:", error);
+    next(error);
+  }
+}
+
+/**
  * DELETE /api/v1/geo/enrichment/:establishmentId
  * Eliminar un enriquecimiento
  */
@@ -219,6 +246,7 @@ module.exports = {
   bulkImport,
   getStatsByLevel,
   getMyEnrichments,
+  getMyStats,
   deleteEnrichment,
 };
 

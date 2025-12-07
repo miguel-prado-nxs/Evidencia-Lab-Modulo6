@@ -142,6 +142,13 @@ router.get("/prospects", authenticateJWT, geoController.getMyProspects);
 router.get("/enrichment/my", authenticateJWT, enrichmentController.getMyEnrichments);
 
 /**
+ * GET /api/v1/geo/enrichment/my/stats
+ * Obtener estadísticas por nivel del partner autenticado
+ * Returns: { CONTACT: n, PROSPECT: n, LEAD: n, CLIENT: n }
+ */
+router.get("/enrichment/my/stats", authenticateJWT, enrichmentController.getMyStats);
+
+/**
  * POST /api/v1/geo/enrichment/import
  * Importar múltiples enriquecimientos desde CSV/JSON
  * Body: { data: [{ establishmentId, decisionMakerName, ... }] }
