@@ -9,6 +9,11 @@ router.get("/validate/:code", partnersController.validateCode);
 // Rutas protegidas
 router.use(authenticateJWT);
 
+// Rutas del partner autenticado (DEBEN ir antes de /:id)
+router.get("/me", partnersController.getMyProfile);
+router.patch("/me", partnersController.updateMyProfile);
+router.patch("/me/user", partnersController.updateMyUser);
+
 // Lista de partners (admin)
 router.get("/", requireAdmin, partnersController.list);
 

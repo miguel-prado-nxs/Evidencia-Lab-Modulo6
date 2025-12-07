@@ -234,6 +234,91 @@ const validateCode = async (req, res, next) => {
   }
 };
 
+// Obtener perfil del partner autenticado
+const getMyProfile = async (req, res, next) => {
+  try {
+    const partnerId = req.user.partner?.id;
+    if (!partnerId) {
+      return res.status(403).json({ 
+        success: false, 
+        error: "No eres un partner" 
+      });
+    }
+    const partner = await partnerService.getPartnerById(partnerId);
+    
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        error: "Partner no encontrado",
+      });
+    }
+
+    res.json({ success: true, data: partner });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Actualizar perfil del partner autenticado
+const updateMyProfile = async (req, res, next) => {
+  try {
+    const partnerId = req.user.partner?.id;
+    if (!partnerId) {
+      return res.status(403).json({ 
+        success: false, 
+        error: "No eres un partner" 
+      });
+    }
+
+    // Solo permitir campos editables por el partner
+    const allowedFields = ['companyName', 'phone', 'website', 'address', 'city', 'state', 'country'];
+    const updateData = {};
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
+    const partner = await partnerService.updatePartner(partnerId, updateData);
+
+    logger.info(`Partner ${partnerId} actualizó su perfil`);
+
+    res.json({ success: true, data: partner });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Actualizar datos del usuario del partner autenticado
+const updateMyUser = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        error: "El nombre es requerido",
+      });
+    }
+
+    const user = await partnerService.updateUserName(userId, name);
+
+    logger.info(`Usuario ${userId} actualizó su nombre a: ${name}`);
+
+    res.json({ 
+      success: true, 
+      data: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -243,5 +328,8 @@ module.exports = {
   updateTier,
   getStats,
   validateCode,
+  getMyProfile,
+  updateMyProfile,
+  updateMyUser,
 };
 

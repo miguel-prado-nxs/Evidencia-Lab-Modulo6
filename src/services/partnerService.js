@@ -372,6 +372,19 @@ const getPartnerStats = async (partnerId) => {
   };
 };
 
+// Actualizar nombre del usuario
+const updateUserName = async (userId, name) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { name },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  });
+};
+
 module.exports = {
   createPartner,
   getPartnerById,
@@ -381,5 +394,6 @@ module.exports = {
   updatePartnerStatus,
   updatePartnerTier,
   getPartnerStats,
+  updateUserName,
 };
 
