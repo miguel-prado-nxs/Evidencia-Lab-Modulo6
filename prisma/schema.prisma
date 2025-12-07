@@ -528,7 +528,8 @@ model Establishment {
   addedDate         String? @map("added_date") // fecha_alta
 
   // Relaciones
-  prospects LeadProspect[]
+  prospects  LeadProspect[]
+  enrichment EstablishmentEnrichment?
 
   // Indices para busquedas geograficas rapidas
   @@index([stateCode])
@@ -537,6 +538,54 @@ model Establishment {
   @@index([latitude, longitude])
   @@index([postalCode])
   @@map("establishments")
+}
+
+// ========== ENRIQUECIMIENTO DE ESTABLECIMIENTOS ==========
+
+// Nivel de enriquecimiento del establecimiento
+enum EstablishmentLevel {
+  ESTABLISHMENT // Solo datos DENUE base
+  CONTACT       // Tiene phone/email/website (dato DENUE)
+  PROSPECT      // Tiene info del tomador de decisiones
+  LEAD          // Tiene cualificacion completa (intent/fear/pain/desire)
+}
+
+// Enriquecimiento de establecimientos (datos adicionales capturados por partners)
+model EstablishmentEnrichment {
+  id              String @id @default(uuid())
+  establishmentId String @unique @map("establishment_id")
+
+  // Informacion del tomador de decisiones (Nivel: Prospecto)
+  decisionMakerName     String? @map("decision_maker_name")
+  decisionMakerPosition String? @map("decision_maker_position") // dueno, gerente, encargado
+  decisionMakerPhone    String? @map("decision_maker_phone")
+  decisionMakerWhatsApp String? @map("decision_maker_whatsapp")
+  decisionMakerEmail    String? @map("decision_maker_email")
+
+  // Informacion de cualificacion (Nivel: Lead)
+  intent String? @db.Text // Intencion/interes demostrado en el producto
+  fear   String? @db.Text // Miedos o preocupaciones del prospecto
+  pain   String? @db.Text // Dolor/problemas actuales que enfrenta
+  desire String? @db.Text // Lo que desea solucionar o lograr
+
+  // Nivel calculado automaticamente
+  level EstablishmentLevel @default(ESTABLISHMENT)
+
+  // Metadata de quien enriquecio los datos
+  enrichedBy    String?   @map("enriched_by") // partnerId que enriquecio
+  enrichedAt    DateTime? @map("enriched_at")
+  lastUpdatedBy String?   @map("last_updated_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relacion con el establecimiento
+  establishment Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
+
+  @@index([level])
+  @@index([establishmentId])
+  @@index([enrichedBy])
+  @@map("establishment_enrichments")
 }
 
 // ========== PROSPECTS DESDE DENUE ==========

@@ -6,6 +6,7 @@
 const express = require("express");
 const router = express.Router();
 const geoController = require("../controllers/geoController");
+const enrichmentController = require("../controllers/enrichmentController");
 const { authenticateJWT, optionalAuth } = require("../middleware/auth");
 
 // ============================================
@@ -52,6 +53,21 @@ router.get("/zones", geoController.getZones);
  * Query params: state, municipality
  */
 router.get("/stats", geoController.getStats);
+
+/**
+ * GET /api/v1/geo/stats/levels
+ * Obtener estadísticas por nivel de enriquecimiento
+ * Returns: { ESTABLISHMENT: n, CONTACT: n, PROSPECT: n, LEAD: n }
+ */
+router.get("/stats/levels", enrichmentController.getStatsByLevel);
+
+/**
+ * GET /api/v1/geo/establishments/level/:level
+ * Obtener establecimientos filtrados por nivel
+ * Params: level (ESTABLISHMENT, CONTACT, PROSPECT, LEAD)
+ * Query params: north, south, east, west, activity, limit, offset
+ */
+router.get("/establishments/level/:level", geoController.getEstablishmentsByLevel);
 
 /**
  * GET /api/v1/geo/search
@@ -113,5 +129,43 @@ router.post("/prospects/:id/convert", authenticateJWT, geoController.convertPros
  * Query params: status
  */
 router.get("/prospects", authenticateJWT, geoController.getMyProspects);
+
+// ============================================
+// RUTAS DE ENRIQUECIMIENTO (Sistema 4 Mapas)
+// ============================================
+
+/**
+ * GET /api/v1/geo/enrichment/my
+ * Obtener enriquecimientos realizados por el partner autenticado
+ * Query params: level (optional)
+ */
+router.get("/enrichment/my", authenticateJWT, enrichmentController.getMyEnrichments);
+
+/**
+ * POST /api/v1/geo/enrichment/import
+ * Importar múltiples enriquecimientos desde CSV/JSON
+ * Body: { data: [{ establishmentId, decisionMakerName, ... }] }
+ */
+router.post("/enrichment/import", authenticateJWT, enrichmentController.bulkImport);
+
+/**
+ * GET /api/v1/geo/enrichment/:establishmentId
+ * Obtener datos de enriquecimiento de un establecimiento
+ */
+router.get("/enrichment/:establishmentId", authenticateJWT, enrichmentController.getEnrichment);
+
+/**
+ * POST /api/v1/geo/enrichment/:establishmentId
+ * Crear o actualizar enriquecimiento de un establecimiento
+ * Body: { decisionMakerName, decisionMakerPosition, decisionMakerPhone, 
+ *         decisionMakerWhatsApp, decisionMakerEmail, intent, fear, pain, desire }
+ */
+router.post("/enrichment/:establishmentId", authenticateJWT, enrichmentController.updateEnrichment);
+
+/**
+ * DELETE /api/v1/geo/enrichment/:establishmentId
+ * Eliminar un enriquecimiento
+ */
+router.delete("/enrichment/:establishmentId", authenticateJWT, enrichmentController.deleteEnrichment);
 
 module.exports = router;

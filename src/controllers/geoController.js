@@ -437,6 +437,67 @@ async function getMunicipalities(req, res, next) {
   }
 }
 
+/**
+ * GET /api/v1/geo/establishments/level/:level
+ * Obtener establecimientos filtrados por nivel de enriquecimiento
+ * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD
+ */
+async function getEstablishmentsByLevel(req, res, next) {
+  try {
+    const { level } = req.params;
+    const { north, south, east, west, activity, state, municipality, search, limit, offset } = req.query;
+
+    // Validar nivel
+    const validLevels = ["ESTABLISHMENT", "CONTACT", "PROSPECT", "LEAD"];
+    if (!validLevels.includes(level)) {
+      return res.status(400).json({
+        success: false,
+        error: `Nivel inválido. Debe ser uno de: ${validLevels.join(", ")}`,
+      });
+    }
+
+    // Validar bounds requeridos
+    if (!north || !south || !east || !west) {
+      return res.status(400).json({
+        success: false,
+        error: "Se requieren los parámetros: north, south, east, west",
+      });
+    }
+
+    const bounds = {
+      north: parseFloat(north),
+      south: parseFloat(south),
+      east: parseFloat(east),
+      west: parseFloat(west),
+    };
+
+    const filters = {
+      activityCode: activity,
+      stateCode: state,
+      municipalityCode: municipality,
+      search,
+    };
+
+    const options = {
+      limit: limit ? parseInt(limit) : 500,
+      offset: offset ? parseInt(offset) : 0,
+    };
+
+    const establishments = await geoService.getEstablishmentsByLevel(bounds, level, filters, options);
+
+    res.json({
+      success: true,
+      data: establishments,
+      count: establishments.length,
+      level,
+      bounds,
+    });
+  } catch (error) {
+    logger.error("Error en getEstablishmentsByLevel:", error);
+    next(error);
+  }
+}
+
 module.exports = {
   getEstablishments,
   getEstablishmentById,
@@ -452,4 +513,5 @@ module.exports = {
   getActivities,
   getStates,
   getMunicipalities,
+  getEstablishmentsByLevel,
 };

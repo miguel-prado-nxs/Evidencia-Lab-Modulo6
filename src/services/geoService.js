@@ -604,6 +604,118 @@ async function getMunicipalitiesByState(stateCode) {
   });
 }
 
+/**
+ * Obtener establecimientos filtrados por nivel de enriquecimiento
+ * Niveles: ESTABLISHMENT (todos), CONTACT (con datos de contacto), PROSPECT (con tomador de decisiones), LEAD (con cualificación)
+ */
+async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {}) {
+  const { north, south, east, west } = bounds;
+  const { activityCode, stateCode, municipalityCode, search } = filters;
+  const { limit = 500, offset = 0 } = options;
+
+  // Construir where base con bounds
+  const where = {
+    latitude: { gte: south, lte: north },
+    longitude: { gte: west, lte: east },
+  };
+
+  // Filtrar según el nivel
+  switch (level) {
+    case "CONTACT":
+      // Establecimientos con al menos un método de contacto
+      where.OR = [
+        { phone: { not: null, not: "" } },
+        { email: { not: null, not: "" } },
+        { website: { not: null, not: "" } },
+      ];
+      break;
+
+    case "PROSPECT":
+      // Establecimientos con enriquecimiento nivel PROSPECT o LEAD
+      where.enrichment = {
+        level: { in: ["PROSPECT", "LEAD"] },
+      };
+      break;
+
+    case "LEAD":
+      // Solo establecimientos con enriquecimiento nivel LEAD
+      where.enrichment = {
+        level: "LEAD",
+      };
+      break;
+
+    // ESTABLISHMENT: todos (no se agrega filtro adicional)
+  }
+
+  // Filtros opcionales
+  if (activityCode) {
+    const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+    if (codes.length === 1) {
+      where.activityCode = codes[0];
+    } else if (codes.length > 1) {
+      where.activityCode = { in: codes };
+    }
+  }
+  if (stateCode) where.stateCode = stateCode;
+  if (municipalityCode) where.municipalityCode = municipalityCode;
+  if (search) {
+    where.AND = [
+      ...(where.AND || []),
+      {
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { activityName: { contains: search, mode: "insensitive" } },
+          { neighborhood: { contains: search, mode: "insensitive" } },
+        ],
+      },
+    ];
+  }
+
+  // Incluir enrichment para niveles PROSPECT y LEAD
+  const includeEnrichment = level === "PROSPECT" || level === "LEAD";
+
+  const establishments = await prismaGeo.establishment.findMany({
+    where,
+    take: limit,
+    skip: offset,
+    select: {
+      id: true,
+      name: true,
+      activityCode: true,
+      activityName: true,
+      employeeRange: true,
+      latitude: true,
+      longitude: true,
+      stateCode: true,
+      stateName: true,
+      municipalityCode: true,
+      municipalityName: true,
+      neighborhood: true,
+      postalCode: true,
+      phone: true,
+      email: true,
+      website: true,
+      enrichment: includeEnrichment ? {
+        select: {
+          id: true,
+          level: true,
+          decisionMakerName: true,
+          decisionMakerPosition: true,
+          decisionMakerPhone: true,
+          decisionMakerWhatsApp: true,
+          decisionMakerEmail: true,
+          intent: true,
+          fear: true,
+          pain: true,
+          desire: true,
+        },
+      } : false,
+    },
+  });
+
+  return establishments;
+}
+
 module.exports = {
   getEstablishmentsInBounds,
   getEstablishmentById,
@@ -619,4 +731,5 @@ module.exports = {
   getActivities,
   getStatesWithCount,
   getMunicipalitiesByState,
+  getEstablishmentsByLevel,
 };
