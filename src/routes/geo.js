@@ -156,6 +156,35 @@ router.get("/enrichment/my/stats", authenticateJWT, enrichmentController.getMySt
  */
 router.post("/enrichment/import", authenticateJWT, enrichmentController.bulkImport);
 
+// ============================================
+// RUTAS ADMIN (Requieren rol ADMIN)
+// NOTA: Deben ir ANTES de /enrichment/:establishmentId para evitar conflictos
+// ============================================
+
+/**
+ * GET /api/v1/geo/enrichment/admin
+ * Obtener todos los enriquecimientos (paginado, filtrable)
+ * Query params: partnerId, level, state, municipality, search, page, limit, sortBy, sortOrder
+ */
+router.get("/enrichment/admin", authenticateJWT, requireAdmin, adminEnrichmentController.getAllEnrichments);
+
+/**
+ * GET /api/v1/geo/enrichment/admin/stats
+ * Obtener estadísticas globales por partner
+ * Returns: { global: {...}, byPartner: [...] }
+ */
+router.get("/enrichment/admin/stats", authenticateJWT, requireAdmin, adminEnrichmentController.getGlobalStats);
+
+/**
+ * DELETE /api/v1/geo/enrichment/admin/:establishmentId
+ * Eliminar un enriquecimiento (sin validación de permisos)
+ */
+router.delete("/enrichment/admin/:establishmentId", authenticateJWT, requireAdmin, adminEnrichmentController.deleteEnrichment);
+
+// ============================================
+// RUTAS DE ENRIQUECIMIENTO CON PARÁMETRO (deben ir al final)
+// ============================================
+
 /**
  * GET /api/v1/geo/enrichment/:establishmentId
  * Obtener datos de enriquecimiento de un establecimiento
@@ -175,29 +204,5 @@ router.post("/enrichment/:establishmentId", authenticateJWT, enrichmentControlle
  * Eliminar un enriquecimiento
  */
 router.delete("/enrichment/:establishmentId", authenticateJWT, enrichmentController.deleteEnrichment);
-
-// ============================================
-// RUTAS ADMIN (Requieren rol ADMIN)
-// ============================================
-
-/**
- * GET /api/v1/geo/enrichment/admin
- * Obtener todos los enriquecimientos (paginado, filtrable)
- * Query params: partnerId, level, state, municipality, search, page, limit, sortBy, sortOrder
- */
-router.get("/enrichment/admin", requireAdmin, adminEnrichmentController.getAllEnrichments);
-
-/**
- * GET /api/v1/geo/enrichment/admin/stats
- * Obtener estadísticas globales por partner
- * Returns: { global: {...}, byPartner: [...] }
- */
-router.get("/enrichment/admin/stats", requireAdmin, adminEnrichmentController.getGlobalStats);
-
-/**
- * DELETE /api/v1/geo/enrichment/admin/:establishmentId
- * Eliminar un enriquecimiento (sin validación de permisos)
- */
-router.delete("/enrichment/admin/:establishmentId", requireAdmin, adminEnrichmentController.deleteEnrichment);
 
 module.exports = router;
