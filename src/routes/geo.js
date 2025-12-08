@@ -176,6 +176,14 @@ router.get("/enrichment/admin", authenticateJWT, requireAdmin, adminEnrichmentCo
 router.get("/enrichment/admin/stats", authenticateJWT, requireAdmin, adminEnrichmentController.getGlobalStats);
 
 /**
+ * GET /api/v1/geo/enrichment/admin/by-level/:level
+ * Obtener establecimientos por nivel con info de partner si existe
+ * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
+ * Query params: page, limit, search, state, municipality, partnerId, sortBy, sortOrder
+ */
+router.get("/enrichment/admin/by-level/:level", authenticateJWT, requireAdmin, adminEnrichmentController.getByLevel);
+
+/**
  * DELETE /api/v1/geo/enrichment/admin/:establishmentId
  * Eliminar un enriquecimiento (sin validación de permisos)
  */

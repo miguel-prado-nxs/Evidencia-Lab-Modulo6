@@ -538,24 +538,44 @@ async function getAllEnrichments(filters = {}) {
  */
 async function getGlobalStatsByPartner() {
   try {
-    // Estadísticas globales por nivel
-    const globalStats = await prismaGeo.establishmentEnrichment.groupBy({
+    // Contar establecimientos totales (DENUE)
+    const totalEstablishments = await prismaGeo.establishment.count();
+
+    // Contar establecimientos con contacto (phone/email/website) - datos DENUE base
+    const totalContacts = await prismaGeo.establishment.count({
+      where: {
+        OR: [
+          { phone: { not: null } },
+          { email: { not: null } },
+          { website: { not: null } },
+        ],
+      },
+    });
+
+    // Estadísticas de enriquecimientos por nivel
+    const enrichmentStats = await prismaGeo.establishmentEnrichment.groupBy({
       by: ["level"],
       _count: { id: true },
     });
 
-    const global = globalStats.reduce((acc, stat) => {
+    const enrichmentByLevel = enrichmentStats.reduce((acc, stat) => {
       acc[stat.level] = stat._count.id;
       return acc;
-    }, {
-      CONTACT: 0,
-      PROSPECT: 0,
-      LEAD: 0,
-      CLIENT: 0,
-    });
+    }, {});
 
-    // Total de enriquecimientos
-    const totalEnrichments = Object.values(global).reduce((a, b) => a + b, 0);
+    // Estadísticas globales incluyendo datos base DENUE
+    const global = {
+      ESTABLISHMENT: totalEstablishments,
+      CONTACT: totalContacts,
+      PROSPECT: enrichmentByLevel.PROSPECT || 0,
+      LEAD: enrichmentByLevel.LEAD || 0,
+      CLIENT: enrichmentByLevel.CLIENT || 0,
+    };
+
+    // Total de enriquecimientos (solo los trabajados por partners)
+    const totalEnrichments = (enrichmentByLevel.PROSPECT || 0) + 
+                            (enrichmentByLevel.LEAD || 0) + 
+                            (enrichmentByLevel.CLIENT || 0);
 
     // Estadísticas por partner
     const partnerStats = await prismaGeo.establishmentEnrichment.groupBy({
