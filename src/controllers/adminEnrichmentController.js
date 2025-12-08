@@ -221,7 +221,36 @@ async function getByLevel(req, res, next) {
         sortOrder,
       });
 
-      data = result.data;
+      // Mapear al formato esperado por el frontend (consistente con ESTABLISHMENT/CONTACT)
+      data = result.data.map((e) => ({
+        id: e.id,
+        establishmentId: e.establishment?.id || e.establishmentId,
+        businessName: e.establishment?.name || "Sin nombre",
+        tradeName: null,
+        phone: e.establishment?.phone || e.decisionMakerPhone,
+        email: e.establishment?.email || e.decisionMakerEmail,
+        website: e.establishment?.website,
+        address: e.establishment 
+          ? `${e.establishment.municipalityName || ""}, ${e.establishment.stateName || ""}`.trim()
+          : "",
+        state: e.establishment?.stateName,
+        municipality: e.establishment?.municipalityName,
+        latitude: e.establishment?.latitude,
+        longitude: e.establishment?.longitude,
+        level: e.level,
+        enrichedBy: e.enrichedBy,
+        updatedAt: e.updatedAt,
+        partner: e.partner,
+        // Datos adicionales de enriquecimiento
+        decisionMakerName: e.decisionMakerName,
+        decisionMakerPosition: e.decisionMakerPosition,
+        decisionMakerPhone: e.decisionMakerPhone,
+        decisionMakerWhatsApp: e.decisionMakerWhatsApp,
+        intent: e.intent,
+        fear: e.fear,
+        pain: e.pain,
+        desire: e.desire,
+      }));
       total = result.total;
     }
 
