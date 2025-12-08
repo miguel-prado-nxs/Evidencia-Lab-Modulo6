@@ -6,7 +6,7 @@
 const enrichmentService = require("../services/enrichmentService");
 const geoService = require("../services/geoService");
 const logger = require("../config/logger");
-const prismaGeo = require("../config/databaseGeo");
+const prismaGeo = require("../config/database-geo");
 
 /**
  * GET /api/v1/geo/enrichment/admin
