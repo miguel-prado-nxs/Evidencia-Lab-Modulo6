@@ -134,6 +134,9 @@ model Partner {
   lessonProgress LessonProgress[]
   quizAttempts   QuizAttempt[]
   certificates   Certificate[]
+  
+  // Referral campaigns
+  referralCampaigns ReferralCampaign[]
 
   @@index([code])
   @@index([type])
@@ -884,4 +887,43 @@ model Certificate {
   @@unique([partnerId, courseId])
   @@index([code])
   @@map("certificates")
+}
+
+// ========== CAMPAÑAS DE REFERIDO UTM ==========
+
+model ReferralCampaign {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+
+  // Datos de la campaña
+  name        String // Nombre descriptivo
+  utmSource   String @map("utm_source")
+  utmMedium   String @map("utm_medium")
+  utmCampaign String @map("utm_campaign")
+  utmTerm     String? @map("utm_term")
+  utmContent  String? @map("utm_content")
+
+  // Link generado completo
+  fullLink  String  @map("full_link")
+  shortLink String? @map("short_link") // Para integracion con acortadores
+
+  // Estadisticas calculadas (se actualizan periodicamente)
+  clicks       Int @default(0)
+  uniqueClicks Int @default(0) @map("unique_clicks")
+
+  // Estado
+  isActive Boolean @default(true) @map("is_active")
+
+  // Fechas
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, utmCampaign])
+  @@index([partnerId])
+  @@index([utmCampaign])
+  @@index([isActive])
+  @@map("referral_campaigns")
 }

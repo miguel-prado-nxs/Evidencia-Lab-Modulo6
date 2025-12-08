@@ -20,6 +20,7 @@ const notificationsRoutes = require("./routes/notifications");
 const exportRoutes = require("./routes/export");
 const resourcesRoutes = require("./routes/resources");
 const trainingRoutes = require("./routes/training");
+const referralsRoutes = require("./routes/referrals");
 
 // Crear aplicación Express
 const app = express();
@@ -101,6 +102,7 @@ app.get("/api/v1", (req, res) => {
       commissions: "/api/v1/commissions",
       analytics: "/api/v1/analytics",
       geo: "/api/v1/geo",
+      referrals: "/api/v1/referrals",
     },
     authentication: "JWT Bearer token en header Authorization",
     documentation: "Ver README.md",
@@ -122,6 +124,7 @@ app.use("/api/v1/notifications", notificationsRoutes);
 app.use("/api/v1/export", exportRoutes);
 app.use("/api/v1/resources", resourcesRoutes);
 app.use("/api/v1/training", trainingRoutes);
+app.use("/api/v1/referrals", referralsRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
