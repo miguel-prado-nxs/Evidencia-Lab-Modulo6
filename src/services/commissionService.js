@@ -235,6 +235,93 @@ const getCommissionSummary = async (partnerId) => {
   };
 };
 
+// Obtener estadísticas globales de comisiones (Admin)
+const getGlobalStats = async () => {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+  const [pending, approved, paid, total, thisMonth, lastMonth, partnersWithPending] = await Promise.all([
+    // Comisiones pendientes
+    prisma.commission.aggregate({
+      where: { status: "PENDING" },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    // Comisiones aprobadas
+    prisma.commission.aggregate({
+      where: { status: "APPROVED" },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    // Comisiones pagadas
+    prisma.commission.aggregate({
+      where: { status: "PAID" },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    // Total histórico
+    prisma.commission.aggregate({
+      _sum: { amount: true },
+      _count: true,
+    }),
+    // Este mes
+    prisma.commission.aggregate({
+      where: {
+        createdAt: { gte: startOfMonth },
+      },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    // Mes pasado
+    prisma.commission.aggregate({
+      where: {
+        createdAt: {
+          gte: startOfLastMonth,
+          lte: endOfLastMonth,
+        },
+      },
+      _sum: { amount: true },
+      _count: true,
+    }),
+    // Partners con comisiones pendientes
+    prisma.commission.groupBy({
+      by: ["partnerId"],
+      where: { status: "PENDING" },
+      _count: true,
+    }),
+  ]);
+
+  return {
+    pending: {
+      amount: parseFloat(pending._sum.amount || 0),
+      count: pending._count,
+    },
+    approved: {
+      amount: parseFloat(approved._sum.amount || 0),
+      count: approved._count,
+    },
+    paid: {
+      amount: parseFloat(paid._sum.amount || 0),
+      count: paid._count,
+    },
+    total: {
+      amount: parseFloat(total._sum.amount || 0),
+      count: total._count,
+    },
+    thisMonth: {
+      amount: parseFloat(thisMonth._sum.amount || 0),
+      count: thisMonth._count,
+    },
+    lastMonth: {
+      amount: parseFloat(lastMonth._sum.amount || 0),
+      count: lastMonth._count,
+    },
+    partnersWithPendingCount: partnersWithPending.length,
+  };
+};
+
 // Exportar comisiones a CSV
 const exportCommissions = async (filters = {}) => {
   const { partnerId, status, dateFrom, dateTo } = filters;
@@ -283,6 +370,7 @@ module.exports = {
   approveCommissions,
   markCommissionsAsPaid,
   getCommissionSummary,
+  getGlobalStats,
   exportCommissions,
 };
 

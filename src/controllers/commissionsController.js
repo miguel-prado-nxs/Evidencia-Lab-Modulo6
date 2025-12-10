@@ -121,6 +121,20 @@ const getSummary = async (req, res, next) => {
   }
 };
 
+// Obtener estadísticas globales (admin)
+const getGlobalStats = async (req, res, next) => {
+  try {
+    const stats = await commissionService.getGlobalStats();
+
+    res.json({
+      success: true,
+      data: stats,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Exportar comisiones a CSV (admin)
 const exportCommissions = async (req, res, next) => {
   try {
@@ -182,6 +196,7 @@ module.exports = {
   approve,
   markPaid,
   getSummary,
+  getGlobalStats,
   exportCommissions,
 };
 

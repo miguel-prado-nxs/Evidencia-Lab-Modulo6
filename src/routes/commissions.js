@@ -10,6 +10,7 @@ router.get("/", commissionsController.list);
 router.get("/summary", commissionsController.getSummary);
 
 // Rutas de admin
+router.get("/stats", requireAdmin, commissionsController.getGlobalStats);
 router.get("/pending", requireAdmin, commissionsController.getPending);
 router.post("/approve", requireAdmin, commissionsController.approve);
 router.post("/pay", requireAdmin, commissionsController.markPaid);
