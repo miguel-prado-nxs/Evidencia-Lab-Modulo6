@@ -327,6 +327,37 @@ const deleteApiKey = async (req, res, next) => {
 // Exportar
 // ========================================
 
+// ========================================
+// Endpoints Públicos
+// ========================================
+
+/**
+ * Obtener información pública del programa (logo, nombre, etc.)
+ * Disponible para cualquier usuario autenticado
+ */
+const getPublicProgramInfo = async (req, res, next) => {
+  try {
+    const programInfo = await settingsService.getConfig("program_info");
+
+    // Valores por defecto si no hay configuración
+    const defaultInfo = {
+      name: "EasyOrder Partners",
+      logoUrl: "/EasyOrder.png",
+      supportEmail: "partners@easyorder.mx",
+      referralBaseUrl: "https://easyorder.mx/?ref=",
+      termsUrl: "https://easyorder.mx/terminos",
+      privacyUrl: "https://easyorder.mx/privacidad",
+    };
+
+    res.json({
+      success: true,
+      data: programInfo || defaultInfo,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   // Configuraciones
   getAllConfigs,
@@ -343,5 +374,7 @@ module.exports = {
   createApiKey,
   revokeApiKey,
   deleteApiKey,
+  // Públicos
+  getPublicProgramInfo,
 };
 

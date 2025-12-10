@@ -3,7 +3,16 @@ const router = express.Router();
 const settingsController = require("../controllers/settingsController");
 const { authenticateJWT, requireAdmin } = require("../middleware/auth");
 
-// Todas las rutas requieren autenticación + admin
+// ========================================
+// Rutas públicas (solo requieren autenticación)
+// ========================================
+
+// Obtener información del programa (logo, nombre, etc.) - Disponible para cualquier usuario autenticado
+router.get("/public/program-info", authenticateJWT, settingsController.getPublicProgramInfo);
+
+// ========================================
+// Rutas de Admin (requieren autenticación + admin)
+// ========================================
 router.use(authenticateJWT);
 router.use(requireAdmin);
 
