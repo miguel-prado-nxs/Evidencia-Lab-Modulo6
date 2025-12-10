@@ -21,6 +21,7 @@ const exportRoutes = require("./routes/export");
 const resourcesRoutes = require("./routes/resources");
 const trainingRoutes = require("./routes/training");
 const referralsRoutes = require("./routes/referrals");
+const settingsRoutes = require("./routes/settings");
 
 // Crear aplicación Express
 const app = express();
@@ -125,6 +126,7 @@ app.use("/api/v1/export", exportRoutes);
 app.use("/api/v1/resources", resourcesRoutes);
 app.use("/api/v1/training", trainingRoutes);
 app.use("/api/v1/referrals", referralsRoutes);
+app.use("/api/v1/settings", settingsRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
