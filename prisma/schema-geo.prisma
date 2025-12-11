@@ -1,0 +1,101 @@
+// Prisma Schema para la base de datos de Mapa/Geo (DENUE Establecimientos)
+// Esta es una base de datos de SOLO LECTURA con 800k+ establecimientos
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-geo"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL_RESTAURANTES")
+}
+
+// ========== ESTABLECIMIENTOS DENUE ==========
+// Datos base de establecimientos del sector restaurantero de México
+// Fuente: INEGI/DENUE - NO MODIFICAR DESDE ESTA APLICACIÓN
+
+model Establishment {
+  id                String   @id @default(uuid())
+  clee              String?  // Clave de Establecimiento (INEGI)
+  name              String
+  businessName      String?  @map("business_name")
+  activityCode      String   @map("activity_code")
+  activityName      String   @map("activity_name")
+  employeeRange     String?  @map("employee_range")
+  
+  // Dirección
+  streetType        String?  @map("street_type")
+  streetName        String?  @map("street_name")
+  exteriorNum       String?  @map("exterior_num")
+  interiorNum       String?  @map("interior_num")
+  neighborhood      String?
+  postalCode        String?  @map("postal_code")
+  
+  // Ubicación geográfica
+  stateCode         String   @map("state_code")
+  stateName         String   @map("state_name")
+  municipalityCode  String   @map("municipality_code")
+  municipalityName  String   @map("municipality_name")
+  localityCode      String?  @map("locality_code")
+  localityName      String?  @map("locality_name")
+  ageb              String?
+  block             String?
+  latitude          Float
+  longitude         Float
+  
+  // Contacto
+  phone             String?
+  email             String?
+  website           String?
+  
+  // Metadata
+  establishmentType String?  @map("establishment_type")
+  addedDate         String?  @map("added_date")
+
+  @@index([latitude, longitude])
+  @@index([activityCode])
+  @@index([stateCode])
+  @@index([municipalityCode])
+  @@index([name])
+  @@map("establishments")
+}
+
+// ========== ZONAS GEOGRÁFICAS ==========
+
+model GeoZone {
+  id   String   @id @default(uuid())
+  name String
+  type ZoneType
+
+  // Codigos de referencia (para states/municipalities)
+  stateCode        String? @map("state_code")
+  municipalityCode String? @map("municipality_code")
+
+  // Geometria GeoJSON para zonas custom
+  geometry Json?
+
+  // Metricas agregadas
+  totalEstablishments Int   @default(0) @map("total_establishments")
+  totalProspects      Int   @default(0) @map("total_prospects")
+  assignedProspects   Int   @default(0) @map("assigned_prospects")
+  convertedProspects  Int   @default(0) @map("converted_prospects")
+  conversionRate      Float @default(0) @map("conversion_rate")
+
+  // Centro de la zona (para centrar el mapa)
+  centerLat Float? @map("center_lat")
+  centerLng Float? @map("center_lng")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([stateCode])
+  @@index([municipalityCode])
+  @@map("geo_zones")
+}
+
+enum ZoneType {
+  STATE
+  MUNICIPALITY
+  CUSTOM
+}

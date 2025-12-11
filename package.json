@@ -4,10 +4,10 @@
   "description": "Backend API para el sistema de partners de EasyOrder",
   "main": "src/app.js",
   "scripts": {
-    "build": "prisma generate",
+    "build": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "db:generate": "prisma generate",
+    "db:generate": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",

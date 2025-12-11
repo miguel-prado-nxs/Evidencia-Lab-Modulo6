@@ -486,62 +486,10 @@ model ApiKey {
   @@map("api_keys")
 }
 
-// ========== GEOINSIGHTS - ESTABLECIMIENTOS DENUE ==========
-
-model Establishment {
-  id           String  @id // ID DENUE original
-  clee         String? @unique // Clave unica INEGI
-  name         String  // nom_estab
-  businessName String? @map("business_name") // raz_social
-  activityCode String  @map("activity_code") // codigo_act (SCIAN)
-  activityName String  @map("activity_name") // nombre_act
-
-  // Personal
-  employeeRange String? @map("employee_range") // per_ocu
-
-  // Direccion completa
-  streetType    String? @map("street_type") // tipo_vial
-  streetName    String? @map("street_name") // nom_vial
-  exteriorNum   String? @map("exterior_num") // numero_ext
-  interiorNum   String? @map("interior_num") // numero_int
-  neighborhood  String? // nomb_asent
-  postalCode    String? @map("postal_code") // cod_postal
-
-  // Ubicacion geografica
-  stateCode        String @map("state_code") // cve_ent
-  stateName        String @map("state_name") // entidad
-  municipalityCode String @map("municipality_code") // cve_mun
-  municipalityName String @map("municipality_name") // municipio
-  localityCode     String? @map("locality_code") // cve_loc
-  localityName     String? @map("locality_name") // localidad
-  ageb             String? // Area geoestadistica basica
-  block            String? // manzana
-
-  // Coordenadas GPS
-  latitude  Float
-  longitude Float
-
-  // Contacto
-  phone   String?
-  email   String?
-  website String?
-
-  // Metadata
-  establishmentType String? @map("establishment_type") // tipoUniEco (Fijo/Semifijo)
-  addedDate         String? @map("added_date") // fecha_alta
-
-  // Relaciones
-  prospects  LeadProspect[]
-  enrichment EstablishmentEnrichment?
-
-  // Indices para busquedas geograficas rapidas
-  @@index([stateCode])
-  @@index([municipalityCode])
-  @@index([activityCode])
-  @@index([latitude, longitude])
-  @@index([postalCode])
-  @@map("establishments")
-}
+// ========== NOTA SOBRE ESTABLECIMIENTOS ==========
+// Los establecimientos DENUE (800k+) están en Mapa DB (DATABASE_URL_RESTAURANTES)
+// NO en Partners DB. El establishmentId es solo una referencia string.
+// La relación se maneja a nivel de aplicación, no con FK constraints.
 
 // ========== ENRIQUECIMIENTO DE ESTABLECIMIENTOS ==========
 
@@ -555,9 +503,10 @@ enum EstablishmentLevel {
 }
 
 // Enriquecimiento de establecimientos (datos adicionales capturados por partners)
+// NOTA: establishmentId referencia a Mapa DB, NO hay FK constraint
 model EstablishmentEnrichment {
   id              String @id @default(uuid())
-  establishmentId String @unique @map("establishment_id")
+  establishmentId String @unique @map("establishment_id") // Referencia a Mapa DB (sin FK)
 
   // Informacion del tomador de decisiones (Nivel: Prospecto)
   decisionMakerName     String? @map("decision_maker_name")
@@ -591,9 +540,6 @@ model EstablishmentEnrichment {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  // Relacion con el establecimiento
-  establishment Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
-
   @@index([level])
   @@index([establishmentId])
   @@index([enrichedBy])
@@ -601,10 +547,11 @@ model EstablishmentEnrichment {
 }
 
 // ========== PROSPECTS DESDE DENUE ==========
+// NOTA: establishmentId referencia a Mapa DB, NO hay FK constraint
 
 model LeadProspect {
   id              String @id @default(uuid())
-  establishmentId String @map("establishment_id")
+  establishmentId String @map("establishment_id") // Referencia a Mapa DB (sin FK)
   partnerId       String? @map("partner_id")
 
   status   ProspectStatus @default(AVAILABLE)
@@ -620,9 +567,8 @@ model LeadProspect {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  // Relaciones
-  establishment Establishment @relation(fields: [establishmentId], references: [id], onDelete: Cascade)
-  partner       Partner?      @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  // Relaciones (solo con Partner, que sí está en esta DB)
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
   @@index([partnerId])
   @@index([status])

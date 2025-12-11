@@ -1,14 +1,21 @@
 /**
  * GeoInsights Service
  * Servicios para consultas geográficas de establecimientos DENUE
+ * 
+ * ARQUITECTURA:
+ * - Mapa DB (prismaGeo): Establecimientos base INEGI/DENUE (800k+) - SOLO LECTURA
+ * - Partners DB (prisma): Enriquecimientos, Prospectos, Leads - ESCRITURA/LECTURA
+ * 
+ * Esta separación evita duplicar los 800k+ establecimientos.
  */
 
-const prismaGeo = require("../config/database-geo");
 const prisma = require("../config/database");
+const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 
 /**
  * Buscar establecimientos dentro de un bounding box (viewport del mapa)
+ * Lee de Mapa DB (prismaGeo) - datos base INEGI
  */
 async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
   const {
@@ -37,7 +44,6 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
   };
 
   // Filtros opcionales
-  // Soportar múltiples códigos de actividad separados por coma
   if (activityCode) {
     const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
     if (codes.length === 1) {
@@ -86,44 +92,60 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
 
 /**
  * Obtener un establecimiento por ID con todos los detalles
+ * Combina datos de Mapa DB (establecimiento) con Partners DB (enriquecimiento/prospectos)
  */
 async function getEstablishmentById(id) {
-  return prismaGeo.establishment.findUnique({
+  // Obtener establecimiento base de Mapa DB
+  const establishment = await prismaGeo.establishment.findUnique({
     where: { id },
-    include: {
-      prospects: {
-        include: {
-          partner: {
-            select: {
-              id: true,
-              code: true,
-              companyName: true,
-            },
+  });
+
+  if (!establishment) {
+    return null;
+  }
+
+  // Obtener enriquecimiento y prospectos de Partners DB
+  const [enrichment, prospects] = await Promise.all([
+    prisma.establishmentEnrichment.findUnique({
+      where: { establishmentId: id },
+    }),
+    prisma.leadProspect.findMany({
+      where: { establishmentId: id },
+      include: {
+        partner: {
+          select: {
+            id: true,
+            code: true,
+            companyName: true,
           },
         },
       },
-    },
-  });
+    }),
+  ]);
+
+  return {
+    ...establishment,
+    enrichment,
+    prospects,
+  };
 }
 
 /**
  * Obtener datos clusterizados por zoom level
+ * Lee de Mapa DB (prismaGeo)
  */
 async function getClusteredData(bounds, zoom) {
   const { north, south, east, west } = bounds;
 
-  // Determinar nivel de agrupación según zoom
   let groupBy;
   if (zoom < 6) {
     groupBy = ["stateCode", "stateName"];
   } else if (zoom < 10) {
     groupBy = ["stateCode", "municipalityCode", "municipalityName"];
   } else {
-    // Zoom alto: devolver puntos individuales
     return getEstablishmentsInBounds(bounds, {}, { limit: 500 });
   }
 
-  // Agrupar por región
   const clusters = await prismaGeo.establishment.groupBy({
     by: groupBy,
     where: {
@@ -146,6 +168,7 @@ async function getClusteredData(bounds, zoom) {
 
 /**
  * Obtener datos para heatmap
+ * Lee de Mapa DB (prismaGeo)
  */
 async function getHeatmapData(bounds, filters = {}) {
   const { north, south, east, west } = bounds;
@@ -158,7 +181,6 @@ async function getHeatmapData(bounds, filters = {}) {
   if (filters.activityCode) where.activityCode = filters.activityCode;
   if (filters.stateCode) where.stateCode = filters.stateCode;
 
-  // Obtener puntos para el heatmap
   const points = await prismaGeo.establishment.findMany({
     where,
     select: {
@@ -166,10 +188,9 @@ async function getHeatmapData(bounds, filters = {}) {
       longitude: true,
       employeeRange: true,
     },
-    take: 5000, // Límite para performance
+    take: 5000,
   });
 
-  // Asignar peso según tamaño del negocio
   return points.map(p => ({
     lat: p.latitude,
     lng: p.longitude,
@@ -195,6 +216,7 @@ function getEmployeeWeight(range) {
 
 /**
  * Obtener zonas geográficas
+ * Lee de Mapa DB (prismaGeo)
  */
 async function getGeoZones(type = null) {
   const where = type ? { type } : {};
@@ -207,40 +229,57 @@ async function getGeoZones(type = null) {
 
 /**
  * Obtener estadísticas por zona
+ * Combina Mapa DB (establecimientos) con Partners DB (prospectos)
  */
 async function getZoneStats(stateCode = null, municipalityCode = null) {
   const where = {};
   if (stateCode) where.stateCode = stateCode;
   if (municipalityCode) where.municipalityCode = municipalityCode;
 
-  // Estadísticas de establecimientos
-  const stats = await prismaGeo.establishment.groupBy({
-    by: ["activityCode", "activityName"],
-    where,
-    _count: { id: true },
-    orderBy: { _count: { id: "desc" } },
-    take: 10,
-  });
+  // Estadísticas de establecimientos desde Mapa DB
+  const [stats, sizeStats, total] = await Promise.all([
+    prismaGeo.establishment.groupBy({
+      by: ["activityCode", "activityName"],
+      where,
+      _count: { id: true },
+      orderBy: { _count: { id: "desc" } },
+      take: 10,
+    }),
+    prismaGeo.establishment.groupBy({
+      by: ["employeeRange"],
+      where,
+      _count: { id: true },
+      orderBy: { _count: { id: "desc" } },
+    }),
+    prismaGeo.establishment.count({ where }),
+  ]);
 
-  // Estadísticas por tamaño
-  const sizeStats = await prismaGeo.establishment.groupBy({
-    by: ["employeeRange"],
-    where,
-    _count: { id: true },
-    orderBy: { _count: { id: "desc" } },
-  });
-
-  // Total
-  const total = await prismaGeo.establishment.count({ where });
-
-  // Prospects asignados vs disponibles
-  const prospectsStats = await prismaGeo.leadProspect.groupBy({
-    by: ["status"],
-    where: {
-      establishment: where,
-    },
-    _count: { id: true },
-  });
+  // Obtener IDs de establecimientos en esta zona para filtrar prospectos
+  let prospectsStats = [];
+  if (stateCode || municipalityCode) {
+    // Obtener IDs de establecimientos en la zona
+    const establishmentIds = await prismaGeo.establishment.findMany({
+      where,
+      select: { id: true },
+      take: 10000, // Limitar para performance
+    });
+    
+    const ids = establishmentIds.map(e => e.id);
+    
+    if (ids.length > 0) {
+      prospectsStats = await prisma.leadProspect.groupBy({
+        by: ["status"],
+        where: { establishmentId: { in: ids } },
+        _count: { id: true },
+      });
+    }
+  } else {
+    // Sin filtro de zona, obtener todos los prospectos
+    prospectsStats = await prisma.leadProspect.groupBy({
+      by: ["status"],
+      _count: { id: true },
+    });
+  }
 
   return {
     total,
@@ -264,10 +303,20 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
 
 /**
  * Asignar prospect a un partner
+ * Valida establecimiento en Mapa DB, guarda prospecto en Partners DB
  */
 async function assignProspect(establishmentId, partnerId, notes = null) {
-  // Verificar si ya existe un prospect
-  let prospect = await prismaGeo.leadProspect.findFirst({
+  // Verificar que el establecimiento existe en Mapa DB
+  const establishment = await prismaGeo.establishment.findUnique({
+    where: { id: establishmentId },
+  });
+
+  if (!establishment) {
+    throw new Error("Establecimiento no encontrado");
+  }
+
+  // Verificar si ya existe un prospect en Partners DB
+  let prospect = await prisma.leadProspect.findFirst({
     where: { establishmentId },
   });
 
@@ -277,7 +326,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
     }
     
     // Actualizar prospect existente
-    prospect = await prismaGeo.leadProspect.update({
+    prospect = await prisma.leadProspect.update({
       where: { id: prospect.id },
       data: {
         partnerId,
@@ -285,14 +334,10 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
         assignedAt: new Date(),
         notes,
       },
-      include: {
-        establishment: true,
-        partner: { select: { id: true, code: true, companyName: true } },
-      },
     });
   } else {
-    // Crear nuevo prospect
-    prospect = await prismaGeo.leadProspect.create({
+    // Crear nuevo prospect en Partners DB
+    prospect = await prisma.leadProspect.create({
       data: {
         establishmentId,
         partnerId,
@@ -300,24 +345,32 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
         assignedAt: new Date(),
         notes,
       },
-      include: {
-        establishment: true,
-        partner: { select: { id: true, code: true, companyName: true } },
-      },
     });
   }
 
+  // Obtener datos del partner
+  const partner = await prisma.partner.findUnique({
+    where: { id: partnerId },
+    select: { id: true, code: true, companyName: true },
+  });
+
   logger.info(`Prospect ${prospect.id} asignado a partner ${partnerId}`);
-  return prospect;
+  
+  return {
+    ...prospect,
+    establishment,
+    partner,
+  };
 }
 
 /**
  * Convertir prospect a lead
+ * Lee establecimiento de Mapa DB, actualiza prospect y crea lead en Partners DB
  */
 async function convertProspectToLead(prospectId, additionalData = {}) {
-  const prospect = await prismaGeo.leadProspect.findUnique({
+  // Obtener prospect de Partners DB
+  const prospect = await prisma.leadProspect.findUnique({
     where: { id: prospectId },
-    include: { establishment: true },
   });
 
   if (!prospect) {
@@ -328,24 +381,33 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
     throw new Error("El prospect debe estar asignado a un partner");
   }
 
-  // Crear lead desde el prospect
+  // Obtener datos del establecimiento de Mapa DB
+  const establishment = await prismaGeo.establishment.findUnique({
+    where: { id: prospect.establishmentId },
+  });
+
+  if (!establishment) {
+    throw new Error("Establecimiento no encontrado");
+  }
+
+  // Crear lead en Partners DB
   const lead = await prisma.lead.create({
     data: {
       partnerId: prospect.partnerId,
-      businessName: prospect.establishment.name,
+      businessName: establishment.name,
       contactName: additionalData.contactName || "Contacto Principal",
-      email: prospect.establishment.email || additionalData.email || "",
-      phone: prospect.establishment.phone || additionalData.phone,
-      businessType: prospect.establishment.activityName,
-      location: `${prospect.establishment.municipalityName}, ${prospect.establishment.stateName}`,
+      email: establishment.email || additionalData.email || "",
+      phone: establishment.phone || additionalData.phone,
+      businessType: establishment.activityName,
+      location: `${establishment.municipalityName}, ${establishment.stateName}`,
       interests: additionalData.interests || ["POS"],
       status: "NEW",
       notes: `Convertido desde prospect DENUE. ID Establecimiento: ${prospect.establishmentId}`,
     },
   });
 
-  // Actualizar prospect
-  await prismaGeo.leadProspect.update({
+  // Actualizar prospect en Partners DB
+  await prisma.leadProspect.update({
     where: { id: prospectId },
     data: {
       status: "CONVERTED",
@@ -359,34 +421,57 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
 
 /**
  * Obtener prospects de un partner
+ * Lee prospectos de Partners DB, enriquece con datos de establecimiento de Mapa DB
  */
 async function getPartnerProspects(partnerId, status = null) {
   const where = { partnerId };
   if (status) where.status = status;
 
-  return prismaGeo.leadProspect.findMany({
+  // Obtener prospectos de Partners DB
+  const prospects = await prisma.leadProspect.findMany({
     where,
-    include: {
-      establishment: {
-        select: {
-          id: true,
-          name: true,
-          activityName: true,
-          latitude: true,
-          longitude: true,
-          municipalityName: true,
-          stateName: true,
-          phone: true,
-          email: true,
-        },
-      },
-    },
     orderBy: { createdAt: "desc" },
   });
+
+  if (prospects.length === 0) {
+    return [];
+  }
+
+  // Obtener IDs únicos de establecimientos
+  const establishmentIds = [...new Set(prospects.map(p => p.establishmentId))];
+
+  // Obtener datos de establecimientos de Mapa DB
+  const establishments = await prismaGeo.establishment.findMany({
+    where: { id: { in: establishmentIds } },
+    select: {
+      id: true,
+      name: true,
+      activityName: true,
+      latitude: true,
+      longitude: true,
+      municipalityName: true,
+      stateName: true,
+      phone: true,
+      email: true,
+    },
+  });
+
+  // Crear mapa para lookup rápido
+  const establishmentMap = establishments.reduce((acc, e) => {
+    acc[e.id] = e;
+    return acc;
+  }, {});
+
+  // Combinar datos
+  return prospects.map(p => ({
+    ...p,
+    establishment: establishmentMap[p.establishmentId] || null,
+  }));
 }
 
 /**
  * Buscar establecimientos por texto
+ * Lee de Mapa DB (prismaGeo)
  */
 async function searchEstablishments(query, limit = 50) {
   return prismaGeo.establishment.findMany({
@@ -413,7 +498,7 @@ async function searchEstablishments(query, limit = 50) {
 
 /**
  * Búsqueda inteligente con resultados priorizados
- * Prioridad: 1. Estados, 2. Municipios, 3. Negocios
+ * Lee de Mapa DB (prismaGeo)
  */
 async function smartSearch(query, options = {}) {
   const { activityCode, limit = 10 } = options;
@@ -424,76 +509,69 @@ async function smartSearch(query, options = {}) {
 
   const searchTerm = query.toLowerCase().trim();
 
-  // 1. Buscar estados que coincidan
-  const statesQuery = prismaGeo.geoZone.findMany({
-    where: {
-      type: "STATE",
-      name: { contains: searchTerm, mode: "insensitive" },
-    },
-    select: {
-      id: true,
-      name: true,
-      stateCode: true,
-      totalEstablishments: true,
-      centerLat: true,
-      centerLng: true,
-    },
-    orderBy: { totalEstablishments: "desc" },
-    take: 5,
-  });
-
-  // 2. Buscar municipios que coincidan
-  const municipalitiesQuery = prismaGeo.geoZone.findMany({
-    where: {
-      type: "MUNICIPALITY",
-      name: { contains: searchTerm, mode: "insensitive" },
-    },
-    select: {
-      id: true,
-      name: true,
-      stateCode: true,
-      municipalityCode: true,
-      totalEstablishments: true,
-      centerLat: true,
-      centerLng: true,
-    },
-    orderBy: { totalEstablishments: "desc" },
-    take: 8,
-  });
-
-  // 3. Buscar negocios que coincidan
-  const establishmentWhere = {
-    OR: [
-      { name: { contains: searchTerm, mode: "insensitive" } },
-      { activityName: { contains: searchTerm, mode: "insensitive" } },
-    ],
-  };
-  
-  if (activityCode) {
-    establishmentWhere.activityCode = activityCode;
-  }
-
-  const establishmentsQuery = prismaGeo.establishment.findMany({
-    where: establishmentWhere,
-    select: {
-      id: true,
-      name: true,
-      activityName: true,
-      latitude: true,
-      longitude: true,
-      municipalityName: true,
-      stateName: true,
-      stateCode: true,
-      municipalityCode: true,
-    },
-    take: limit,
-  });
-
-  // Ejecutar todas las consultas en paralelo
+  // Ejecutar todas las consultas en paralelo desde Mapa DB
   const [states, municipalities, establishments] = await Promise.all([
-    statesQuery,
-    municipalitiesQuery,
-    establishmentsQuery,
+    prismaGeo.geoZone.findMany({
+      where: {
+        type: "STATE",
+        name: { contains: searchTerm, mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        name: true,
+        stateCode: true,
+        totalEstablishments: true,
+        centerLat: true,
+        centerLng: true,
+      },
+      orderBy: { totalEstablishments: "desc" },
+      take: 5,
+    }),
+    prismaGeo.geoZone.findMany({
+      where: {
+        type: "MUNICIPALITY",
+        name: { contains: searchTerm, mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        name: true,
+        stateCode: true,
+        municipalityCode: true,
+        totalEstablishments: true,
+        centerLat: true,
+        centerLng: true,
+      },
+      orderBy: { totalEstablishments: "desc" },
+      take: 8,
+    }),
+    prismaGeo.establishment.findMany({
+      where: activityCode
+        ? {
+            activityCode,
+            OR: [
+              { name: { contains: searchTerm, mode: "insensitive" } },
+              { activityName: { contains: searchTerm, mode: "insensitive" } },
+            ],
+          }
+        : {
+            OR: [
+              { name: { contains: searchTerm, mode: "insensitive" } },
+              { activityName: { contains: searchTerm, mode: "insensitive" } },
+            ],
+          },
+      select: {
+        id: true,
+        name: true,
+        activityName: true,
+        latitude: true,
+        longitude: true,
+        municipalityName: true,
+        stateName: true,
+        stateCode: true,
+        municipalityCode: true,
+      },
+      take: limit,
+    }),
   ]);
 
   // Enriquecer municipios con nombre del estado
@@ -549,6 +627,7 @@ async function smartSearch(query, options = {}) {
 
 /**
  * Obtener categorías de actividad ordenadas por frecuencia
+ * Lee de Mapa DB (prismaGeo)
  */
 async function getActivities() {
   const activities = await prismaGeo.establishment.groupBy({
@@ -567,6 +646,7 @@ async function getActivities() {
 
 /**
  * Obtener estados con conteo para dropdown
+ * Lee de Mapa DB (prismaGeo)
  */
 async function getStatesWithCount() {
   return prismaGeo.geoZone.findMany({
@@ -585,6 +665,7 @@ async function getStatesWithCount() {
 
 /**
  * Obtener municipios de un estado
+ * Lee de Mapa DB (prismaGeo)
  */
 async function getMunicipalitiesByState(stateCode) {
   return prismaGeo.geoZone.findMany({
@@ -606,62 +687,130 @@ async function getMunicipalitiesByState(stateCode) {
 
 /**
  * Obtener establecimientos filtrados por nivel de enriquecimiento
- * Niveles: ESTABLISHMENT (todos), CONTACT (con datos de contacto), PROSPECT (con tomador de decisiones), LEAD (con cualificación), CLIENT (clientes)
+ * Para ESTABLISHMENT/CONTACT: Lee de Mapa DB
+ * Para PROSPECT/LEAD/CLIENT: Combina Mapa DB con Partners DB
  */
 async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {}) {
   const { north, south, east, west } = bounds;
   const { activityCode, stateCode, municipalityCode, search } = filters;
   const { limit = 500, offset = 0 } = options;
 
-  // Construir where base con bounds
+  // Para niveles que requieren enriquecimiento (PROSPECT, LEAD, CLIENT)
+  if (level === "PROSPECT" || level === "LEAD" || level === "CLIENT") {
+    // Primero obtener enriquecimientos que cumplan el nivel desde Partners DB
+    const levelFilter = level === "PROSPECT" 
+      ? { in: ["PROSPECT", "LEAD", "CLIENT"] }
+      : level === "LEAD"
+        ? { in: ["LEAD", "CLIENT"] }
+        : "CLIENT";
+
+    const enrichments = await prisma.establishmentEnrichment.findMany({
+      where: { level: levelFilter },
+      select: {
+        establishmentId: true,
+        id: true,
+        level: true,
+        decisionMakerName: true,
+        decisionMakerPosition: true,
+        decisionMakerPhone: true,
+        decisionMakerWhatsApp: true,
+        decisionMakerEmail: true,
+        intent: true,
+        fear: true,
+        pain: true,
+        desire: true,
+        purchaseDate: true,
+        productPurchased: true,
+        purchaseAmount: true,
+        clientSince: true,
+        clientStatus: true,
+        clientNotes: true,
+      },
+    });
+
+    if (enrichments.length === 0) {
+      return [];
+    }
+
+    // Obtener IDs de establecimientos enriquecidos
+    const enrichedIds = enrichments.map(e => e.establishmentId);
+
+    // Construir filtro para Mapa DB
+    const where = {
+      id: { in: enrichedIds },
+      latitude: { gte: south, lte: north },
+      longitude: { gte: west, lte: east },
+    };
+
+    if (activityCode) {
+      const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+      where.activityCode = codes.length === 1 ? codes[0] : { in: codes };
+    }
+    if (stateCode) where.stateCode = stateCode;
+    if (municipalityCode) where.municipalityCode = municipalityCode;
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { activityName: { contains: search, mode: "insensitive" } },
+        { neighborhood: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    // Obtener establecimientos de Mapa DB
+    const establishments = await prismaGeo.establishment.findMany({
+      where,
+      take: limit,
+      skip: offset,
+      select: {
+        id: true,
+        name: true,
+        activityCode: true,
+        activityName: true,
+        employeeRange: true,
+        latitude: true,
+        longitude: true,
+        stateCode: true,
+        stateName: true,
+        municipalityCode: true,
+        municipalityName: true,
+        neighborhood: true,
+        postalCode: true,
+        phone: true,
+        email: true,
+        website: true,
+      },
+    });
+
+    // Crear mapa de enriquecimientos
+    const enrichmentMap = enrichments.reduce((acc, e) => {
+      acc[e.establishmentId] = e;
+      return acc;
+    }, {});
+
+    // Combinar datos
+    return establishments.map(est => ({
+      ...est,
+      enrichment: enrichmentMap[est.id] || null,
+    }));
+  }
+
+  // Para ESTABLISHMENT y CONTACT: solo leer de Mapa DB
   const where = {
     latitude: { gte: south, lte: north },
     longitude: { gte: west, lte: east },
   };
 
-  // Filtrar según el nivel
-  switch (level) {
-    case "CONTACT":
-      // Establecimientos con al menos un método de contacto
-      where.OR = [
-        { phone: { not: null, not: "" } },
-        { email: { not: null, not: "" } },
-        { website: { not: null, not: "" } },
-      ];
-      break;
-
-    case "PROSPECT":
-      // Establecimientos con enriquecimiento nivel PROSPECT, LEAD o CLIENT
-      where.enrichment = {
-        level: { in: ["PROSPECT", "LEAD", "CLIENT"] },
-      };
-      break;
-
-    case "LEAD":
-      // Establecimientos con enriquecimiento nivel LEAD o CLIENT
-      where.enrichment = {
-        level: { in: ["LEAD", "CLIENT"] },
-      };
-      break;
-
-    case "CLIENT":
-      // Solo establecimientos con enriquecimiento nivel CLIENT
-      where.enrichment = {
-        level: "CLIENT",
-      };
-      break;
-
-    // ESTABLISHMENT: todos (no se agrega filtro adicional)
+  if (level === "CONTACT") {
+    where.OR = [
+      { phone: { not: null } },
+      { email: { not: null } },
+      { website: { not: null } },
+    ];
   }
 
-  // Filtros opcionales
   if (activityCode) {
     const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
-    if (codes.length === 1) {
-      where.activityCode = codes[0];
-    } else if (codes.length > 1) {
-      where.activityCode = { in: codes };
-    }
+    where.activityCode = codes.length === 1 ? codes[0] : { in: codes };
   }
   if (stateCode) where.stateCode = stateCode;
   if (municipalityCode) where.municipalityCode = municipalityCode;
@@ -678,10 +827,7 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     ];
   }
 
-  // Incluir enrichment para niveles PROSPECT, LEAD y CLIENT
-  const includeEnrichment = level === "PROSPECT" || level === "LEAD" || level === "CLIENT";
-
-  const establishments = await prismaGeo.establishment.findMany({
+  return prismaGeo.establishment.findMany({
     where,
     take: limit,
     skip: offset,
@@ -702,32 +848,8 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
       phone: true,
       email: true,
       website: true,
-      enrichment: includeEnrichment ? {
-        select: {
-          id: true,
-          level: true,
-          decisionMakerName: true,
-          decisionMakerPosition: true,
-          decisionMakerPhone: true,
-          decisionMakerWhatsApp: true,
-          decisionMakerEmail: true,
-          intent: true,
-          fear: true,
-          pain: true,
-          desire: true,
-          // Campos de cliente
-          purchaseDate: true,
-          productPurchased: true,
-          purchaseAmount: true,
-          clientSince: true,
-          clientStatus: true,
-          clientNotes: true,
-        },
-      } : false,
     },
   });
-
-  return establishments;
 }
 
 module.exports = {

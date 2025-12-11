@@ -1,11 +1,16 @@
 /**
  * Admin Enrichment Controller
  * Controladores admin para la gestión global de enriquecimientos
+ * 
+ * ARQUITECTURA:
+ * - Mapa DB (prismaGeo): Establecimientos base INEGI/DENUE (800k+) - SOLO LECTURA
+ * - Partners DB (prisma): Enriquecimientos - ESCRITURA/LECTURA
  */
 
 const enrichmentService = require("../services/enrichmentService");
 const geoService = require("../services/geoService");
 const logger = require("../config/logger");
+const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 
 /**
@@ -96,6 +101,9 @@ async function deleteEnrichment(req, res, next) {
  * GET /api/v1/geo/enrichment/admin/by-level/:level
  * Obtener establecimientos por nivel con info de partner si existe
  * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
+ * 
+ * ESTABLISHMENT/CONTACT: Lee de Mapa DB
+ * PROSPECT/LEAD/CLIENT: Combina Mapa DB con Partners DB
  */
 async function getByLevel(req, res, next) {
   try {
@@ -128,7 +136,7 @@ async function getByLevel(req, res, next) {
     let total = 0;
 
     if (level === "ESTABLISHMENT" || level === "CONTACT") {
-      // Para ESTABLISHMENT y CONTACT: obtener de la tabla base de establecimientos
+      // Para ESTABLISHMENT y CONTACT: leer de Mapa DB (prismaGeo)
       const where = {};
 
       // Filtro para CONTACT: solo con datos de contacto
@@ -156,8 +164,8 @@ async function getByLevel(req, res, next) {
           ...(where.AND || []),
           {
             OR: [
+              { name: { contains: search, mode: "insensitive" } },
               { businessName: { contains: search, mode: "insensitive" } },
-              { tradeName: { contains: search, mode: "insensitive" } },
               { phone: { contains: search } },
               { email: { contains: search, mode: "insensitive" } },
             ],
@@ -165,10 +173,10 @@ async function getByLevel(req, res, next) {
         ];
       }
 
-      // Obtener total
+      // Obtener total de Mapa DB
       total = await prismaGeo.establishment.count({ where });
 
-      // Obtener establecimientos
+      // Obtener establecimientos de Mapa DB
       const establishments = await prismaGeo.establishment.findMany({
         where,
         take: limitNum,
@@ -176,39 +184,47 @@ async function getByLevel(req, res, next) {
         orderBy: level === "CONTACT" 
           ? [{ phone: "desc" }, { email: "desc" }] 
           : { id: "asc" },
-        include: {
-          enrichment: {
-            select: {
-              level: true,
-              enrichedBy: true,
-              updatedAt: true,
-            },
-          },
+      });
+
+      // Obtener enriquecimientos existentes de Partners DB para estos establecimientos
+      const establishmentIds = establishments.map(e => e.id);
+      const enrichments = await prisma.establishmentEnrichment.findMany({
+        where: { establishmentId: { in: establishmentIds } },
+        select: {
+          establishmentId: true,
+          level: true,
+          enrichedBy: true,
+          updatedAt: true,
         },
       });
+
+      const enrichmentMap = enrichments.reduce((acc, e) => {
+        acc[e.establishmentId] = e;
+        return acc;
+      }, {});
 
       // Formatear datos
       data = establishments.map((e) => ({
         id: e.id,
         establishmentId: e.id,
-        businessName: e.businessName,
-        tradeName: e.tradeName,
+        businessName: e.businessName || e.name,
+        tradeName: e.name,
         phone: e.phone,
         email: e.email,
         website: e.website,
-        address: `${e.street || ""} ${e.extNumber || ""}, ${e.neighborhood || ""}, ${e.municipality || ""}, ${e.state || ""}`.trim(),
-        state: e.state,
-        municipality: e.municipality,
+        address: `${e.streetName || ""} ${e.exteriorNum || ""}, ${e.neighborhood || ""}, ${e.municipalityName || ""}, ${e.stateName || ""}`.trim(),
+        state: e.stateName,
+        municipality: e.municipalityName,
         latitude: e.latitude,
         longitude: e.longitude,
-        level: e.enrichment?.level || level,
-        enrichedBy: e.enrichment?.enrichedBy || null,
-        updatedAt: e.enrichment?.updatedAt || e.createdAt || new Date(),
-        partner: null, // Los datos base no tienen partner asociado
+        level: enrichmentMap[e.id]?.level || level,
+        enrichedBy: enrichmentMap[e.id]?.enrichedBy || null,
+        updatedAt: enrichmentMap[e.id]?.updatedAt || new Date(),
+        partner: null,
       }));
 
     } else {
-      // Para PROSPECT, LEAD, CLIENT: usar enriquecimientos con filtro de nivel
+      // Para PROSPECT, LEAD, CLIENT: combinar Partners DB con Mapa DB
       const result = await enrichmentService.getAllEnrichments({
         partnerId,
         level,
@@ -221,7 +237,7 @@ async function getByLevel(req, res, next) {
         sortOrder,
       });
 
-      // Mapear al formato esperado por el frontend (consistente con ESTABLISHMENT/CONTACT)
+      // Mapear al formato esperado por el frontend
       data = result.data.map((e) => ({
         id: e.id,
         establishmentId: e.establishment?.id || e.establishmentId,
@@ -275,4 +291,3 @@ module.exports = {
   deleteEnrichment,
   getByLevel,
 };
-

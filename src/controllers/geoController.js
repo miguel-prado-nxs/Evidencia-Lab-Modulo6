@@ -440,7 +440,7 @@ async function getMunicipalities(req, res, next) {
 /**
  * GET /api/v1/geo/establishments/level/:level
  * Obtener establecimientos filtrados por nivel de enriquecimiento
- * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD
+ * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
  */
 async function getEstablishmentsByLevel(req, res, next) {
   try {
@@ -448,7 +448,7 @@ async function getEstablishmentsByLevel(req, res, next) {
     const { north, south, east, west, activity, state, municipality, search, limit, offset } = req.query;
 
     // Validar nivel
-    const validLevels = ["ESTABLISHMENT", "CONTACT", "PROSPECT", "LEAD"];
+    const validLevels = ["ESTABLISHMENT", "CONTACT", "PROSPECT", "LEAD", "CLIENT"];
     if (!validLevels.includes(level)) {
       return res.status(400).json({
         success: false,

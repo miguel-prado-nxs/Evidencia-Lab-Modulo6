@@ -2,10 +2,17 @@
  * Enrichment Service
  * Servicios para enriquecimiento de establecimientos con información adicional
  * Gestiona los niveles: ESTABLISHMENT -> CONTACT -> PROSPECT -> LEAD -> CLIENT
+ *
+ * ARQUITECTURA:
+ * - Mapa DB (prismaGeo): Establecimientos base INEGI/DENUE (800k+) - SOLO LECTURA
+ * - Partners DB (prisma): Enriquecimientos - ESCRITURA/LECTURA
  */
 
+const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
+const geoService = require("./geoService");
+const leadService = require("./leadService");
 
 /**
  * Calcular el nivel de un establecimiento basado en sus datos
@@ -48,30 +55,38 @@ function calculateLevel(establishment, enrichment = null) {
 
 /**
  * Obtener el enriquecimiento de un establecimiento por ID
- * @param {string} establishmentId - ID del establecimiento
- * @returns {Promise<Object|null>} - Datos de enriquecimiento o null
+ * Combina datos de Mapa DB (establecimiento) con Partners DB (enriquecimiento)
  */
 async function getEnrichmentByEstablishment(establishmentId) {
   try {
-    const enrichment = await prismaGeo.establishmentEnrichment.findUnique({
+    // Obtener enriquecimiento de Partners DB
+    const enrichment = await prisma.establishmentEnrichment.findUnique({
       where: { establishmentId },
-      include: {
-        establishment: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            email: true,
-            website: true,
-            activityName: true,
-            municipalityName: true,
-            stateName: true,
-          },
-        },
+    });
+
+    if (!enrichment) {
+      return null;
+    }
+
+    // Obtener datos del establecimiento de Mapa DB
+    const establishment = await prismaGeo.establishment.findUnique({
+      where: { id: establishmentId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        website: true,
+        activityName: true,
+        municipalityName: true,
+        stateName: true,
       },
     });
 
-    return enrichment;
+    return {
+      ...enrichment,
+      establishment,
+    };
   } catch (error) {
     logger.error("Error obteniendo enriquecimiento:", error);
     throw error;
@@ -80,21 +95,23 @@ async function getEnrichmentByEstablishment(establishmentId) {
 
 /**
  * Crear o actualizar el enriquecimiento de un establecimiento
- * @param {string} establishmentId - ID del establecimiento
- * @param {Object} data - Datos de enriquecimiento
- * @param {string} partnerId - ID del partner que enriquece
- * @returns {Promise<Object>} - Enriquecimiento creado/actualizado
+ * Valida establecimiento en Mapa DB, guarda enriquecimiento en Partners DB
+ * IMPORTANTE: Preserva datos existentes si no se envían nuevos valores
  */
 async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
   try {
-    // Obtener el establecimiento para calcular el nivel
+    // Obtener el establecimiento de Mapa DB para validar y calcular nivel
     const establishment = await prismaGeo.establishment.findUnique({
       where: { id: establishmentId },
       select: {
         id: true,
+        name: true,
         phone: true,
         email: true,
         website: true,
+        activityName: true,
+        municipalityName: true,
+        stateName: true,
       },
     });
 
@@ -102,90 +119,201 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       throw new Error("Establecimiento no encontrado");
     }
 
-    // Preparar datos de enriquecimiento
+    // Buscar si ya existe un enriquecimiento en Partners DB
+    const existing = await prisma.establishmentEnrichment.findUnique({
+      where: { establishmentId },
+    });
+
+    // Preparar datos de enriquecimiento preservando los existentes
+    // Solo actualiza si el valor viene definido (no undefined)
     const enrichmentData = {
       // Datos de prospecto (tomador de decisiones)
-      decisionMakerName: data.decisionMakerName || null,
-      decisionMakerPosition: data.decisionMakerPosition || null,
-      decisionMakerPhone: data.decisionMakerPhone || null,
-      decisionMakerWhatsApp: data.decisionMakerWhatsApp || null,
-      decisionMakerEmail: data.decisionMakerEmail || null,
+      decisionMakerName:
+        data.decisionMakerName !== undefined
+          ? data.decisionMakerName || null
+          : existing?.decisionMakerName || null,
+      decisionMakerPosition:
+        data.decisionMakerPosition !== undefined
+          ? data.decisionMakerPosition || null
+          : existing?.decisionMakerPosition || null,
+      decisionMakerPhone:
+        data.decisionMakerPhone !== undefined
+          ? data.decisionMakerPhone || null
+          : existing?.decisionMakerPhone || null,
+      decisionMakerWhatsApp:
+        data.decisionMakerWhatsApp !== undefined
+          ? data.decisionMakerWhatsApp || null
+          : existing?.decisionMakerWhatsApp || null,
+      decisionMakerEmail:
+        data.decisionMakerEmail !== undefined
+          ? data.decisionMakerEmail || null
+          : existing?.decisionMakerEmail || null,
       // Datos de lead (cualificación)
-      intent: data.intent || null,
-      fear: data.fear || null,
-      pain: data.pain || null,
-      desire: data.desire || null,
+      intent:
+        data.intent !== undefined
+          ? data.intent || null
+          : existing?.intent || null,
+      fear:
+        data.fear !== undefined ? data.fear || null : existing?.fear || null,
+      pain:
+        data.pain !== undefined ? data.pain || null : existing?.pain || null,
+      desire:
+        data.desire !== undefined
+          ? data.desire || null
+          : existing?.desire || null,
       // Datos de cliente
-      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
-      productPurchased: data.productPurchased || null,
-      purchaseAmount: data.purchaseAmount ? parseFloat(data.purchaseAmount) : null,
-      clientSince: data.clientSince ? new Date(data.clientSince) : null,
-      clientStatus: data.clientStatus || null,
-      clientNotes: data.clientNotes || null,
+      purchaseDate:
+        data.purchaseDate !== undefined
+          ? data.purchaseDate
+            ? new Date(data.purchaseDate)
+            : null
+          : existing?.purchaseDate || null,
+      productPurchased:
+        data.productPurchased !== undefined
+          ? data.productPurchased || null
+          : existing?.productPurchased || null,
+      purchaseAmount:
+        data.purchaseAmount !== undefined
+          ? data.purchaseAmount
+            ? parseFloat(data.purchaseAmount)
+            : null
+          : existing?.purchaseAmount || null,
+      clientSince:
+        data.clientSince !== undefined
+          ? data.clientSince
+            ? new Date(data.clientSince)
+            : null
+          : existing?.clientSince || null,
+      clientStatus:
+        data.clientStatus !== undefined
+          ? data.clientStatus || null
+          : existing?.clientStatus || null,
+      clientNotes:
+        data.clientNotes !== undefined
+          ? data.clientNotes || null
+          : existing?.clientNotes || null,
       // Metadata
       lastUpdatedBy: partnerId,
     };
 
-    // Calcular nivel basado en los nuevos datos
+    // Calcular nivel basado en los datos combinados
     const level = calculateLevel(establishment, enrichmentData);
     enrichmentData.level = level;
-
-    // Buscar si ya existe un enriquecimiento
-    const existing = await prismaGeo.establishmentEnrichment.findUnique({
-      where: { establishmentId },
-    });
 
     let enrichment;
 
     if (existing) {
       // Actualizar existente
-      enrichment = await prismaGeo.establishmentEnrichment.update({
+      enrichment = await prisma.establishmentEnrichment.update({
         where: { establishmentId },
         data: enrichmentData,
-        include: {
-          establishment: {
-            select: {
-              id: true,
-              name: true,
-              activityName: true,
-              phone: true,
-              email: true,
-              website: true,
-              municipalityName: true,
-              stateName: true,
-            },
-          },
-        },
       });
-      logger.info(`Enriquecimiento actualizado para establecimiento ${establishmentId} - Nivel: ${level}`);
+      logger.info(
+        `Enriquecimiento actualizado para establecimiento ${establishmentId} - Nivel: ${level}`
+      );
     } else {
-      // Crear nuevo
-      enrichment = await prismaGeo.establishmentEnrichment.create({
+      // Crear nuevo en Partners DB
+      enrichment = await prisma.establishmentEnrichment.create({
         data: {
           ...enrichmentData,
           establishmentId,
           enrichedBy: partnerId,
           enrichedAt: new Date(),
         },
-        include: {
-          establishment: {
-            select: {
-              id: true,
-              name: true,
-              activityName: true,
-              phone: true,
-              email: true,
-              website: true,
-              municipalityName: true,
-              stateName: true,
-            },
-          },
-        },
       });
-      logger.info(`Enriquecimiento creado para establecimiento ${establishmentId} - Nivel: ${level}`);
+      logger.info(
+        `Enriquecimiento creado para establecimiento ${establishmentId} - Nivel: ${level}`
+      );
     }
 
-    return enrichment;
+    // Auto-promoción según datos proporcionados (sin cambios de esquema)
+    // 1) Si hay datos de tomador de decisiones -> asegurar Prospect asignado al partner
+    const hasDecisionMaker = (
+      !!enrichmentData.decisionMakerName ||
+      !!enrichmentData.decisionMakerPhone ||
+      !!enrichmentData.decisionMakerWhatsApp
+    );
+
+    // 2) Si hay datos de cualificación (IFPD) -> asegurar Lead creado para el partner
+    const hasQualification = (
+      !!enrichmentData.intent ||
+      !!enrichmentData.fear ||
+      !!enrichmentData.pain ||
+      !!enrichmentData.desire
+    );
+
+    // 3) Si hay datos de cliente -> marcar lead como CLIENT
+    const hasClientInfo = (
+      !!enrichmentData.purchaseDate ||
+      !!enrichmentData.productPurchased ||
+      !!enrichmentData.clientStatus
+    );
+
+    // Ejecutar promociones de manera segura y mínima
+    let ensuredProspect = null;
+    if (hasDecisionMaker && partnerId) {
+      try {
+        // Verificar prospect existente para este establecimiento
+        ensuredProspect = await prisma.leadProspect.findFirst({
+          where: { establishmentId },
+        });
+
+        if (!ensuredProspect || ensuredProspect.status === "AVAILABLE") {
+          // Asignar prospect al partner
+          ensuredProspect = await geoService.assignProspect(establishmentId, partnerId, "Auto-asignado por enriquecimiento (Tomador)");
+          logger.info(`Auto-promoción: Prospect asegurado para est ${establishmentId} y partner ${partnerId}`);
+        }
+      } catch (promoErr) {
+        logger.warn("Auto-promoción (Prospect) falló:", promoErr);
+      }
+    }
+
+    if (hasQualification && partnerId) {
+      try {
+        // Asegurar que exista un prospect asignado; si no, crear y asignar primero
+        if (!ensuredProspect) {
+          ensuredProspect = await prisma.leadProspect.findFirst({ where: { establishmentId } });
+          if (!ensuredProspect) {
+            ensuredProspect = await geoService.assignProspect(establishmentId, partnerId, "Auto-asignado por enriquecimiento (IFPD)");
+          }
+        }
+
+        // Convertir a lead si aún no está convertido
+        if (ensuredProspect && ensuredProspect.status !== "CONVERTED") {
+          await geoService.convertProspectToLead(ensuredProspect.id, {
+            contactName: enrichmentData.decisionMakerName || "Contacto",
+            email: establishment.email || enrichmentData.decisionMakerEmail || undefined,
+            phone: establishment.phone || enrichmentData.decisionMakerPhone || enrichmentData.decisionMakerWhatsApp || undefined,
+            interests: ["POS"],
+          });
+          logger.info(`Auto-promoción: Prospect ${ensuredProspect.id} convertido a Lead por cualificación`);
+        }
+      } catch (promoErr) {
+        logger.warn("Auto-promoción (Lead) falló:", promoErr);
+      }
+    }
+
+    if (hasClientInfo && partnerId) {
+      try {
+        // Buscar lead más reciente del partner para este establecimiento (si existe relación)
+        const recentLead = await prisma.lead.findFirst({
+          where: { partnerId },
+          orderBy: { createdAt: "desc" },
+        });
+        if (recentLead) {
+          await leadService.updateLeadStatus(recentLead.id, "WON", "Marcado como cliente (WON) por enriquecimiento");
+          logger.info(`Auto-promoción: Lead ${recentLead.id} marcado como WON/cliente`);
+        }
+      } catch (promoErr) {
+        logger.warn("Auto-promoción (Client) falló:", promoErr);
+      }
+    }
+
+    // Retornar con datos del establecimiento
+    return {
+      ...enrichment,
+      establishment,
+    };
   } catch (error) {
     logger.error("Error creando/actualizando enriquecimiento:", error);
     throw error;
@@ -194,9 +322,7 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
 
 /**
  * Importar enriquecimientos en lote desde CSV/JSON
- * @param {Array<Object>} data - Array de datos de enriquecimiento
- * @param {string} partnerId - ID del partner que importa
- * @returns {Promise<Object>} - Resultado de la importación
+ * Valida establecimientos en Mapa DB, guarda en Partners DB
  */
 async function bulkImportEnrichments(data, partnerId) {
   const results = {
@@ -208,7 +334,6 @@ async function bulkImportEnrichments(data, partnerId) {
 
   for (const item of data) {
     try {
-      // Validar que tenga establishmentId
       if (!item.establishmentId) {
         results.failed++;
         results.errors.push({
@@ -218,7 +343,7 @@ async function bulkImportEnrichments(data, partnerId) {
         continue;
       }
 
-      // Verificar que el establecimiento existe
+      // Verificar que el establecimiento existe en Mapa DB
       const establishment = await prismaGeo.establishment.findUnique({
         where: { id: item.establishmentId },
       });
@@ -244,20 +369,29 @@ async function bulkImportEnrichments(data, partnerId) {
     }
   }
 
-  logger.info(`Importación masiva completada: ${results.success}/${results.total} exitosos`);
+  logger.info(
+    `Importación masiva completada: ${results.success}/${results.total} exitosos`
+  );
   return results;
 }
 
 /**
  * Obtener estadísticas por nivel de enriquecimiento
- * @returns {Promise<Object>} - Conteo por cada nivel
+ * Combina estadísticas de Mapa DB (totales) con Partners DB
+ * 
+ * ARQUITECTURA DE CONTEOS:
+ * - ESTABLISHMENT: Total de establecimientos en Mapa DB
+ * - CONTACT: Establecimientos con phone/email/website en Mapa DB
+ * - PROSPECT: Conteo desde tabla lead_prospects (asignaciones)
+ * - LEAD: Conteo desde tabla leads (leads convertidos)
+ * - CLIENT: Conteo desde establishment_enrichments con level=CLIENT
  */
 async function getStatsByLevel() {
   try {
-    // Contar establecimientos totales
+    // Contar establecimientos totales de Mapa DB
     const totalEstablishments = await prismaGeo.establishment.count();
 
-    // Contar establecimientos con contacto (phone/email/website)
+    // Contar establecimientos con contacto (phone/email/website) de Mapa DB
     const totalContacts = await prismaGeo.establishment.count({
       where: {
         OR: [
@@ -268,24 +402,23 @@ async function getStatsByLevel() {
       },
     });
 
-    // Contar por nivel de enriquecimiento
-    const enrichmentStats = await prismaGeo.establishmentEnrichment.groupBy({
-      by: ["level"],
-      _count: { id: true },
-    });
+    // Contar prospectos desde lead_prospects
+    const totalProspects = await prisma.leadProspect.count({ where: { status: "ASSIGNED" } });
 
-    // Convertir a objeto
-    const enrichmentByLevel = enrichmentStats.reduce((acc, stat) => {
-      acc[stat.level] = stat._count.id;
-      return acc;
-    }, {});
+    // Contar leads desde tabla leads
+    const totalLeads = await prisma.lead.count();
+
+    // Contar clientes desde enrichments con level=CLIENT
+    const totalClients = await prisma.establishmentEnrichment.count({
+      where: { level: "CLIENT" },
+    });
 
     return {
       ESTABLISHMENT: totalEstablishments,
       CONTACT: totalContacts,
-      PROSPECT: enrichmentByLevel.PROSPECT || 0,
-      LEAD: enrichmentByLevel.LEAD || 0,
-      CLIENT: enrichmentByLevel.CLIENT || 0,
+      PROSPECT: totalProspects,
+      LEAD: totalLeads,
+      CLIENT: totalClients,
     };
   } catch (error) {
     logger.error("Error obteniendo estadísticas por nivel:", error);
@@ -294,29 +427,43 @@ async function getStatsByLevel() {
 }
 
 /**
- * Obtener estadísticas por nivel de enriquecimiento para un partner específico
- * @param {string} partnerId - ID del partner
- * @returns {Promise<Object>} - Conteo por cada nivel del partner
+ * Obtener estadísticas por nivel para un partner específico
+ * Lee de Partners DB
+ * 
+ * ARQUITECTURA:
+ * - CONTACT: Enriquecimientos del partner con level >= CONTACT
+ * - PROSPECT: lead_prospects asignados al partner
+ * - LEAD: leads del partner
+ * - CLIENT: Enriquecimientos del partner con level=CLIENT
  */
 async function getStatsByLevelForPartner(partnerId) {
   try {
-    // Contar enriquecimientos del partner por nivel
-    const enrichmentStats = await prismaGeo.establishmentEnrichment.groupBy({
+    // Contar enriquecimientos del partner (solo para CONTACT y CLIENT)
+    const enrichmentStats = await prisma.establishmentEnrichment.groupBy({
       by: ["level"],
       where: { enrichedBy: partnerId },
       _count: { id: true },
     });
 
-    // Convertir a objeto con todos los niveles inicializados en 0
     const enrichmentByLevel = enrichmentStats.reduce((acc, stat) => {
       acc[stat.level] = stat._count.id;
       return acc;
     }, {});
 
+    // Contar prospectos asignados al partner
+    const totalProspects = await prisma.leadProspect.count({
+      where: { partnerId, status: "ASSIGNED" },
+    });
+
+    // Contar leads del partner
+    const totalLeads = await prisma.lead.count({
+      where: { partnerId },
+    });
+
     return {
       CONTACT: enrichmentByLevel.CONTACT || 0,
-      PROSPECT: enrichmentByLevel.PROSPECT || 0,
-      LEAD: enrichmentByLevel.LEAD || 0,
+      PROSPECT: totalProspects,
+      LEAD: totalLeads,
       CLIENT: enrichmentByLevel.CLIENT || 0,
     };
   } catch (error) {
@@ -326,40 +473,74 @@ async function getStatsByLevelForPartner(partnerId) {
 }
 
 /**
- * Obtener enriquecimientos de un partner específico
- * @param {string} partnerId - ID del partner
- * @param {string|null} level - Filtrar por nivel
- * @returns {Promise<Array>} - Lista de enriquecimientos
+ * Obtener datos del partner según el nivel solicitado
+ * 
+ * ARQUITECTURA:
+ * - CONTACT/CLIENT: Obtiene de establishment_enrichments
+ * - PROSPECT: Obtiene de lead_prospects (asignaciones del partner)
+ * - LEAD: Obtiene de tabla leads (leads del partner)
+ * 
+ * Combina con datos de establecimientos de Mapa DB
  */
 async function getEnrichmentsByPartner(partnerId, level = null) {
   try {
+    // Si piden PROSPECT, obtener de lead_prospects
+    if (level === "PROSPECT") {
+      return await getProspectsByPartner(partnerId);
+    }
+
+    // Si piden LEAD, obtener de tabla leads
+    if (level === "LEAD") {
+      return await getLeadsByPartner(partnerId);
+    }
+
+    // Para CONTACT y CLIENT, obtener de enrichments
     const where = { enrichedBy: partnerId };
     if (level) {
       where.level = level;
     }
 
-    const enrichments = await prismaGeo.establishmentEnrichment.findMany({
+    // Obtener enriquecimientos de Partners DB
+    const enrichments = await prisma.establishmentEnrichment.findMany({
       where,
-      include: {
-        establishment: {
-          select: {
-            id: true,
-            name: true,
-            activityName: true,
-            phone: true,
-            email: true,
-            website: true,
-            latitude: true,
-            longitude: true,
-            municipalityName: true,
-            stateName: true,
-          },
-        },
-      },
       orderBy: { updatedAt: "desc" },
     });
 
-    return enrichments;
+    if (enrichments.length === 0) {
+      return [];
+    }
+
+    // Obtener IDs de establecimientos
+    const establishmentIds = enrichments.map((e) => e.establishmentId);
+
+    // Obtener datos de establecimientos de Mapa DB
+    const establishments = await prismaGeo.establishment.findMany({
+      where: { id: { in: establishmentIds } },
+      select: {
+        id: true,
+        name: true,
+        activityName: true,
+        phone: true,
+        email: true,
+        website: true,
+        latitude: true,
+        longitude: true,
+        municipalityName: true,
+        stateName: true,
+      },
+    });
+
+    // Crear mapa para lookup rápido
+    const establishmentMap = establishments.reduce((acc, e) => {
+      acc[e.id] = e;
+      return acc;
+    }, {});
+
+    // Combinar datos
+    return enrichments.map((e) => ({
+      ...e,
+      establishment: establishmentMap[e.establishmentId] || null,
+    }));
   } catch (error) {
     logger.error("Error obteniendo enriquecimientos del partner:", error);
     throw error;
@@ -367,14 +548,154 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
 }
 
 /**
+ * Obtener prospectos asignados al partner desde lead_prospects
+ * Combina con datos de establecimiento de Mapa DB y enriquecimiento de Partners DB
+ */
+async function getProspectsByPartner(partnerId) {
+  try {
+    // Obtener prospectos del partner (solo ASSIGNED)
+    const prospects = await prisma.leadProspect.findMany({
+      where: { partnerId, status: "ASSIGNED" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Obtener IDs de establecimientos
+    const establishmentIds = prospects.map((p) => p.establishmentId);
+
+    // Obtener datos de establecimientos de Mapa DB
+    const establishments = await prismaGeo.establishment.findMany({
+      where: { id: { in: establishmentIds } },
+      select: {
+        id: true,
+        name: true,
+        activityName: true,
+        phone: true,
+        email: true,
+        website: true,
+        latitude: true,
+        longitude: true,
+        municipalityName: true,
+        stateName: true,
+      },
+    });
+
+    // Obtener enriquecimientos existentes para estos establecimientos
+    const enrichments = await prisma.establishmentEnrichment.findMany({
+      where: { establishmentId: { in: establishmentIds } },
+    });
+
+    // Crear mapas para lookup rápido
+    const establishmentMap = establishments.reduce((acc, e) => {
+      acc[e.id] = e;
+      return acc;
+    }, {});
+
+    const enrichmentMap = enrichments.reduce((acc, e) => {
+      acc[e.establishmentId] = e;
+      return acc;
+    }, {});
+
+    // Combinar datos - devolver en formato compatible con enrichments
+    return prospects.map((p) => {
+      const establishment = establishmentMap[p.establishmentId] || null;
+      const enrichment = enrichmentMap[p.establishmentId] || null;
+      
+      return {
+        id: p.id,
+        establishmentId: p.establishmentId,
+        level: "PROSPECT",
+        // Datos de enriquecimiento si existen
+        decisionMakerName: enrichment?.decisionMakerName || null,
+        decisionMakerPosition: enrichment?.decisionMakerPosition || null,
+        decisionMakerPhone: enrichment?.decisionMakerPhone || null,
+        decisionMakerWhatsApp: enrichment?.decisionMakerWhatsApp || null,
+        decisionMakerEmail: enrichment?.decisionMakerEmail || null,
+        intent: enrichment?.intent || null,
+        fear: enrichment?.fear || null,
+        pain: enrichment?.pain || null,
+        desire: enrichment?.desire || null,
+        // Metadatos del prospecto
+        enrichedBy: partnerId,
+        enrichedAt: p.assignedAt,
+        notes: p.notes,
+        status: p.status,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        // Establecimiento
+        establishment,
+      };
+    });
+  } catch (error) {
+    logger.error("Error obteniendo prospectos del partner:", error);
+    throw error;
+  }
+}
+
+/**
+ * Obtener leads del partner desde tabla leads
+ * Combina con datos adicionales
+ */
+async function getLeadsByPartner(partnerId) {
+  try {
+    // Obtener leads del partner
+    const leads = await prisma.lead.findMany({
+      where: { partnerId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (leads.length === 0) {
+      return [];
+    }
+
+    // Devolver leads en formato compatible
+    return leads.map((lead) => ({
+      id: lead.id,
+      establishmentId: null, // Los leads no tienen establishmentId directo
+      level: "LEAD",
+      // Datos del lead
+      decisionMakerName: lead.contactName,
+      decisionMakerPosition: null,
+      decisionMakerPhone: lead.phone,
+      decisionMakerWhatsApp: null,
+      decisionMakerEmail: lead.email,
+      intent: null,
+      fear: null,
+      pain: null,
+      desire: null,
+      // Metadatos
+      enrichedBy: partnerId,
+      enrichedAt: lead.createdAt,
+      notes: lead.notes,
+      status: lead.status,
+      createdAt: lead.createdAt,
+      updatedAt: lead.updatedAt,
+      // Establecimiento simulado desde datos del lead
+      establishment: {
+        id: lead.id,
+        name: lead.businessName,
+        activityName: lead.businessType,
+        phone: lead.phone,
+        email: lead.email,
+        website: null,
+        latitude: null,
+        longitude: null,
+        municipalityName: lead.location?.split(",")[0]?.trim() || null,
+        stateName: lead.location?.split(",")[1]?.trim() || null,
+      },
+    }));
+  } catch (error) {
+    logger.error("Error obteniendo leads del partner:", error);
+    throw error;
+  }
+}
+
+/**
  * Eliminar un enriquecimiento
- * @param {string} establishmentId - ID del establecimiento
- * @param {string} partnerId - ID del partner (para validar permisos)
- * @returns {Promise<boolean>} - True si se eliminó
+ * Lee/escribe en Partners DB
  */
 async function deleteEnrichment(establishmentId, partnerId) {
   try {
-    const enrichment = await prismaGeo.establishmentEnrichment.findUnique({
+    const enrichment = await prisma.establishmentEnrichment.findUnique({
       where: { establishmentId },
     });
 
@@ -387,11 +708,13 @@ async function deleteEnrichment(establishmentId, partnerId) {
       throw new Error("No tienes permisos para eliminar este enriquecimiento");
     }
 
-    await prismaGeo.establishmentEnrichment.delete({
+    await prisma.establishmentEnrichment.delete({
       where: { establishmentId },
     });
 
-    logger.info(`Enriquecimiento eliminado para establecimiento ${establishmentId}`);
+    logger.info(
+      `Enriquecimiento eliminado para establecimiento ${establishmentId}`
+    );
     return true;
   } catch (error) {
     logger.error("Error eliminando enriquecimiento:", error);
@@ -405,17 +728,7 @@ async function deleteEnrichment(establishmentId, partnerId) {
 
 /**
  * Obtener todos los enriquecimientos (Admin)
- * @param {Object} filters - Filtros opcionales
- * @param {string} filters.partnerId - Filtrar por partner
- * @param {string} filters.level - Filtrar por nivel
- * @param {string} filters.state - Filtrar por estado
- * @param {string} filters.municipality - Filtrar por municipio
- * @param {string} filters.search - Búsqueda por nombre de negocio
- * @param {number} filters.page - Página (default 1)
- * @param {number} filters.limit - Límite por página (default 20)
- * @param {string} filters.sortBy - Campo para ordenar
- * @param {string} filters.sortOrder - Orden (asc/desc)
- * @returns {Promise<Object>} - Lista paginada de enriquecimientos
+ * Combina Partners DB (enriquecimientos) con Mapa DB (establecimientos)
  */
 async function getAllEnrichments(filters = {}) {
   try {
@@ -431,7 +744,7 @@ async function getAllEnrichments(filters = {}) {
       sortOrder = "desc",
     } = filters;
 
-    // Construir condiciones where
+    // Construir condiciones where para Partners DB
     const where = {};
 
     if (partnerId) {
@@ -442,57 +755,76 @@ async function getAllEnrichments(filters = {}) {
       where.level = level;
     }
 
-    // Filtros por establecimiento
-    const establishmentWhere = {};
-    if (state) {
-      establishmentWhere.stateName = { contains: state, mode: "insensitive" };
-    }
-    if (municipality) {
-      establishmentWhere.municipalityName = { contains: municipality, mode: "insensitive" };
-    }
-    if (search) {
-      establishmentWhere.name = { contains: search, mode: "insensitive" };
-    }
+    // Obtener total de Partners DB
+    const total = await prisma.establishmentEnrichment.count({ where });
 
-    if (Object.keys(establishmentWhere).length > 0) {
-      where.establishment = establishmentWhere;
-    }
-
-    // Obtener total
-    const total = await prismaGeo.establishmentEnrichment.count({ where });
-
-    // Obtener enriquecimientos paginados
-    const enrichments = await prismaGeo.establishmentEnrichment.findMany({
+    // Obtener enriquecimientos paginados de Partners DB
+    const enrichments = await prisma.establishmentEnrichment.findMany({
       where,
-      include: {
-        establishment: {
-          select: {
-            id: true,
-            name: true,
-            activityName: true,
-            activityCode: true,
-            phone: true,
-            email: true,
-            website: true,
-            latitude: true,
-            longitude: true,
-            municipalityName: true,
-            stateName: true,
-            postalCode: true,
-            employeeRange: true,
-          },
-        },
-      },
       orderBy: { [sortBy]: sortOrder },
       skip: (page - 1) * limit,
       take: limit,
     });
 
-    // Obtener información de partners para los enriquecimientos
-    const partnerIds = [...new Set(enrichments.map((e) => e.enrichedBy).filter(Boolean))];
-    
-    // Importar prisma principal para obtener datos de partners
-    const prisma = require("../config/database");
+    if (enrichments.length === 0) {
+      return {
+        data: [],
+        total,
+        page,
+        totalPages: Math.ceil(total / limit),
+        limit,
+      };
+    }
+
+    // Obtener IDs de establecimientos
+    const establishmentIds = enrichments.map((e) => e.establishmentId);
+
+    // Construir filtro para Mapa DB
+    const establishmentWhere = { id: { in: establishmentIds } };
+    if (state) {
+      establishmentWhere.stateName = { contains: state, mode: "insensitive" };
+    }
+    if (municipality) {
+      establishmentWhere.municipalityName = {
+        contains: municipality,
+        mode: "insensitive",
+      };
+    }
+    if (search) {
+      establishmentWhere.name = { contains: search, mode: "insensitive" };
+    }
+
+    // Obtener datos de establecimientos de Mapa DB
+    const establishments = await prismaGeo.establishment.findMany({
+      where: establishmentWhere,
+      select: {
+        id: true,
+        name: true,
+        activityName: true,
+        activityCode: true,
+        phone: true,
+        email: true,
+        website: true,
+        latitude: true,
+        longitude: true,
+        municipalityName: true,
+        stateName: true,
+        postalCode: true,
+        employeeRange: true,
+      },
+    });
+
+    // Crear mapa para lookup rápido
+    const establishmentMap = establishments.reduce((acc, e) => {
+      acc[e.id] = e;
+      return acc;
+    }, {});
+
+    // Obtener información de partners
+    const partnerIds = [
+      ...new Set(enrichments.map((e) => e.enrichedBy).filter(Boolean)),
+    ];
+
     const partners = await prisma.partner.findMany({
       where: { id: { in: partnerIds } },
       select: {
@@ -507,21 +839,29 @@ async function getAllEnrichments(filters = {}) {
       },
     });
 
-    // Mapear partners por ID
     const partnersMap = partners.reduce((acc, p) => {
       acc[p.id] = p;
       return acc;
     }, {});
 
-    // Agregar info de partner a cada enriquecimiento
-    const enrichmentsWithPartner = enrichments.map((e) => ({
+    // Combinar y filtrar datos
+    let enrichmentsWithData = enrichments.map((e) => ({
       ...e,
+      establishment: establishmentMap[e.establishmentId] || null,
       partner: partnersMap[e.enrichedBy] || null,
     }));
 
+    // Filtrar si hay filtros de ubicación/búsqueda
+    if (state || municipality || search) {
+      enrichmentsWithData = enrichmentsWithData.filter(
+        (e) => e.establishment !== null
+      );
+    }
+
     return {
-      data: enrichmentsWithPartner,
-      total,
+      data: enrichmentsWithData,
+      total:
+        state || municipality || search ? enrichmentsWithData.length : total,
       page,
       totalPages: Math.ceil(total / limit),
       limit,
@@ -534,14 +874,14 @@ async function getAllEnrichments(filters = {}) {
 
 /**
  * Obtener estadísticas globales por partner (Admin)
- * @returns {Promise<Object>} - Estadísticas globales y por partner
+ * Combina Mapa DB (totales) con Partners DB (enriquecimientos)
  */
 async function getGlobalStatsByPartner() {
   try {
-    // Contar establecimientos totales (DENUE)
+    // Contar establecimientos totales de Mapa DB
     const totalEstablishments = await prismaGeo.establishment.count();
 
-    // Contar establecimientos con contacto (phone/email/website) - datos DENUE base
+    // Contar establecimientos con contacto de Mapa DB
     const totalContacts = await prismaGeo.establishment.count({
       where: {
         OR: [
@@ -552,8 +892,8 @@ async function getGlobalStatsByPartner() {
       },
     });
 
-    // Estadísticas de enriquecimientos por nivel
-    const enrichmentStats = await prismaGeo.establishmentEnrichment.groupBy({
+    // Estadísticas de enriquecimientos por nivel de Partners DB
+    const enrichmentStats = await prisma.establishmentEnrichment.groupBy({
       by: ["level"],
       _count: { id: true },
     });
@@ -563,7 +903,7 @@ async function getGlobalStatsByPartner() {
       return acc;
     }, {});
 
-    // Estadísticas globales incluyendo datos base DENUE
+    // Estadísticas globales
     const global = {
       ESTABLISHMENT: totalEstablishments,
       CONTACT: totalContacts,
@@ -572,13 +912,13 @@ async function getGlobalStatsByPartner() {
       CLIENT: enrichmentByLevel.CLIENT || 0,
     };
 
-    // Total de enriquecimientos (solo los trabajados por partners)
-    const totalEnrichments = (enrichmentByLevel.PROSPECT || 0) + 
-                            (enrichmentByLevel.LEAD || 0) + 
-                            (enrichmentByLevel.CLIENT || 0);
+    const totalEnrichments =
+      (enrichmentByLevel.PROSPECT || 0) +
+      (enrichmentByLevel.LEAD || 0) +
+      (enrichmentByLevel.CLIENT || 0);
 
-    // Estadísticas por partner
-    const partnerStats = await prismaGeo.establishmentEnrichment.groupBy({
+    // Estadísticas por partner de Partners DB
+    const partnerStats = await prisma.establishmentEnrichment.groupBy({
       by: ["enrichedBy", "level"],
       _count: { id: true },
     });
@@ -600,7 +940,6 @@ async function getGlobalStatsByPartner() {
 
     // Obtener info de partners
     const partnerIds = Object.keys(byPartnerMap);
-    const prisma = require("../config/database");
     const partners = await prisma.partner.findMany({
       where: { id: { in: partnerIds } },
       select: {
@@ -615,17 +954,20 @@ async function getGlobalStatsByPartner() {
       },
     });
 
-    // Agregar info de partner
     const byPartner = partners.map((p) => ({
       partnerId: p.id,
       partnerCode: p.code,
       partnerName: p.user?.name || "Sin nombre",
       partnerEmail: p.user?.email || "",
-      counts: byPartnerMap[p.id]?.counts || { CONTACT: 0, PROSPECT: 0, LEAD: 0, CLIENT: 0 },
+      counts: byPartnerMap[p.id]?.counts || {
+        CONTACT: 0,
+        PROSPECT: 0,
+        LEAD: 0,
+        CLIENT: 0,
+      },
       total: byPartnerMap[p.id]?.total || 0,
     }));
 
-    // Ordenar por total descendente
     byPartner.sort((a, b) => b.total - a.total);
 
     return {
@@ -641,12 +983,10 @@ async function getGlobalStatsByPartner() {
 
 /**
  * Eliminar un enriquecimiento (Admin - sin validación de permisos)
- * @param {string} establishmentId - ID del establecimiento
- * @returns {Promise<boolean>} - True si se eliminó
  */
 async function adminDeleteEnrichment(establishmentId) {
   try {
-    const enrichment = await prismaGeo.establishmentEnrichment.findUnique({
+    const enrichment = await prisma.establishmentEnrichment.findUnique({
       where: { establishmentId },
     });
 
@@ -654,11 +994,13 @@ async function adminDeleteEnrichment(establishmentId) {
       throw new Error("Enriquecimiento no encontrado");
     }
 
-    await prismaGeo.establishmentEnrichment.delete({
+    await prisma.establishmentEnrichment.delete({
       where: { establishmentId },
     });
 
-    logger.info(`Enriquecimiento eliminado por admin para establecimiento ${establishmentId}`);
+    logger.info(
+      `Enriquecimiento eliminado por admin para establecimiento ${establishmentId}`
+    );
     return true;
   } catch (error) {
     logger.error("Error eliminando enriquecimiento (admin):", error);
@@ -680,4 +1022,3 @@ module.exports = {
   getGlobalStatsByPartner,
   adminDeleteEnrichment,
 };
-

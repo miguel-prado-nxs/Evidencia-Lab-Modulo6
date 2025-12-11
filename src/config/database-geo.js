@@ -1,21 +1,16 @@
 /**
  * Cliente Prisma para la base de datos de GeoInsights (Restaurantes DENUE)
- * Usa DATABASE_URL_RESTAURANTES para conectarse a la DB separada de 733K restaurantes
+ * Usa DATABASE_URL_RESTAURANTES para conectarse a la DB separada de 800k+ restaurantes
+ *
+ * IMPORTANTE: Este cliente usa un esquema Prisma separado (prisma/schema-geo.prisma)
+ * que define los modelos de la base de datos de Mapa/Geo
  */
 
-const { PrismaClient } = require("@prisma/client");
-
-// Usar DATABASE_URL_RESTAURANTES si existe, sino usar DATABASE_URL por defecto
-const databaseUrl = process.env.DATABASE_URL_RESTAURANTES || process.env.DATABASE_URL;
+// Importar el cliente generado desde la ubicación del esquema geo
+const { PrismaClient } = require("../../node_modules/.prisma/client-geo");
 
 const prismaGeo = new PrismaClient({
-  datasources: {
-    db: {
-      url: databaseUrl,
-    },
-  },
   log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
 });
 
 module.exports = prismaGeo;
-
