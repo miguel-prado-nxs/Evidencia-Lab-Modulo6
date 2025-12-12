@@ -22,6 +22,7 @@ const resourcesRoutes = require("./routes/resources");
 const trainingRoutes = require("./routes/training");
 const referralsRoutes = require("./routes/referrals");
 const settingsRoutes = require("./routes/settings");
+const sdrRoutes = require("./routes/sdr");
 
 // Crear aplicación Express
 const app = express();
@@ -127,6 +128,7 @@ app.use("/api/v1/resources", resourcesRoutes);
 app.use("/api/v1/training", trainingRoutes);
 app.use("/api/v1/referrals", referralsRoutes);
 app.use("/api/v1/settings", settingsRoutes);
+app.use("/api/v1/sdr", sdrRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
@@ -166,4 +168,4 @@ process.on("uncaughtException", (err) => {
 
 module.exports = { app, server };
 
- 
+
