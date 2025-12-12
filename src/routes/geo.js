@@ -8,7 +8,7 @@ const router = express.Router();
 const geoController = require("../controllers/geoController");
 const enrichmentController = require("../controllers/enrichmentController");
 const adminEnrichmentController = require("../controllers/adminEnrichmentController");
-const { authenticateJWT, optionalAuth, requireAdmin } = require("../middleware/auth");
+const { authenticateJWT, authenticateJWTOrServiceKey, optionalAuth, requireAdmin } = require("../middleware/auth");
 
 // ============================================
 // RUTAS PÚBLICAS (Solo lectura de datos)
@@ -107,7 +107,7 @@ router.get("/states", geoController.getStates);
 router.get("/states/:stateCode/municipalities", geoController.getMunicipalities);
 
 // ============================================
-// RUTAS PROTEGIDAS (Requieren autenticación)
+// RUTAS PROTEGIDAS (Requieren autenticación JWT o Service Key)
 // ============================================
 
 /**
@@ -115,21 +115,21 @@ router.get("/states/:stateCode/municipalities", geoController.getMunicipalities)
  * Asignar un establecimiento como prospect
  * Body: { establishmentId, notes }
  */
-router.post("/prospects/assign", authenticateJWT, geoController.assignProspect);
+router.post("/prospects/assign", authenticateJWTOrServiceKey, geoController.assignProspect);
 
 /**
  * POST /api/v1/geo/prospects/:id/convert
  * Convertir un prospect a lead
  * Body: { contactName, email, phone, interests }
  */
-router.post("/prospects/:id/convert", authenticateJWT, geoController.convertProspect);
+router.post("/prospects/:id/convert", authenticateJWTOrServiceKey, geoController.convertProspect);
 
 /**
  * GET /api/v1/geo/prospects
  * Obtener prospects del partner autenticado
  * Query params: status
  */
-router.get("/prospects", authenticateJWT, geoController.getMyProspects);
+router.get("/prospects", authenticateJWTOrServiceKey, geoController.getMyProspects);
 
 // ============================================
 // RUTAS DE ENRIQUECIMIENTO (Sistema 4 Mapas)
@@ -140,21 +140,21 @@ router.get("/prospects", authenticateJWT, geoController.getMyProspects);
  * Obtener enriquecimientos realizados por el partner autenticado
  * Query params: level (optional)
  */
-router.get("/enrichment/my", authenticateJWT, enrichmentController.getMyEnrichments);
+router.get("/enrichment/my", authenticateJWTOrServiceKey, enrichmentController.getMyEnrichments);
 
 /**
  * GET /api/v1/geo/enrichment/my/stats
  * Obtener estadísticas por nivel del partner autenticado
  * Returns: { CONTACT: n, PROSPECT: n, LEAD: n, CLIENT: n }
  */
-router.get("/enrichment/my/stats", authenticateJWT, enrichmentController.getMyStats);
+router.get("/enrichment/my/stats", authenticateJWTOrServiceKey, enrichmentController.getMyStats);
 
 /**
  * POST /api/v1/geo/enrichment/import
  * Importar múltiples enriquecimientos desde CSV/JSON
  * Body: { data: [{ establishmentId, decisionMakerName, ... }] }
  */
-router.post("/enrichment/import", authenticateJWT, enrichmentController.bulkImport);
+router.post("/enrichment/import", authenticateJWTOrServiceKey, enrichmentController.bulkImport);
 
 // ============================================
 // RUTAS ADMIN (Requieren rol ADMIN)
@@ -197,7 +197,7 @@ router.delete("/enrichment/admin/:establishmentId", authenticateJWT, requireAdmi
  * GET /api/v1/geo/enrichment/:establishmentId
  * Obtener datos de enriquecimiento de un establecimiento
  */
-router.get("/enrichment/:establishmentId", authenticateJWT, enrichmentController.getEnrichment);
+router.get("/enrichment/:establishmentId", authenticateJWTOrServiceKey, enrichmentController.getEnrichment);
 
 /**
  * POST /api/v1/geo/enrichment/:establishmentId
@@ -205,12 +205,12 @@ router.get("/enrichment/:establishmentId", authenticateJWT, enrichmentController
  * Body: { decisionMakerName, decisionMakerPosition, decisionMakerPhone, 
  *         decisionMakerWhatsApp, decisionMakerEmail, intent, fear, pain, desire }
  */
-router.post("/enrichment/:establishmentId", authenticateJWT, enrichmentController.updateEnrichment);
+router.post("/enrichment/:establishmentId", authenticateJWTOrServiceKey, enrichmentController.updateEnrichment);
 
 /**
  * DELETE /api/v1/geo/enrichment/:establishmentId
  * Eliminar un enriquecimiento
  */
-router.delete("/enrichment/:establishmentId", authenticateJWT, enrichmentController.deleteEnrichment);
+router.delete("/enrichment/:establishmentId", authenticateJWTOrServiceKey, enrichmentController.deleteEnrichment);
 
 module.exports = router;

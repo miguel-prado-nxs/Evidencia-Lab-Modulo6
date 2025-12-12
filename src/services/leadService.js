@@ -118,7 +118,12 @@ const listLeads = async (filters = {}) => {
   const where = {};
 
   if (partnerId) where.partnerId = partnerId;
-  if (status) where.status = status;
+  if (status) {
+    where.status = status;
+  } else {
+    // Por defecto, excluir clientes (WON) del listado de leads
+    where.status = { not: "WON" };
+  }
   if (utmCampaign) where.utmCampaign = utmCampaign;
   if (utmSource) where.utmSource = utmSource;
   if (search) {

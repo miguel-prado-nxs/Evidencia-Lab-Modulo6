@@ -697,12 +697,8 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
 
   // Para niveles que requieren enriquecimiento (PROSPECT, LEAD, CLIENT)
   if (level === "PROSPECT" || level === "LEAD" || level === "CLIENT") {
-    // Primero obtener enriquecimientos que cumplan el nivel desde Partners DB
-    const levelFilter = level === "PROSPECT" 
-      ? { in: ["PROSPECT", "LEAD", "CLIENT"] }
-      : level === "LEAD"
-        ? { in: ["LEAD", "CLIENT"] }
-        : "CLIENT";
+    // Filtrar estrictamente por el nivel solicitado
+    const levelFilter = level;
 
     const enrichments = await prisma.establishmentEnrichment.findMany({
       where: { level: levelFilter },
