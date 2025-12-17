@@ -1,9 +1,22 @@
+/**
+ * SDR Controller
+ * Controlador para endpoints del Agente SDR
+ * 
+ * Recibe llamadas desde agentes-crm-sdk para:
+ * - Reportar resultados de llamadas de calificación
+ * - Obtener contexto de establecimientos antes de llamar
+ * - Obtener estadísticas de rendimiento SDR
+ */
+
 const { PrismaClient } = require("@prisma/client");
+const sdrService = require("../services/sdrService");
+const logger = require("../config/logger");
+
 const prisma = new PrismaClient();
 
 /**
- * Maneja el resultado de una llamada SDR.
- * Guarda información del tomador de decisiones y resultado de la llamada.
+ * POST /api/v1/sdr/call-result
+ * Recibe resultado de llamada SDR desde agentes-crm-sdk.
  * 
  * @route POST /api/v1/sdr/call-result
  * @access Privado (requiere API Key)
@@ -68,7 +81,9 @@ async function handleCallResult(req, res, next) {
         // Test Mode: permitir IDs de prueba en development.
         const isTestId = establishmentId.startsWith("test-");
         if (process.env.NODE_ENV === "development" && isTestId) {
-            console.log(`[SDR TEST MODE] Procesando ID de prueba: ${establishmentId}`);
+            logger.info(`[SDR TEST MODE] Procesando ID de prueba: ${establishmentId}`, {
+                apiKey: req.apiKey?.name,
+            });
             
             return res.status(201).json({
                 success: true,
@@ -96,26 +111,21 @@ async function handleCallResult(req, res, next) {
             });
         }
 
-        // Buscar establecimiento en Mapa DB.
-        // NOTA: Como establishmentId es referencia a otra DB, NO podemos hacer
-        // FK constraint. Asumimos que el ID es válido si viene del agente.
-        // En producción, aquí harías una llamada a Mapa API para validar.
-
         // Buscar enriquecimiento existente.
         let enrichment = await prisma.establishmentEnrichment.findUnique({
             where: { establishmentId: establishmentId },
         });
 
-        // Preparar datos para upsert.
+        // Preparar datos para upsert (usa nuevas columnas de migración).
         const enrichmentData = {
-            // Actualizar solo si hay nuevos datos.
+            // Decision Maker fields (solo actualizar si hay nuevos datos).
             ...(decisionMaker.name && { decisionMakerName: decisionMaker.name }),
             ...(decisionMaker.position && { decisionMakerPosition: decisionMaker.position }),
             ...(decisionMaker.phone && { decisionMakerPhone: decisionMaker.phone }),
             ...(decisionMaker.whatsapp && { decisionMakerWhatsApp: decisionMaker.whatsapp }),
             ...(decisionMaker.email && { decisionMakerEmail: decisionMaker.email }),
             
-            // Campos SDR (siempre actualizar).
+            // Campos SDR (siempre actualizar con nuevas columnas de migración).
             gatekeeperInfo: gatekeeperInfo && Object.keys(gatekeeperInfo).length > 0 
                 ? gatekeeperInfo 
                 : null,
@@ -150,13 +160,19 @@ async function handleCallResult(req, res, next) {
             });
         }
 
+        logger.info(`SDR call result saved for ${establishmentId}`, {
+            apiKey: req.apiKey?.name,
+            status: callStatus,
+            enrichmentStatus: enrichmentStatus,
+        });
+
         return res.status(201).json({
             success: true,
             message: "Call result guardado exitosamente",
             enrichment: enrichment,
         });
     } catch (error) {
-        console.error("[SDR Controller] Error guardando call result:", error);
+        logger.error("[SDR Controller] Error guardando call result:", error);
         
         // Prisma error handling.
         if (error.code === "P2002") {
@@ -166,10 +182,83 @@ async function handleCallResult(req, res, next) {
             });
         }
         
+        if (error.message === "Establecimiento no encontrado") {
+            return res.status(404).json({
+                success: false,
+                error: error.message,
+            });
+        }
+        
+        next(error);
+    }
+}
+
+/**
+ * GET /api/v1/sdr/establishment/:id
+ * Obtiene datos del establecimiento para contexto del agente SDR.
+ * 
+ * @route GET /api/v1/sdr/establishment/:id
+ * @access Privado (requiere API Key)
+ */
+async function getEstablishmentForCall(req, res, next) {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return res.status(400).json({
+                success: false,
+                error: "ID de establecimiento requerido",
+            });
+        }
+
+        const data = await sdrService.getEstablishmentForCall(id);
+
+        logger.info(`SDR establishment data retrieved for ${id}`, {
+            apiKey: req.apiKey?.name,
+        });
+
+        res.json({
+            success: true,
+            data,
+        });
+    } catch (error) {
+        if (error.message === "Establecimiento no encontrado") {
+            return res.status(404).json({
+                success: false,
+                error: error.message,
+            });
+        }
+        next(error);
+    }
+}
+
+/**
+ * GET /api/v1/sdr/stats
+ * Obtiene estadísticas de SDR para dashboard.
+ * 
+ * @route GET /api/v1/sdr/stats
+ * @access Privado (requiere API Key)
+ */
+async function getStats(req, res, next) {
+    try {
+        const stats = await sdrService.getSDRStats();
+
+        logger.info("SDR stats retrieved", {
+            apiKey: req.apiKey?.name,
+        });
+
+        res.json({
+            success: true,
+            data: stats,
+        });
+    } catch (error) {
+        logger.error("[SDR Controller] Error obteniendo stats:", error);
         next(error);
     }
 }
 
 module.exports = {
     handleCallResult,
+    getEstablishmentForCall,
+    getStats,
 };
