@@ -1,34 +1,29 @@
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
 /**
- * SDR Controller
- * Controlador para endpoints del Agente SDR
+ * Maneja el resultado de una llamada SDR.
+ * Guarda información del tomador de decisiones y resultado de la llamada.
  * 
- * Recibe llamadas desde agentes-crm-sdk para:
- * - Reportar resultados de llamadas de calificación
- * - Obtener contexto de establecimientos antes de llamar
- */
-
-const sdrService = require("../services/sdrService");
-const logger = require("../config/logger");
-
-/**
- * POST /api/v1/sdr/call-result
- * Recibe resultado de llamada SDR desde agentes-crm-sdk
+ * @route POST /api/v1/sdr/call-result
+ * @access Privado (requiere API Key)
  */
 async function handleCallResult(req, res, next) {
     try {
         const {
             establishmentId,
-            decisionMaker,
+            callStatus,
             enrichmentStatus,
+            decisionMaker = {},
+            gatekeeperInfo = {},
             callSummary,
-            gatekeeperInfo,
             strategy,
             callAttempts,
             callDurationSeconds,
-            callStatus,
+            bestCallTime,
         } = req.body;
 
-        // Validación básica
+        // Validación básica.
         if (!establishmentId) {
             return res.status(400).json({
                 success: false,
@@ -36,106 +31,145 @@ async function handleCallResult(req, res, next) {
             });
         }
 
-        // VALIDACIÓN DE enrichmentStatus
-        const validStatuses = [
+        // Validar enrichmentStatus.
+        const validEnrichmentStatuses = [
             "contacted",
             "identified",
             "callback_scheduled",
             "not_found",
             "gatekeeper_blocked",
-            "dnc"  
+            "dnc",
         ];
-
-        if (enrichmentStatus && !validStatuses.includes(enrichmentStatus)) {
+        if (enrichmentStatus && !validEnrichmentStatuses.includes(enrichmentStatus)) {
             return res.status(400).json({
                 success: false,
-                error: `enrichmentStatus inválido. Valores válidos: ${validStatuses.join(", ")}`,
+                error: `enrichmentStatus inválido. Valores válidos: ${validEnrichmentStatuses.join(", ")}`,
             });
         }
 
-        // Guardar resultado
-        const enrichment = await sdrService.saveCallResult(establishmentId, {
-            decisionMaker,
-            enrichmentStatus,
-            callSummary,
-            gatekeeperInfo,
-            strategy,
-            callAttempts,
-            callDurationSeconds,
-            callStatus,
-        });
-
-        logger.info(`SDR call result received for ${establishmentId}`, {
-            apiKey: req.apiKey?.name,
-            status: callStatus,
-        });
-
-        res.json({
-            success: true,
-            enrichment,
-        });
-    } catch (error) {
-        if (error.message === "Establecimiento no encontrado") {
-            return res.status(404).json({
-                success: false,
-                error: error.message,
-            });
-        }
-        next(error);
-    }
-}
-
-/**
- * GET /api/v1/sdr/establishment/:id
- * Obtiene datos del establecimiento para contexto del agente SDR
- */
-async function getEstablishmentForCall(req, res, next) {
-    try {
-        const { id } = req.params;
-
-        if (!id) {
+        // Validar callStatus.
+        const validCallStatuses = ["completed", "no_answer", "voicemail", "failed"];
+        if (callStatus && !validCallStatuses.includes(callStatus)) {
             return res.status(400).json({
                 success: false,
-                error: "ID de establecimiento requerido",
+                error: `callStatus inválido. Valores válidos: ${validCallStatuses.join(", ")}`,
             });
         }
 
-        const data = await sdrService.getEstablishmentForCall(id);
-
-        res.json({
-            success: true,
-            data,
-        });
-    } catch (error) {
-        if (error.message === "Establecimiento no encontrado") {
-            return res.status(404).json({
+        // Validar strategy.
+        const validStrategies = ["A", "B", "N/A"];
+        if (strategy && !validStrategies.includes(strategy)) {
+            return res.status(400).json({
                 success: false,
-                error: error.message,
+                error: `strategy inválido. Valores válidos: ${validStrategies.join(", ")}`,
             });
         }
-        next(error);
-    }
-}
 
-/**
- * GET /api/v1/sdr/stats
- * Obtiene estadísticas de SDR para dashboard
- */
-async function getStats(req, res, next) {
-    try {
-        const stats = await sdrService.getSDRStats();
+        // Test Mode: permitir IDs de prueba en development.
+        const isTestId = establishmentId.startsWith("test-");
+        if (process.env.NODE_ENV === "development" && isTestId) {
+            console.log(`[SDR TEST MODE] Procesando ID de prueba: ${establishmentId}`);
+            
+            return res.status(201).json({
+                success: true,
+                message: "Call result guardado exitosamente (TEST MODE)",
+                enrichment: {
+                    id: `enrichment-test-${Date.now()}`,
+                    establishment_id: establishmentId,
+                    decision_maker_name: decisionMaker.name || null,
+                    decision_maker_position: decisionMaker.position || null,
+                    decision_maker_phone: decisionMaker.phone || null,
+                    decision_maker_email: decisionMaker.email || null,
+                    gatekeeper_name: gatekeeperInfo.name || null,
+                    gatekeeper_info: gatekeeperInfo,
+                    call_summary: callSummary,
+                    strategy: strategy,
+                    call_attempts: callAttempts || 1,
+                    call_duration_seconds: callDurationSeconds || 0,
+                    call_status: callStatus,
+                    enrichment_status: enrichmentStatus,
+                    best_call_time: bestCallTime || null,
+                    enriched_by: "SDR Agent",
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                },
+            });
+        }
 
-        res.json({
+        // Buscar establecimiento en Mapa DB.
+        // NOTA: Como establishmentId es referencia a otra DB, NO podemos hacer
+        // FK constraint. Asumimos que el ID es válido si viene del agente.
+        // En producción, aquí harías una llamada a Mapa API para validar.
+
+        // Buscar enriquecimiento existente.
+        let enrichment = await prisma.establishmentEnrichment.findUnique({
+            where: { establishmentId: establishmentId },
+        });
+
+        // Preparar datos para upsert.
+        const enrichmentData = {
+            // Actualizar solo si hay nuevos datos.
+            ...(decisionMaker.name && { decisionMakerName: decisionMaker.name }),
+            ...(decisionMaker.position && { decisionMakerPosition: decisionMaker.position }),
+            ...(decisionMaker.phone && { decisionMakerPhone: decisionMaker.phone }),
+            ...(decisionMaker.whatsapp && { decisionMakerWhatsApp: decisionMaker.whatsapp }),
+            ...(decisionMaker.email && { decisionMakerEmail: decisionMaker.email }),
+            
+            // Campos SDR (siempre actualizar).
+            gatekeeperInfo: gatekeeperInfo && Object.keys(gatekeeperInfo).length > 0 
+                ? gatekeeperInfo 
+                : null,
+            callSummary: callSummary,
+            strategy: strategy,
+            callAttempts: callAttempts || 1,
+            callDurationSeconds: callDurationSeconds || 0,
+            callStatus: callStatus,
+            enrichmentStatus: enrichmentStatus,
+            bestCallTime: bestCallTime || null,
+            
+            // Metadata.
+            enrichedBy: "SDR Agent",
+            enrichedAt: new Date(),
+            lastUpdatedBy: "SDR Agent",
+            updatedAt: new Date(),
+        };
+
+        if (enrichment) {
+            // Actualizar enriquecimiento existente.
+            enrichment = await prisma.establishmentEnrichment.update({
+                where: { id: enrichment.id },
+                data: enrichmentData,
+            });
+        } else {
+            // Crear nuevo enriquecimiento.
+            enrichment = await prisma.establishmentEnrichment.create({
+                data: {
+                    establishmentId: establishmentId,
+                    ...enrichmentData,
+                },
+            });
+        }
+
+        return res.status(201).json({
             success: true,
-            data: stats,
+            message: "Call result guardado exitosamente",
+            enrichment: enrichment,
         });
     } catch (error) {
+        console.error("[SDR Controller] Error guardando call result:", error);
+        
+        // Prisma error handling.
+        if (error.code === "P2002") {
+            return res.status(409).json({
+                success: false,
+                error: "Ya existe un enriquecimiento para este establecimiento",
+            });
+        }
+        
         next(error);
     }
 }
 
 module.exports = {
     handleCallResult,
-    getEstablishmentForCall,
-    getStats,
 };
