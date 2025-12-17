@@ -36,6 +36,23 @@ async function handleCallResult(req, res, next) {
             });
         }
 
+        // VALIDACIÓN DE enrichmentStatus
+        const validStatuses = [
+            "contacted",
+            "identified",
+            "callback_scheduled",
+            "not_found",
+            "gatekeeper_blocked",
+            "dnc"  
+        ];
+
+        if (enrichmentStatus && !validStatuses.includes(enrichmentStatus)) {
+            return res.status(400).json({
+                success: false,
+                error: `enrichmentStatus inválido. Valores válidos: ${validStatuses.join(", ")}`,
+            });
+        }
+
         // Guardar resultado
         const enrichment = await sdrService.saveCallResult(establishmentId, {
             decisionMaker,
