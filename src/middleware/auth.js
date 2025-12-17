@@ -89,13 +89,13 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
     if (serviceKey) {
       // Verificar la clave de servicio
       const validServiceKey = process.env.VENTAS_SERVICE_KEY || "ventas-easyorder-2024";
-      
+
       logger.debug("Service Key validation:", {
         received: serviceKey,
         expected: validServiceKey,
         match: serviceKey === validServiceKey,
       });
-      
+
       if (serviceKey !== validServiceKey) {
         return res.status(401).json({
           success: false,
@@ -123,7 +123,7 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
           salesPartner = await prisma.partner.findUnique({
             where: { userId: existingUser.id },
           });
-          
+
           if (!salesPartner) {
             // Generar referralLink único para el partner de Ventas
             const referralCode = `VENTAS-${salesPartnerId}-${Date.now().toString(36)}`;
@@ -139,13 +139,13 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
               },
             });
           }
-          
+
           req.user = { ...existingUser, partner: salesPartner };
         } else {
           // Crear usuario y partner nuevos
           const bcrypt = require("bcryptjs");
           const passwordHash = await bcrypt.hash("ventas-internal-" + Date.now(), 10);
-          
+
           const newUser = await prisma.user.create({
             data: {
               email: salesUserEmail,
@@ -240,11 +240,42 @@ const optionalAuth = async (req, res, next) => {
     } else if (serviceKey) {
       const validServiceKey = process.env.VENTAS_SERVICE_KEY || "ventas-easyorder-2024";
       if (serviceKey === validServiceKey) {
-        // Configurar usuario de servicio mínimo
         req.isServiceKey = true;
+
+        // Obtener datos del usuario de Ventas desde headers
+        const salesPartnerId = req.headers["x-sales-user-id"] || "ventas-default";
+        const salesUserEmail = req.headers["x-sales-user-email"] || "ventas@easyorder.mx";
+
+        try {
+          // Buscar el partner de Ventas existente
+          let salesPartner = await prisma.partner.findUnique({
+            where: { code: `VENTAS-${salesPartnerId}` },
+          });
+
+          if (salesPartner) {
+            const user = await prisma.user.findUnique({
+              where: { id: salesPartner.userId },
+            });
+            if (user) {
+              req.user = { ...user, partner: salesPartner };
+            }
+          } else {
+            // Buscar por email si no encontramos por código
+            const existingUser = await prisma.user.findUnique({
+              where: { email: salesUserEmail },
+              include: { partner: true },
+            });
+            if (existingUser && existingUser.partner) {
+              req.user = existingUser;
+            }
+          }
+        } catch (err) {
+          // Si falla la búsqueda, continuar sin usuario (solo isServiceKey)
+          logger.debug("optionalAuth: No se pudo cargar usuario de Ventas:", err.message);
+        }
       }
     }
-    
+
     next();
   } catch {
     next();

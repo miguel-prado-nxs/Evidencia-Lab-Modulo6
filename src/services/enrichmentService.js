@@ -380,18 +380,20 @@ async function bulkImportEnrichments(data, partnerId) {
  * Combina estadísticas de Mapa DB (totales) con Partners DB
  * 
  * ARQUITECTURA DE CONTEOS:
- * - ESTABLISHMENT: Total de establecimientos en Mapa DB
- * - CONTACT: Establecimientos con phone/email/website en Mapa DB
- * - PROSPECT: Conteo desde tabla lead_prospects (asignaciones)
- * - LEAD: Conteo desde tabla leads (leads convertidos)
- * - CLIENT: Conteo desde establishment_enrichments con level=CLIENT
+ * - ESTABLISHMENT: Total de establecimientos en Mapa DB (siempre global)
+ * - CONTACT: Establecimientos con phone/email/website en Mapa DB (siempre global)
+ * - PROSPECT: Conteo desde establishment_enrichments con level=PROSPECT (filtrado por partner si autenticado)
+ * - LEAD: Conteo desde establishment_enrichments con level=LEAD (filtrado por partner si autenticado)
+ * - CLIENT: Conteo desde establishment_enrichments con level=CLIENT (filtrado por partner si autenticado)
+ * 
+ * @param {string|null} partnerId - ID del partner para filtrar (opcional)
  */
-async function getStatsByLevel() {
+async function getStatsByLevel(partnerId = null) {
   try {
-    // Contar establecimientos totales de Mapa DB
+    // Contar establecimientos totales de Mapa DB (siempre global)
     const totalEstablishments = await prismaGeo.establishment.count();
 
-    // Contar establecimientos con contacto (phone/email/website) de Mapa DB
+    // Contar establecimientos con contacto (phone/email/website) de Mapa DB (siempre global)
     const totalContacts = await prismaGeo.establishment.count({
       where: {
         OR: [
@@ -402,15 +404,22 @@ async function getStatsByLevel() {
       },
     });
 
-    // Contar prospectos desde lead_prospects
-    const totalProspects = await prisma.leadProspect.count({ where: { status: "ASSIGNED" } });
+    // Construir filtro base para niveles PROSPECT, LEAD, CLIENT
+    const enrichmentWhereBase = partnerId ? { enrichedBy: partnerId } : {};
 
-    // Contar leads desde tabla leads
-    const totalLeads = await prisma.lead.count();
+    // Contar prospectos desde enrichments con level=PROSPECT
+    const totalProspects = await prisma.establishmentEnrichment.count({
+      where: { ...enrichmentWhereBase, level: "PROSPECT" },
+    });
+
+    // Contar leads desde enrichments con level=LEAD
+    const totalLeads = await prisma.establishmentEnrichment.count({
+      where: { ...enrichmentWhereBase, level: "LEAD" },
+    });
 
     // Contar clientes desde enrichments con level=CLIENT
     const totalClients = await prisma.establishmentEnrichment.count({
-      where: { level: "CLIENT" },
+      where: { ...enrichmentWhereBase, level: "CLIENT" },
     });
 
     return {
@@ -452,7 +461,7 @@ async function getStatsByLevelForPartner(partnerId) {
 
     // Obtener IDs de establecimientos que ya tienen nivel LEAD o CLIENT
     const advancedEnrichments = await prisma.establishmentEnrichment.findMany({
-      where: { 
+      where: {
         enrichedBy: partnerId,
         level: { in: ["LEAD", "CLIENT"] }
       },
@@ -462,8 +471,8 @@ async function getStatsByLevelForPartner(partnerId) {
 
     // Contar prospectos asignados EXCLUYENDO los que ya avanzaron a LEAD o CLIENT
     const totalProspects = await prisma.leadProspect.count({
-      where: { 
-        partnerId, 
+      where: {
+        partnerId,
         status: "ASSIGNED",
         establishmentId: advancedIds.length > 0 ? { notIn: advancedIds } : undefined
       },
@@ -563,7 +572,7 @@ async function getProspectsByPartner(partnerId) {
   try {
     // Primero obtener IDs de establecimientos que ya tienen nivel LEAD o CLIENT
     const advancedEnrichments = await prisma.establishmentEnrichment.findMany({
-      where: { 
+      where: {
         enrichedBy: partnerId,
         level: { in: ["LEAD", "CLIENT"] }
       },
@@ -573,8 +582,8 @@ async function getProspectsByPartner(partnerId) {
 
     // Obtener prospectos del partner (solo ASSIGNED) EXCLUYENDO los avanzados
     const prospects = await prisma.leadProspect.findMany({
-      where: { 
-        partnerId, 
+      where: {
+        partnerId,
         status: "ASSIGNED",
         establishmentId: advancedIds.length > 0 ? { notIn: advancedIds } : undefined
       },
@@ -626,7 +635,7 @@ async function getProspectsByPartner(partnerId) {
       .map((p) => {
         const establishment = establishmentMap[p.establishmentId] || null;
         const enrichment = enrichmentMap[p.establishmentId] || null;
-        
+
         return {
           id: enrichment?.id || p.id,
           establishmentId: p.establishmentId,

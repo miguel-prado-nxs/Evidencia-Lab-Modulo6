@@ -136,10 +136,16 @@ async function bulkImport(req, res, next) {
 /**
  * GET /api/v1/geo/stats/levels
  * Obtener estadísticas por nivel de enriquecimiento
+ * 
+ * Si el usuario está autenticado, PROSPECT, LEAD y CLIENT
+ * se filtran por su partnerId.
  */
 async function getStatsByLevel(req, res, next) {
   try {
-    const stats = await enrichmentService.getStatsByLevel();
+    // Obtener partnerId si el usuario está autenticado
+    const partnerId = req.user?.partner?.id || null;
+
+    const stats = await enrichmentService.getStatsByLevel(partnerId);
 
     res.json({
       success: true,

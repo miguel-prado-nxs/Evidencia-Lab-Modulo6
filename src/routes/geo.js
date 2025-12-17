@@ -59,17 +59,23 @@ router.get("/stats", geoController.getStats);
 /**
  * GET /api/v1/geo/stats/levels
  * Obtener estadísticas por nivel de enriquecimiento
- * Returns: { ESTABLISHMENT: n, CONTACT: n, PROSPECT: n, LEAD: n }
+ * Returns: { ESTABLISHMENT: n, CONTACT: n, PROSPECT: n, LEAD: n, CLIENT: n }
+ * 
+ * NOTA: Usa autenticación opcional. Si el usuario está autenticado,
+ * PROSPECT, LEAD y CLIENT se filtran por su partnerId.
  */
-router.get("/stats/levels", enrichmentController.getStatsByLevel);
+router.get("/stats/levels", optionalAuth, enrichmentController.getStatsByLevel);
 
 /**
  * GET /api/v1/geo/establishments/level/:level
  * Obtener establecimientos filtrados por nivel
- * Params: level (ESTABLISHMENT, CONTACT, PROSPECT, LEAD)
+ * Params: level (ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT)
  * Query params: north, south, east, west, activity, limit, offset
+ * 
+ * NOTA: Usa autenticación opcional. Si el usuario está autenticado,
+ * los niveles PROSPECT, LEAD y CLIENT se filtran por su partnerId.
  */
-router.get("/establishments/level/:level", geoController.getEstablishmentsByLevel);
+router.get("/establishments/level/:level", optionalAuth, geoController.getEstablishmentsByLevel);
 
 /**
  * GET /api/v1/geo/search
