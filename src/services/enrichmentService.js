@@ -380,18 +380,20 @@ async function bulkImportEnrichments(data, partnerId) {
  * Combina estadísticas de Mapa DB (totales) con Partners DB
  * 
  * ARQUITECTURA DE CONTEOS:
- * - ESTABLISHMENT: Total de establecimientos en Mapa DB
- * - CONTACT: Establecimientos con phone/email/website en Mapa DB
- * - PROSPECT: Conteo desde tabla lead_prospects (asignaciones)
- * - LEAD: Conteo desde tabla leads (leads convertidos)
- * - CLIENT: Conteo desde establishment_enrichments con level=CLIENT
+ * - ESTABLISHMENT: Total de establecimientos en Mapa DB (siempre global)
+ * - CONTACT: Establecimientos con phone/email/website en Mapa DB (siempre global)
+ * - PROSPECT: Conteo desde establishment_enrichments con level=PROSPECT (filtrado por partner si autenticado)
+ * - LEAD: Conteo desde establishment_enrichments con level=LEAD (filtrado por partner si autenticado)
+ * - CLIENT: Conteo desde establishment_enrichments con level=CLIENT (filtrado por partner si autenticado)
+ * 
+ * @param {string|null} partnerId - ID del partner para filtrar (opcional)
  */
-async function getStatsByLevel() {
+async function getStatsByLevel(partnerId = null) {
   try {
-    // Contar establecimientos totales de Mapa DB
+    // Contar establecimientos totales de Mapa DB (siempre global)
     const totalEstablishments = await prismaGeo.establishment.count();
 
-    // Contar establecimientos con contacto (phone/email/website) de Mapa DB
+    // Contar establecimientos con contacto (phone/email/website) de Mapa DB (siempre global)
     const totalContacts = await prismaGeo.establishment.count({
       where: {
         OR: [
@@ -402,15 +404,22 @@ async function getStatsByLevel() {
       },
     });
 
-    // Contar prospectos desde lead_prospects
-    const totalProspects = await prisma.leadProspect.count({ where: { status: "ASSIGNED" } });
+    // Construir filtro base para niveles PROSPECT, LEAD, CLIENT
+    const enrichmentWhereBase = partnerId ? { enrichedBy: partnerId } : {};
 
-    // Contar leads desde tabla leads
-    const totalLeads = await prisma.lead.count();
+    // Contar prospectos desde enrichments con level=PROSPECT
+    const totalProspects = await prisma.establishmentEnrichment.count({
+      where: { ...enrichmentWhereBase, level: "PROSPECT" },
+    });
+
+    // Contar leads desde enrichments con level=LEAD
+    const totalLeads = await prisma.establishmentEnrichment.count({
+      where: { ...enrichmentWhereBase, level: "LEAD" },
+    });
 
     // Contar clientes desde enrichments con level=CLIENT
     const totalClients = await prisma.establishmentEnrichment.count({
-      where: { level: "CLIENT" },
+      where: { ...enrichmentWhereBase, level: "CLIENT" },
     });
 
     return {
@@ -430,15 +439,15 @@ async function getStatsByLevel() {
  * Obtener estadísticas por nivel para un partner específico
  * Lee de Partners DB
  * 
- * ARQUITECTURA:
- * - CONTACT: Enriquecimientos del partner con level >= CONTACT
- * - PROSPECT: lead_prospects asignados al partner
- * - LEAD: leads del partner
- * - CLIENT: Enriquecimientos del partner con level=CLIENT
+ * ARQUITECTURA SIMPLIFICADA - EstablishmentEnrichment es la fuente de verdad:
+ * - CONTACT: enrichments con level=CONTACT
+ * - PROSPECT: lead_prospects asignados EXCLUYENDO los que ya tienen level >= LEAD
+ * - LEAD: enrichments con level=LEAD
+ * - CLIENT: enrichments con level=CLIENT
  */
 async function getStatsByLevelForPartner(partnerId) {
   try {
-    // Contar enriquecimientos del partner (solo para CONTACT y CLIENT)
+    // Contar enriquecimientos del partner por nivel
     const enrichmentStats = await prisma.establishmentEnrichment.groupBy({
       by: ["level"],
       where: { enrichedBy: partnerId },
@@ -450,20 +459,29 @@ async function getStatsByLevelForPartner(partnerId) {
       return acc;
     }, {});
 
-    // Contar prospectos asignados al partner
-    const totalProspects = await prisma.leadProspect.count({
-      where: { partnerId, status: "ASSIGNED" },
+    // Obtener IDs de establecimientos que ya tienen nivel LEAD o CLIENT
+    const advancedEnrichments = await prisma.establishmentEnrichment.findMany({
+      where: {
+        enrichedBy: partnerId,
+        level: { in: ["LEAD", "CLIENT"] }
+      },
+      select: { establishmentId: true },
     });
+    const advancedIds = advancedEnrichments.map(e => e.establishmentId);
 
-    // Contar leads del partner
-    const totalLeads = await prisma.lead.count({
-      where: { partnerId },
+    // Contar prospectos asignados EXCLUYENDO los que ya avanzaron a LEAD o CLIENT
+    const totalProspects = await prisma.leadProspect.count({
+      where: {
+        partnerId,
+        status: "ASSIGNED",
+        establishmentId: advancedIds.length > 0 ? { notIn: advancedIds } : undefined
+      },
     });
 
     return {
       CONTACT: enrichmentByLevel.CONTACT || 0,
       PROSPECT: totalProspects,
-      LEAD: totalLeads,
+      LEAD: enrichmentByLevel.LEAD || 0,
       CLIENT: enrichmentByLevel.CLIENT || 0,
     };
   } catch (error) {
@@ -475,26 +493,22 @@ async function getStatsByLevelForPartner(partnerId) {
 /**
  * Obtener datos del partner según el nivel solicitado
  * 
- * ARQUITECTURA:
- * - CONTACT/CLIENT: Obtiene de establishment_enrichments
- * - PROSPECT: Obtiene de lead_prospects (asignaciones del partner)
- * - LEAD: Obtiene de tabla leads (leads del partner)
+ * ARQUITECTURA SIMPLIFICADA - EstablishmentEnrichment es la fuente de verdad:
+ * - CONTACT: enrichments con level=CONTACT
+ * - PROSPECT: lead_prospects asignados EXCLUYENDO los que ya tienen level >= LEAD
+ * - LEAD: enrichments con level=LEAD
+ * - CLIENT: enrichments con level=CLIENT
  * 
  * Combina con datos de establecimientos de Mapa DB
  */
 async function getEnrichmentsByPartner(partnerId, level = null) {
   try {
-    // Si piden PROSPECT, obtener de lead_prospects
+    // Para PROSPECT: obtener de lead_prospects EXCLUYENDO los que ya avanzaron
     if (level === "PROSPECT") {
       return await getProspectsByPartner(partnerId);
     }
 
-    // Si piden LEAD, obtener de tabla leads
-    if (level === "LEAD") {
-      return await getLeadsByPartner(partnerId);
-    }
-
-    // Para CONTACT y CLIENT, obtener de enrichments
+    // Para CONTACT, LEAD y CLIENT: obtener directamente de EstablishmentEnrichment
     const where = { enrichedBy: partnerId };
     if (level) {
       where.level = level;
@@ -536,11 +550,13 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
       return acc;
     }, {});
 
-    // Combinar datos
-    return enrichments.map((e) => ({
-      ...e,
-      establishment: establishmentMap[e.establishmentId] || null,
-    }));
+    // Combinar datos - filtrar los que no tienen establishment válido
+    return enrichments
+      .map((e) => ({
+        ...e,
+        establishment: establishmentMap[e.establishmentId] || null,
+      }))
+      .filter((e) => e.establishment !== null);
   } catch (error) {
     logger.error("Error obteniendo enriquecimientos del partner:", error);
     throw error;
@@ -549,15 +565,34 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
 
 /**
  * Obtener prospectos asignados al partner desde lead_prospects
+ * EXCLUYE los que ya tienen enrichment con nivel LEAD o CLIENT
  * Combina con datos de establecimiento de Mapa DB y enriquecimiento de Partners DB
  */
 async function getProspectsByPartner(partnerId) {
   try {
-    // Obtener prospectos del partner (solo ASSIGNED)
+    // Primero obtener IDs de establecimientos que ya tienen nivel LEAD o CLIENT
+    const advancedEnrichments = await prisma.establishmentEnrichment.findMany({
+      where: {
+        enrichedBy: partnerId,
+        level: { in: ["LEAD", "CLIENT"] }
+      },
+      select: { establishmentId: true },
+    });
+    const advancedIds = advancedEnrichments.map(e => e.establishmentId);
+
+    // Obtener prospectos del partner (solo ASSIGNED) EXCLUYENDO los avanzados
     const prospects = await prisma.leadProspect.findMany({
-      where: { partnerId, status: "ASSIGNED" },
+      where: {
+        partnerId,
+        status: "ASSIGNED",
+        establishmentId: advancedIds.length > 0 ? { notIn: advancedIds } : undefined
+      },
       orderBy: { createdAt: "desc" },
     });
+
+    if (prospects.length === 0) {
+      return [];
+    }
 
     // Obtener IDs de establecimientos
     const establishmentIds = prospects.map((p) => p.establishmentId);
@@ -596,35 +631,37 @@ async function getProspectsByPartner(partnerId) {
     }, {});
 
     // Combinar datos - devolver en formato compatible con enrichments
-    return prospects.map((p) => {
-      const establishment = establishmentMap[p.establishmentId] || null;
-      const enrichment = enrichmentMap[p.establishmentId] || null;
-      
-      return {
-        id: p.id,
-        establishmentId: p.establishmentId,
-        level: "PROSPECT",
-        // Datos de enriquecimiento si existen
-        decisionMakerName: enrichment?.decisionMakerName || null,
-        decisionMakerPosition: enrichment?.decisionMakerPosition || null,
-        decisionMakerPhone: enrichment?.decisionMakerPhone || null,
-        decisionMakerWhatsApp: enrichment?.decisionMakerWhatsApp || null,
-        decisionMakerEmail: enrichment?.decisionMakerEmail || null,
-        intent: enrichment?.intent || null,
-        fear: enrichment?.fear || null,
-        pain: enrichment?.pain || null,
-        desire: enrichment?.desire || null,
-        // Metadatos del prospecto
-        enrichedBy: partnerId,
-        enrichedAt: p.assignedAt,
-        notes: p.notes,
-        status: p.status,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-        // Establecimiento
-        establishment,
-      };
-    });
+    return prospects
+      .map((p) => {
+        const establishment = establishmentMap[p.establishmentId] || null;
+        const enrichment = enrichmentMap[p.establishmentId] || null;
+
+        return {
+          id: enrichment?.id || p.id,
+          establishmentId: p.establishmentId,
+          level: "PROSPECT",
+          // Datos de enriquecimiento si existen
+          decisionMakerName: enrichment?.decisionMakerName || null,
+          decisionMakerPosition: enrichment?.decisionMakerPosition || null,
+          decisionMakerPhone: enrichment?.decisionMakerPhone || null,
+          decisionMakerWhatsApp: enrichment?.decisionMakerWhatsApp || null,
+          decisionMakerEmail: enrichment?.decisionMakerEmail || null,
+          intent: enrichment?.intent || null,
+          fear: enrichment?.fear || null,
+          pain: enrichment?.pain || null,
+          desire: enrichment?.desire || null,
+          // Metadatos del prospecto
+          enrichedBy: partnerId,
+          enrichedAt: p.assignedAt,
+          notes: p.notes,
+          status: p.status,
+          createdAt: p.createdAt,
+          updatedAt: enrichment?.updatedAt || p.updatedAt,
+          // Establecimiento
+          establishment,
+        };
+      })
+      .filter((p) => p.establishment !== null);
   } catch (error) {
     logger.error("Error obteniendo prospectos del partner:", error);
     throw error;
@@ -1008,6 +1045,110 @@ async function adminDeleteEnrichment(establishmentId) {
   }
 }
 
+/**
+ * Actualizar datos de meeting de un enriquecimiento
+ */
+async function updateMeetingDetails(establishmentId, meetingData, partnerId) {
+  try {
+    // Verificar que existe el enriquecimiento y pertenece al partner
+    const enrichment = await prisma.establishmentEnrichment.findUnique({
+      where: { establishmentId },
+    });
+
+    if (!enrichment) {
+      throw new Error("Enriquecimiento no encontrado");
+    }
+
+    if (enrichment.enrichedBy !== partnerId) {
+      throw new Error("No tienes permisos para modificar este enriquecimiento");
+    }
+
+    // Actualizar datos de meeting
+    const updated = await prisma.establishmentEnrichment.update({
+      where: { establishmentId },
+      data: {
+        meetingScheduled: meetingData.meetingScheduled ?? false,
+        meetingDate: meetingData.meetingDate ? new Date(meetingData.meetingDate) : null,
+        meetingLink: meetingData.meetingLink || null,
+        lastUpdatedBy: partnerId,
+      },
+    });
+
+    // Obtener datos del establecimiento de Mapa DB
+    const establishment = await prismaGeo.establishment.findUnique({
+      where: { id: establishmentId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        activityName: true,
+        municipalityName: true,
+        stateName: true,
+      },
+    });
+
+    logger.info(
+      `Meeting ${meetingData.meetingScheduled ? "agendado" : "cancelado"} para establecimiento ${establishmentId}`
+    );
+
+    return {
+      ...updated,
+      establishment,
+    };
+  } catch (error) {
+    logger.error("Error actualizando meeting:", error);
+    throw error;
+  }
+}
+
+/**
+ * Obtener meetings programados en un rango de fechas
+ */
+async function getScheduledMeetings(partnerId, startDate, endDate) {
+  try {
+    const meetings = await prisma.establishmentEnrichment.findMany({
+      where: {
+        enrichedBy: partnerId,
+        meetingScheduled: true,
+        meetingDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      select: {
+        id: true,
+        establishmentId: true,
+        meetingDate: true,
+        meetingLink: true,
+      },
+    });
+
+    // Obtener nombres de establecimientos de Mapa DB
+    const establishmentIds = meetings.map(m => m.establishmentId);
+    const establishments = await prismaGeo.establishment.findMany({
+      where: { id: { in: establishmentIds } },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    const establishmentMap = new Map(establishments.map(e => [e.id, e]));
+
+    return meetings.map(meeting => ({
+      id: meeting.id,
+      establishmentId: meeting.establishmentId,
+      establishmentName: establishmentMap.get(meeting.establishmentId)?.name || "Sin nombre",
+      meetingDate: meeting.meetingDate,
+      meetingLink: meeting.meetingLink,
+    }));
+  } catch (error) {
+    logger.error("Error obteniendo meetings programados:", error);
+    throw error;
+  }
+}
+
 module.exports = {
   calculateLevel,
   getEnrichmentByEstablishment,
@@ -1017,6 +1158,8 @@ module.exports = {
   getStatsByLevelForPartner,
   getEnrichmentsByPartner,
   deleteEnrichment,
+  updateMeetingDetails,
+  getScheduledMeetings,
   // Admin functions
   getAllEnrichments,
   getGlobalStatsByPartner,

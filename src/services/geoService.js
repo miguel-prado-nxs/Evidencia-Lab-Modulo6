@@ -220,7 +220,7 @@ function getEmployeeWeight(range) {
  */
 async function getGeoZones(type = null) {
   const where = type ? { type } : {};
-  
+
   return prismaGeo.geoZone.findMany({
     where,
     orderBy: { totalEstablishments: "desc" },
@@ -263,9 +263,9 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
       select: { id: true },
       take: 10000, // Limitar para performance
     });
-    
+
     const ids = establishmentIds.map(e => e.id);
-    
+
     if (ids.length > 0) {
       prospectsStats = await prisma.leadProspect.groupBy({
         by: ["status"],
@@ -324,7 +324,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
     if (prospect.status !== "AVAILABLE") {
       throw new Error("Este establecimiento ya está asignado o no está disponible");
     }
-    
+
     // Actualizar prospect existente
     prospect = await prisma.leadProspect.update({
       where: { id: prospect.id },
@@ -355,7 +355,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
   });
 
   logger.info(`Prospect ${prospect.id} asignado a partner ${partnerId}`);
-  
+
   return {
     ...prospect,
     establishment,
@@ -502,7 +502,7 @@ async function searchEstablishments(query, limit = 50) {
  */
 async function smartSearch(query, options = {}) {
   const { activityCode, limit = 10 } = options;
-  
+
   if (!query || query.length < 2) {
     return { states: [], municipalities: [], establishments: [] };
   }
@@ -547,18 +547,18 @@ async function smartSearch(query, options = {}) {
     prismaGeo.establishment.findMany({
       where: activityCode
         ? {
-            activityCode,
-            OR: [
-              { name: { contains: searchTerm, mode: "insensitive" } },
-              { activityName: { contains: searchTerm, mode: "insensitive" } },
-            ],
-          }
+          activityCode,
+          OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+            { activityName: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        }
         : {
-            OR: [
-              { name: { contains: searchTerm, mode: "insensitive" } },
-              { activityName: { contains: searchTerm, mode: "insensitive" } },
-            ],
-          },
+          OR: [
+            { name: { contains: searchTerm, mode: "insensitive" } },
+            { activityName: { contains: searchTerm, mode: "insensitive" } },
+          ],
+        },
       select: {
         id: true,
         name: true,
@@ -669,7 +669,7 @@ async function getStatesWithCount() {
  */
 async function getMunicipalitiesByState(stateCode) {
   return prismaGeo.geoZone.findMany({
-    where: { 
+    where: {
       type: "MUNICIPALITY",
       stateCode: stateCode,
     },
@@ -689,23 +689,32 @@ async function getMunicipalitiesByState(stateCode) {
  * Obtener establecimientos filtrados por nivel de enriquecimiento
  * Para ESTABLISHMENT/CONTACT: Lee de Mapa DB
  * Para PROSPECT/LEAD/CLIENT: Combina Mapa DB con Partners DB
+ * 
+ * IMPORTANTE: Para PROSPECT, LEAD y CLIENT se filtra por partnerId para que
+ * cada usuario solo vea sus propios datos
  */
 async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {}) {
   const { north, south, east, west } = bounds;
   const { activityCode, stateCode, municipalityCode, search } = filters;
-  const { limit = 500, offset = 0 } = options;
+  const { limit = 500, offset = 0, partnerId = null } = options;
 
   // Para niveles que requieren enriquecimiento (PROSPECT, LEAD, CLIENT)
   if (level === "PROSPECT" || level === "LEAD" || level === "CLIENT") {
-    // Filtrar estrictamente por el nivel solicitado
-    const levelFilter = level;
+    // Construir filtro para enriquecimientos
+    const enrichmentWhere = { level };
+
+    // Si hay partnerId, filtrar solo los enriquecidos por ese partner
+    if (partnerId) {
+      enrichmentWhere.enrichedBy = partnerId;
+    }
 
     const enrichments = await prisma.establishmentEnrichment.findMany({
-      where: { level: levelFilter },
+      where: enrichmentWhere,
       select: {
         establishmentId: true,
         id: true,
         level: true,
+        enrichedBy: true,
         decisionMakerName: true,
         decisionMakerPosition: true,
         decisionMakerPhone: true,

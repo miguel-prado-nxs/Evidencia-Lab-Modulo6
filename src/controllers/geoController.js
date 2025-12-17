@@ -355,9 +355,9 @@ async function smartSearch(req, res, next) {
 
     const results = await geoService.smartSearch(q, options);
 
-    const totalCount = 
-      results.states.length + 
-      results.municipalities.length + 
+    const totalCount =
+      results.states.length +
+      results.municipalities.length +
       results.establishments.length;
 
     res.json({
@@ -441,11 +441,16 @@ async function getMunicipalities(req, res, next) {
  * GET /api/v1/geo/establishments/level/:level
  * Obtener establecimientos filtrados por nivel de enriquecimiento
  * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
+ * 
+ * Para PROSPECT, LEAD y CLIENT: filtra por partnerId si está autenticado
  */
 async function getEstablishmentsByLevel(req, res, next) {
   try {
     const { level } = req.params;
     const { north, south, east, west, activity, state, municipality, search, limit, offset } = req.query;
+
+    // Obtener partnerId si el usuario está autenticado
+    const partnerId = req.user?.partner?.id || null;
 
     // Validar nivel
     const validLevels = ["ESTABLISHMENT", "CONTACT", "PROSPECT", "LEAD", "CLIENT"];
@@ -481,6 +486,8 @@ async function getEstablishmentsByLevel(req, res, next) {
     const options = {
       limit: limit ? parseInt(limit) : 500,
       offset: offset ? parseInt(offset) : 0,
+      // Pasar partnerId para filtrar PROSPECT, LEAD y CLIENT por usuario
+      partnerId: partnerId,
     };
 
     const establishments = await geoService.getEstablishmentsByLevel(bounds, level, filters, options);

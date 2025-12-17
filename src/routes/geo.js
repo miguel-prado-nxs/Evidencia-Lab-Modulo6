@@ -8,6 +8,7 @@ const router = express.Router();
 const geoController = require("../controllers/geoController");
 const enrichmentController = require("../controllers/enrichmentController");
 const adminEnrichmentController = require("../controllers/adminEnrichmentController");
+const meetingController = require("../controllers/meetingController");
 const { authenticateJWT, authenticateJWTOrServiceKey, optionalAuth, requireAdmin } = require("../middleware/auth");
 
 // ============================================
@@ -58,17 +59,23 @@ router.get("/stats", geoController.getStats);
 /**
  * GET /api/v1/geo/stats/levels
  * Obtener estadísticas por nivel de enriquecimiento
- * Returns: { ESTABLISHMENT: n, CONTACT: n, PROSPECT: n, LEAD: n }
+ * Returns: { ESTABLISHMENT: n, CONTACT: n, PROSPECT: n, LEAD: n, CLIENT: n }
+ * 
+ * NOTA: Usa autenticación opcional. Si el usuario está autenticado,
+ * PROSPECT, LEAD y CLIENT se filtran por su partnerId.
  */
-router.get("/stats/levels", enrichmentController.getStatsByLevel);
+router.get("/stats/levels", optionalAuth, enrichmentController.getStatsByLevel);
 
 /**
  * GET /api/v1/geo/establishments/level/:level
  * Obtener establecimientos filtrados por nivel
- * Params: level (ESTABLISHMENT, CONTACT, PROSPECT, LEAD)
+ * Params: level (ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT)
  * Query params: north, south, east, west, activity, limit, offset
+ * 
+ * NOTA: Usa autenticación opcional. Si el usuario está autenticado,
+ * los niveles PROSPECT, LEAD y CLIENT se filtran por su partnerId.
  */
-router.get("/establishments/level/:level", geoController.getEstablishmentsByLevel);
+router.get("/establishments/level/:level", optionalAuth, geoController.getEstablishmentsByLevel);
 
 /**
  * GET /api/v1/geo/search
@@ -150,6 +157,13 @@ router.get("/enrichment/my", authenticateJWTOrServiceKey, enrichmentController.g
 router.get("/enrichment/my/stats", authenticateJWTOrServiceKey, enrichmentController.getMyStats);
 
 /**
+ * GET /api/v1/geo/enrichment/meetings
+ * Obtener meetings programados en un rango de fechas
+ * Query params: startDate, endDate
+ */
+router.get("/enrichment/meetings", authenticateJWTOrServiceKey, enrichmentController.getScheduledMeetings);
+
+/**
  * POST /api/v1/geo/enrichment/import
  * Importar múltiples enriquecimientos desde CSV/JSON
  * Body: { data: [{ establishmentId, decisionMakerName, ... }] }
@@ -190,6 +204,57 @@ router.get("/enrichment/admin/by-level/:level", authenticateJWT, requireAdmin, a
 router.delete("/enrichment/admin/:establishmentId", authenticateJWT, requireAdmin, adminEnrichmentController.deleteEnrichment);
 
 // ============================================
+// RUTAS DE MEETINGS (Sistema de Agendamiento)
+// ============================================
+
+/**
+ * GET /api/v1/geo/meetings
+ * Obtener meetings programados en un rango de fechas
+ * Query params: startDate, endDate
+ */
+router.get("/meetings", authenticateJWTOrServiceKey, meetingController.getScheduledMeetings);
+
+/**
+ * GET /api/v1/geo/meetings/my
+ * Obtener todos los meetings del partner autenticado
+ * Query params: onlyScheduled (boolean)
+ */
+router.get("/meetings/my", authenticateJWTOrServiceKey, meetingController.getMyMeetings);
+
+/**
+ * GET /api/v1/geo/meetings/stats
+ * Obtener estadísticas de meetings del partner
+ */
+router.get("/meetings/stats", authenticateJWTOrServiceKey, meetingController.getMeetingStats);
+
+/**
+ * GET /api/v1/geo/meetings/:establishmentId
+ * Obtener meeting de un establecimiento específico
+ */
+router.get("/meetings/:establishmentId", authenticateJWTOrServiceKey, meetingController.getMeeting);
+
+/**
+ * PATCH /api/v1/geo/meetings/:establishmentId
+ * Actualizar meeting de un establecimiento
+ * Body: { meetingScheduled, meetingDate, meetingLink, notes }
+ */
+router.patch("/meetings/:establishmentId", authenticateJWTOrServiceKey, meetingController.updateMeeting);
+
+/**
+ * POST /api/v1/geo/meetings/:establishmentId/calendly
+ * Crear meeting usando Calendly y enviar invitación al cliente
+ * Requiere que el establecimiento tenga email registrado
+ * Body: { startTime, endTime, notes }
+ */
+router.post("/meetings/:establishmentId/calendly", authenticateJWTOrServiceKey, meetingController.createMeetingWithCalendly);
+
+/**
+ * DELETE /api/v1/geo/meetings/:establishmentId
+ * Eliminar meeting de un establecimiento
+ */
+router.delete("/meetings/:establishmentId", authenticateJWTOrServiceKey, meetingController.deleteMeeting);
+
+// ============================================
 // RUTAS DE ENRIQUECIMIENTO CON PARÁMETRO (deben ir al final)
 // ============================================
 
@@ -206,6 +271,13 @@ router.get("/enrichment/:establishmentId", authenticateJWTOrServiceKey, enrichme
  *         decisionMakerWhatsApp, decisionMakerEmail, intent, fear, pain, desire }
  */
 router.post("/enrichment/:establishmentId", authenticateJWTOrServiceKey, enrichmentController.updateEnrichment);
+
+/**
+ * PATCH /api/v1/geo/enrichment/:establishmentId/meeting
+ * Actualizar datos de meeting de un enriquecimiento
+ * Body: { meetingScheduled, meetingDate, meetingLink }
+ */
+router.patch("/enrichment/:establishmentId/meeting", authenticateJWTOrServiceKey, enrichmentController.updateMeetingDetails);
 
 /**
  * DELETE /api/v1/geo/enrichment/:establishmentId

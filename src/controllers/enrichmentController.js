@@ -52,14 +52,15 @@ async function updateEnrichment(req, res, next) {
 
     const data = req.body;
 
-    // Validar que al menos hay algún dato
+    // Validar que al menos hay algún dato relevante
     const hasDecisionMakerData = data.decisionMakerName || data.decisionMakerPhone || data.decisionMakerWhatsApp;
     const hasQualificationData = data.intent || data.fear || data.pain || data.desire;
+    const hasClientData = data.purchaseDate || data.productPurchased || data.purchaseAmount || data.clientSince || data.clientStatus;
 
-    if (!hasDecisionMakerData && !hasQualificationData) {
+    if (!hasDecisionMakerData && !hasQualificationData && !hasClientData) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere al menos información del tomador de decisiones o de cualificación",
+        error: "Se requiere al menos información del tomador de decisiones, de cualificación o de cliente",
       });
     }
 
@@ -135,10 +136,16 @@ async function bulkImport(req, res, next) {
 /**
  * GET /api/v1/geo/stats/levels
  * Obtener estadísticas por nivel de enriquecimiento
+ * 
+ * Si el usuario está autenticado, PROSPECT, LEAD y CLIENT
+ * se filtran por su partnerId.
  */
 async function getStatsByLevel(req, res, next) {
   try {
-    const stats = await enrichmentService.getStatsByLevel();
+    // Obtener partnerId si el usuario está autenticado
+    const partnerId = req.user?.partner?.id || null;
+
+    const stats = await enrichmentService.getStatsByLevel(partnerId);
 
     res.json({
       success: true,
@@ -240,6 +247,85 @@ async function deleteEnrichment(req, res, next) {
   }
 }
 
+/**
+ * PATCH /api/v1/geo/enrichment/:establishmentId/meeting
+ * Actualizar datos de meeting de un enriquecimiento
+ */
+async function updateMeetingDetails(req, res, next) {
+  try {
+    const { establishmentId } = req.params;
+    const partnerId = req.user.partner?.id;
+    const { meetingScheduled, meetingDate, meetingLink } = req.body;
+
+    if (!partnerId) {
+      return res.status(403).json({
+        success: false,
+        error: "Solo partners pueden actualizar meetings",
+      });
+    }
+
+    const enrichment = await enrichmentService.updateMeetingDetails(
+      establishmentId,
+      { meetingScheduled, meetingDate, meetingLink },
+      partnerId
+    );
+
+    res.json({
+      success: true,
+      data: enrichment,
+      message: meetingScheduled ? "Meeting agendado correctamente" : "Meeting cancelado",
+    });
+  } catch (error) {
+    logger.error("Error en updateMeetingDetails:", error);
+    if (error.message.includes("no encontrado") || error.message.includes("No tienes permisos")) {
+      return res.status(error.message.includes("permisos") ? 403 : 404).json({
+        success: false,
+        error: error.message,
+      });
+    }
+    next(error);
+  }
+}
+
+/**
+ * GET /api/v1/geo/enrichment/meetings
+ * Obtener meetings programados en un rango de fechas
+ */
+async function getScheduledMeetings(req, res, next) {
+  try {
+    const partnerId = req.user.partner?.id;
+    const { startDate, endDate } = req.query;
+
+    if (!partnerId) {
+      return res.status(403).json({
+        success: false,
+        error: "Solo partners pueden ver meetings",
+      });
+    }
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: "Se requieren startDate y endDate",
+      });
+    }
+
+    const meetings = await enrichmentService.getScheduledMeetings(
+      partnerId,
+      new Date(startDate),
+      new Date(endDate)
+    );
+
+    res.json({
+      success: true,
+      data: meetings,
+    });
+  } catch (error) {
+    logger.error("Error en getScheduledMeetings:", error);
+    next(error);
+  }
+}
+
 module.exports = {
   getEnrichment,
   updateEnrichment,
@@ -248,5 +334,7 @@ module.exports = {
   getMyEnrichments,
   getMyStats,
   deleteEnrichment,
+  updateMeetingDetails,
+  getScheduledMeetings,
 };
 

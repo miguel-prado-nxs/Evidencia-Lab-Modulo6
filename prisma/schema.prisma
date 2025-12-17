@@ -137,6 +137,9 @@ model Partner {
   
   // Referral campaigns
   referralCampaigns ReferralCampaign[]
+  
+  // Establishment meetings
+  establishmentMeetings EstablishmentMeeting[]
 
   @@index([code])
   @@index([type])
@@ -872,4 +875,34 @@ model ReferralCampaign {
   @@index([utmCampaign])
   @@index([isActive])
   @@map("referral_campaigns")
+}
+
+// ========== MEETINGS DE ESTABLECIMIENTOS ==========
+
+model EstablishmentMeeting {
+  id              String   @id @default(uuid())
+  establishmentId String   @map("establishment_id") // ID del establecimiento DENUE
+  partnerId       String   @map("partner_id") // Partner/Vendedor que agenda
+
+  // Datos del meeting
+  meetingScheduled Boolean  @default(false) @map("meeting_scheduled")
+  meetingDate      DateTime? @map("meeting_date")
+  meetingLink      String?  @map("meeting_link") // Zoom/Meet link
+  calendlyEventUri String?  @map("calendly_event_uri") // URI del evento en Calendly
+
+  // Notas
+  notes String? @db.Text
+
+  // Metadata
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([establishmentId, partnerId]) // Un partner solo puede tener un meeting por establecimiento
+  @@index([partnerId])
+  @@index([establishmentId])
+  @@index([meetingScheduled])
+  @@index([meetingDate])
+  @@map("establishment_meetings")
 }
