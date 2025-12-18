@@ -509,43 +509,54 @@ enum EstablishmentLevel {
 // NOTA: establishmentId referencia a Mapa DB, NO hay FK constraint
 model EstablishmentEnrichment {
   id              String @id @default(uuid())
-  establishmentId String @unique @map("establishment_id") // Referencia a Mapa DB (sin FK)
+  establishmentId String @unique @map("establishment_id")
 
-  // Informacion del tomador de decisiones (Nivel: Prospecto)
+  // ==================== COLUMNAS EXISTENTES (NO TOCAR) ====================
   decisionMakerName     String? @map("decision_maker_name")
-  decisionMakerPosition String? @map("decision_maker_position") // dueno, gerente, encargado
+  decisionMakerPosition String? @map("decision_maker_position")
   decisionMakerPhone    String? @map("decision_maker_phone")
   decisionMakerWhatsApp String? @map("decision_maker_whatsapp")
   decisionMakerEmail    String? @map("decision_maker_email")
-
-  // Informacion de cualificacion (Nivel: Lead)
-  intent String? @db.Text // Intencion/interes demostrado en el producto
-  fear   String? @db.Text // Miedos o preocupaciones del prospecto
-  pain   String? @db.Text // Dolor/problemas actuales que enfrenta
-  desire String? @db.Text // Lo que desea solucionar o lograr
-
-  // Informacion de cliente (Nivel: Client)
-  purchaseDate     DateTime? @map("purchase_date")     // Fecha de primera compra
-  productPurchased String?   @map("product_purchased") // Producto/plan adquirido
-  purchaseAmount   Decimal?  @map("purchase_amount") @db.Decimal(10, 2) // Monto de compra
-  clientSince      DateTime? @map("client_since")      // Fecha desde que es cliente
-  clientStatus     String?   @map("client_status")     // activo, inactivo, churned
-  clientNotes      String?   @map("client_notes") @db.Text // Notas adicionales del cliente
-
-  // Nivel calculado automaticamente
+  
+  intent String? @db.Text
+  fear   String? @db.Text
+  pain   String? @db.Text
+  desire String? @db.Text
+  
+  purchaseDate     DateTime? @map("purchase_date")
+  productPurchased String?   @map("product_purchased")
+  purchaseAmount   Decimal?  @map("purchase_amount") @db.Decimal(10, 2)
+  clientSince      DateTime? @map("client_since")
+  clientStatus     String?   @map("client_status")
+  clientNotes      String?   @map("client_notes") @db.Text
+  
   level EstablishmentLevel @default(ESTABLISHMENT)
-
-  // Metadata de quien enriquecio los datos
-  enrichedBy    String?   @map("enriched_by") // partnerId que enriquecio
+  
+  enrichedBy    String?   @map("enriched_by")
   enrichedAt    DateTime? @map("enriched_at")
   lastUpdatedBy String?   @map("last_updated_by")
-
+  
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // ==================== NUEVAS COLUMNAS SDR  ====================
+  // Tracking de llamadas SDR
+  callSummary          String?   @map("call_summary") @db.Text
+  strategy             String?   @db.VarChar(10)
+  callAttempts         Int?      @default(1) @map("call_attempts")
+  callDurationSeconds  Int?      @default(0) @map("call_duration_seconds")
+  callStatus           String?   @db.VarChar(20) @map("call_status")
+  enrichmentStatus     String?   @db.VarChar(30) @map("enrichment_status")
+  gatekeeperInfo       Json?     @map("gatekeeper_info")
+  bestCallTime         String?   @db.VarChar(50) @map("best_call_time")
+
+  // ==================== ÍNDICES (ACTUALIZAR) ====================
   @@index([level])
   @@index([establishmentId])
   @@index([enrichedBy])
+  @@index([enrichmentStatus]) 
+  @@index([strategy])          
+  @@index([callStatus])        
   @@map("establishment_enrichments")
 }
 
