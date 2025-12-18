@@ -218,6 +218,42 @@ const track = async (req, res, next) => {
   }
 };
 
+// Enriquecer automáticamente un establecimiento
+const autoEnrich = async (req, res, next) => {
+  try {
+    const { businessName, businessContact, employeeRange } = req.body;
+
+    // Validar datos requeridos
+    if (!businessName || !businessContact) {
+      return res.status(400).json({
+        success: false,
+        error: "Se requieren: businessName y businessContact",
+      });
+    }
+
+    // Registrar los datos recibidos para debugging
+    console.log("=== AUTO-ENRICH DATOS RECIBIDOS (PARTNERS API) ===");
+    console.log("Nombre del negocio:", businessName);
+    console.log("Contacto del negocio:", businessContact);
+    console.log("Rango de empleados:", employeeRange || "No especificado");
+    console.log("Usuario:", req.user?.id);
+    console.log("==================================================");
+
+    res.json({
+      success: true,
+      message: "Datos recibidos correctamente para enriquecimiento automático",
+      receivedData: {
+        businessName,
+        businessContact,
+        employeeRange: employeeRange || "No especificado",
+      },
+    });
+  } catch (error) {
+    logger.error("Error en auto-enrich:", error);
+    next(error);
+  }
+};
+
 module.exports = {
   list,
   getById,
@@ -225,5 +261,6 @@ module.exports = {
   update,
   updateStatus,
   track,
+  autoEnrich,
 };
 

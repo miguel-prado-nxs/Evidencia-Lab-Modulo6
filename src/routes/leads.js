@@ -51,6 +51,7 @@ const trackLeadSchema = z.object({
 
 // Ruta pública para tracking (con API Key)
 router.post("/track", authenticateApiKey, validate(trackLeadSchema), leadsController.track);
+router.post("/auto-enrich", leadsController.autoEnrich);
 
 // Rutas protegidas
 router.use(authenticateJWT);
