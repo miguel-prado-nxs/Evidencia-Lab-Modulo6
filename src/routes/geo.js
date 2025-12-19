@@ -8,8 +8,10 @@ const router = express.Router();
 const geoController = require("../controllers/geoController");
 const enrichmentController = require("../controllers/enrichmentController");
 const adminEnrichmentController = require("../controllers/adminEnrichmentController");
+const adminSalesController = require("../controllers/adminSalesController");
+const ventasEnrichmentController = require("../controllers/ventasEnrichmentController");
 const meetingController = require("../controllers/meetingController");
-const { authenticateJWT, authenticateJWTOrServiceKey, optionalAuth, requireAdmin } = require("../middleware/auth");
+const { authenticateJWT, authenticateJWTOrServiceKey, optionalAuth, requireAdmin, requireVentasAdmin } = require("../middleware/auth");
 
 // ============================================
 // RUTAS PÚBLICAS (Solo lectura de datos)
@@ -202,6 +204,93 @@ router.get("/enrichment/admin/by-level/:level", authenticateJWT, requireAdmin, a
  * Eliminar un enriquecimiento (sin validación de permisos)
  */
 router.delete("/enrichment/admin/:establishmentId", authenticateJWT, requireAdmin, adminEnrichmentController.deleteEnrichment);
+
+// ============================================
+// RUTAS DE ADMIN VENTAS (Panel de administrador)
+// ============================================
+
+/**
+ * GET /api/v1/geo/admin/sales-users
+ * Obtener lista de todos los agentes de ventas
+ * Requiere: Service Key + X-Sales-User-Role: admin
+ */
+router.get("/admin/sales-users", authenticateJWTOrServiceKey, requireVentasAdmin, adminSalesController.getSalesUsers);
+
+/**
+ * GET /api/v1/geo/admin/all-prospects
+ * Obtener todos los prospectos de todos los agentes de ventas
+ * Query params: salesPartnerId (opcional), status
+ * Requiere: Service Key + X-Sales-User-Role: admin
+ */
+router.get("/admin/all-prospects", authenticateJWTOrServiceKey, requireVentasAdmin, adminSalesController.getAllProspects);
+
+/**
+ * GET /api/v1/geo/admin/all-leads
+ * Obtener todos los leads de todos los agentes de ventas
+ * Query params: salesPartnerId (opcional)
+ * Requiere: Service Key + X-Sales-User-Role: admin
+ */
+router.get("/admin/all-leads", authenticateJWTOrServiceKey, requireVentasAdmin, adminSalesController.getAllLeads);
+
+/**
+ * GET /api/v1/geo/admin/all-clients
+ * Obtener todos los clientes de todos los agentes de ventas
+ * Query params: salesPartnerId (opcional)
+ * Requiere: Service Key + X-Sales-User-Role: admin
+ */
+router.get("/admin/all-clients", authenticateJWTOrServiceKey, requireVentasAdmin, adminSalesController.getAllClients);
+
+/**
+ * GET /api/v1/geo/admin/sales-stats
+ * Obtener estadísticas agregadas de todos los agentes de ventas
+ * Requiere: Service Key + X-Sales-User-Role: admin
+ */
+router.get("/admin/sales-stats", authenticateJWTOrServiceKey, requireVentasAdmin, adminSalesController.getSalesStats);
+
+// ============================================
+// RUTAS ESPECÍFICAS DE VENTAS (easyorder-leads)
+// Flujo: CONTACT -> PROSPECT -> LEAD -> CLIENT
+// ============================================
+
+/**
+ * POST /api/v1/geo/ventas/contacts
+ * Agregar un establecimiento a los contactos del usuario de ventas
+ * Crea registro con nivel CONTACT
+ * Body: { establishmentId, notes }
+ */
+router.post("/ventas/contacts", authenticateJWTOrServiceKey, ventasEnrichmentController.addToContacts);
+
+/**
+ * GET /api/v1/geo/ventas/contacts
+ * Obtener todos los contactos del usuario de ventas (nivel CONTACT)
+ */
+router.get("/ventas/contacts", authenticateJWTOrServiceKey, ventasEnrichmentController.getMyContacts);
+
+/**
+ * POST /api/v1/geo/ventas/contacts/:establishmentId/to-prospect
+ * Convertir un contacto a prospecto agregando datos del tomador de decisiones
+ * Body: { decisionMakerName, decisionMakerPosition, decisionMakerPhone, decisionMakerWhatsApp, decisionMakerEmail }
+ */
+router.post("/ventas/contacts/:establishmentId/to-prospect", authenticateJWTOrServiceKey, ventasEnrichmentController.convertContactToProspect);
+
+/**
+ * PATCH /api/v1/geo/ventas/prospects/:establishmentId
+ * Actualizar datos de un prospecto
+ * Body: { decisionMakerName, decisionMakerPosition, decisionMakerPhone, decisionMakerWhatsApp, decisionMakerEmail }
+ */
+router.patch("/ventas/prospects/:establishmentId", authenticateJWTOrServiceKey, ventasEnrichmentController.updateProspect);
+
+/**
+ * GET /api/v1/geo/ventas/stats
+ * Obtener estadísticas de ventas por nivel (incluyendo CONTACT)
+ */
+router.get("/ventas/stats", authenticateJWTOrServiceKey, ventasEnrichmentController.getVentasStats);
+
+/**
+ * DELETE /api/v1/geo/ventas/enrichments/:establishmentId
+ * Eliminar un contacto/prospecto de la lista del usuario
+ */
+router.delete("/ventas/enrichments/:establishmentId", authenticateJWTOrServiceKey, ventasEnrichmentController.removeFromMyList);
 
 // ============================================
 // RUTAS DE MEETINGS (Sistema de Agendamiento)
