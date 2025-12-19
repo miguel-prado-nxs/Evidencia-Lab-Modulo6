@@ -34,6 +34,7 @@ async function handleCallResult(req, res, next) {
             callAttempts,
             callDurationSeconds,
             bestCallTime,
+            userId,  // ID del usuario que inició la llamada (para asignación de prospecto)
         } = req.body;
 
         // Validación básica.
@@ -84,7 +85,7 @@ async function handleCallResult(req, res, next) {
             logger.info(`[SDR TEST MODE] Procesando ID de prueba: ${establishmentId}`, {
                 apiKey: req.apiKey?.name,
             });
-            
+
             return res.status(201).json({
                 success: true,
                 message: "Call result guardado exitosamente (TEST MODE)",
@@ -124,10 +125,10 @@ async function handleCallResult(req, res, next) {
             ...(decisionMaker.phone && { decisionMakerPhone: decisionMaker.phone }),
             ...(decisionMaker.whatsapp && { decisionMakerWhatsApp: decisionMaker.whatsapp }),
             ...(decisionMaker.email && { decisionMakerEmail: decisionMaker.email }),
-            
+
             // Campos SDR (siempre actualizar con nuevas columnas de migración).
-            gatekeeperInfo: gatekeeperInfo && Object.keys(gatekeeperInfo).length > 0 
-                ? gatekeeperInfo 
+            gatekeeperInfo: gatekeeperInfo && Object.keys(gatekeeperInfo).length > 0
+                ? gatekeeperInfo
                 : null,
             callSummary: callSummary,
             strategy: strategy,
@@ -136,13 +137,40 @@ async function handleCallResult(req, res, next) {
             callStatus: callStatus,
             enrichmentStatus: enrichmentStatus,
             bestCallTime: bestCallTime || null,
-            
+
             // Metadata.
-            enrichedBy: "SDR Agent",
+            // Si tenemos userId, usarlo para asignar el prospecto al usuario
+            // De lo contrario, marcar como "SDR Agent" y no se asignará a nadie
+            enrichedBy: userId || "SDR Agent (sin usuario asignado)",
             enrichedAt: new Date(),
-            lastUpdatedBy: "SDR Agent",
+            lastUpdatedBy: userId || "SDR Agent",
             updatedAt: new Date(),
         };
+
+        // Agregar nota sobre origen SDR al callSummary si hay userId
+        if (userId && callSummary) {
+            enrichmentData.callSummary = `[SDR Agent] ${callSummary}`;
+        }
+
+        // ==================== LEVEL PROGRESSION ====================
+        // Actualizar nivel según el estado del enriquecimiento y datos capturados
+        // Siguiendo el funnel: ESTABLISHMENT → CONTACT → PROSPECT → LEAD → CLIENT
+
+        // Si identificamos al tomador de decisiones, subimos a PROSPECT
+        if (enrichmentStatus === "identified" && decisionMaker.name) {
+            enrichmentData.level = "PROSPECT";
+            logger.info(`[SDR Level] Establecimiento ${establishmentId} promovido a PROSPECT (tomador decisiones identificado)`);
+        }
+        // Si tenemos datos de callback pendiente, mantener al menos CONTACT
+        else if (enrichmentStatus === "callback_scheduled" || enrichmentStatus === "contacted") {
+            // Solo subir si actualmente es ESTABLISHMENT
+            const currentLevel = enrichment?.level || "ESTABLISHMENT";
+            if (currentLevel === "ESTABLISHMENT") {
+                enrichmentData.level = "CONTACT";
+                logger.info(`[SDR Level] Establecimiento ${establishmentId} promovido a CONTACT`);
+            }
+        }
+        // Si es DNC o not_found, no cambiamos el nivel
 
         if (enrichment) {
             // Actualizar enriquecimiento existente.
@@ -173,7 +201,7 @@ async function handleCallResult(req, res, next) {
         });
     } catch (error) {
         logger.error("[SDR Controller] Error guardando call result:", error);
-        
+
         // Prisma error handling.
         if (error.code === "P2002") {
             return res.status(409).json({
@@ -181,14 +209,14 @@ async function handleCallResult(req, res, next) {
                 error: "Ya existe un enriquecimiento para este establecimiento",
             });
         }
-        
+
         if (error.message === "Establecimiento no encontrado") {
             return res.status(404).json({
                 success: false,
                 error: error.message,
             });
         }
-        
+
         next(error);
     }
 }

@@ -19,8 +19,8 @@ const list = async (req, res, next) => {
     } = req.query;
 
     // Si no es admin, filtrar solo por su partnerId
-    const filterPartnerId = req.user.role === "ADMIN" 
-      ? partnerId 
+    const filterPartnerId = req.user.role === "ADMIN"
+      ? partnerId
       : req.user.partner?.id;
 
     if (!filterPartnerId && req.user.role !== "ADMIN") {
@@ -89,8 +89,8 @@ const create = async (req, res, next) => {
     const leadData = req.body;
 
     // Si no es admin, usar el partnerId del usuario
-    const partnerId = req.user.role === "ADMIN" 
-      ? leadData.partnerId 
+    const partnerId = req.user.role === "ADMIN"
+      ? leadData.partnerId
       : req.user.partner?.id;
 
     if (!partnerId) {
@@ -221,7 +221,13 @@ const track = async (req, res, next) => {
 // Enriquecer automáticamente un establecimiento
 const autoEnrich = async (req, res, next) => {
   try {
-    const { businessName, businessContact, employeeRange } = req.body;
+    const {
+      businessName,
+      businessContact,
+      employeeRange,
+      establishmentId,
+      address
+    } = req.body;
 
     // Validar datos requeridos
     if (!businessName || !businessContact) {
@@ -236,23 +242,89 @@ const autoEnrich = async (req, res, next) => {
     console.log("Nombre del negocio:", businessName);
     console.log("Contacto del negocio:", businessContact);
     console.log("Rango de empleados:", employeeRange || "No especificado");
+    console.log("Establishment ID:", establishmentId || "No especificado");
+    console.log("Dirección:", address || "No especificada");
     console.log("Usuario:", req.user?.id);
     console.log("==================================================");
 
+    // Verificar si AGENTS_SDK_URL está configurado
+    const agentsSdkUrl = process.env.AGENTS_SDK_URL;
+    if (!agentsSdkUrl) {
+      logger.warn("AGENTS_SDK_URL no configurado - solo logging datos");
+      return res.json({
+        success: true,
+        message: "Datos recibidos (AGENTS_SDK_URL no configurado)",
+        receivedData: {
+          businessName,
+          businessContact,
+          employeeRange: employeeRange || "No especificado",
+          establishmentId: establishmentId || "No especificado",
+        },
+      });
+    }
+
+    // Llamar al agente SDR en agentes-crm-sdk
+    const axios = require("axios");
+
+    const sdrPayload = {
+      establishment_id: establishmentId || `auto-${Date.now()}`,
+      establishment_name: businessName,
+      phone: businessContact,
+      employee_range: employeeRange || "0 a 5 personas",
+      address: address || "",
+      // Pasar userId para asignación de prospecto
+      user_id: req.user?.id || null,
+    };
+
+    console.log("[AUTO-ENRICH] Llamando al agente SDR:", agentsSdkUrl + "/api/sdr/initiate-call");
+    console.log("[AUTO-ENRICH] Payload:", JSON.stringify(sdrPayload, null, 2));
+
+    // Obtener API Key para autenticación con agentes-crm-sdk
+    const sdrApiKey = process.env.SDR_API_KEY;
+    if (!sdrApiKey) {
+      logger.warn("[AUTO-ENRICH] SDR_API_KEY no configurada - llamada puede fallar");
+    }
+
+    const sdrResponse = await axios.post(
+      agentsSdkUrl + "/api/sdr/initiate-call",
+      sdrPayload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": sdrApiKey || "",
+        },
+        timeout: 30000,
+      }
+    );
+
+    console.log("[AUTO-ENRICH] Respuesta del agente SDR:", JSON.stringify(sdrResponse.data, null, 2));
+
     res.json({
       success: true,
-      message: "Datos recibidos correctamente para enriquecimiento automático",
+      message: "Llamada SDR iniciada exitosamente",
+      sdrResponse: sdrResponse.data,
       receivedData: {
         businessName,
         businessContact,
         employeeRange: employeeRange || "No especificado",
+        establishmentId: establishmentId || sdrPayload.establishment_id,
       },
     });
   } catch (error) {
     logger.error("Error en auto-enrich:", error);
+
+    // Si el error es de axios, extraer mensaje
+    if (error.response) {
+      return res.status(error.response.status || 500).json({
+        success: false,
+        error: `Error del agente SDR: ${error.response.data?.error || error.message}`,
+      });
+    }
+
     next(error);
   }
 };
+
 
 module.exports = {
   list,
