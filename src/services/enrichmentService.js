@@ -499,7 +499,7 @@ async function getStatsByLevelForPartner(partnerId) {
  * - LEAD: enrichments con level=LEAD
  * - CLIENT: enrichments con level=CLIENT
  * 
- * Combina con datos de establecimientos de Mapa DB
+ * Combina con datos de establecimientos de Mapa DB y meetings
  */
 async function getEnrichmentsByPartner(partnerId, level = null) {
   try {
@@ -544,9 +544,27 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
       },
     });
 
-    // Crear mapa para lookup rápido
+    // Obtener meetings del partner para estos establecimientos
+    const meetings = await prisma.establishmentMeeting.findMany({
+      where: {
+        partnerId,
+        establishmentId: { in: establishmentIds },
+      },
+    });
+
+    // Crear mapas para lookup rápido
     const establishmentMap = establishments.reduce((acc, e) => {
       acc[e.id] = e;
+      return acc;
+    }, {});
+
+    const meetingMap = meetings.reduce((acc, m) => {
+      acc[m.establishmentId] = {
+        meetingScheduled: m.meetingScheduled,
+        meetingDate: m.meetingDate,
+        meetingLink: m.meetingLink,
+        notes: m.notes,
+      };
       return acc;
     }, {});
 
@@ -555,6 +573,7 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
       .map((e) => ({
         ...e,
         establishment: establishmentMap[e.establishmentId] || null,
+        meeting: meetingMap[e.establishmentId] || null,
       }))
       .filter((e) => e.establishment !== null);
   } catch (error) {
@@ -619,6 +638,14 @@ async function getProspectsByPartner(partnerId) {
       where: { establishmentId: { in: establishmentIds } },
     });
 
+    // Obtener meetings del partner para estos establecimientos
+    const meetings = await prisma.establishmentMeeting.findMany({
+      where: {
+        partnerId,
+        establishmentId: { in: establishmentIds },
+      },
+    });
+
     // Crear mapas para lookup rápido
     const establishmentMap = establishments.reduce((acc, e) => {
       acc[e.id] = e;
@@ -630,11 +657,22 @@ async function getProspectsByPartner(partnerId) {
       return acc;
     }, {});
 
+    const meetingMap = meetings.reduce((acc, m) => {
+      acc[m.establishmentId] = {
+        meetingScheduled: m.meetingScheduled,
+        meetingDate: m.meetingDate,
+        meetingLink: m.meetingLink,
+        notes: m.notes,
+      };
+      return acc;
+    }, {});
+
     // Combinar datos - devolver en formato compatible con enrichments
     return prospects
       .map((p) => {
         const establishment = establishmentMap[p.establishmentId] || null;
         const enrichment = enrichmentMap[p.establishmentId] || null;
+        const meeting = meetingMap[p.establishmentId] || null;
 
         return {
           id: enrichment?.id || p.id,
@@ -657,8 +695,9 @@ async function getProspectsByPartner(partnerId) {
           status: p.status,
           createdAt: p.createdAt,
           updatedAt: enrichment?.updatedAt || p.updatedAt,
-          // Establecimiento
+          // Establecimiento y meeting
           establishment,
+          meeting,
         };
       })
       .filter((p) => p.establishment !== null);
