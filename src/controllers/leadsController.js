@@ -273,7 +273,8 @@ const autoEnrich = async (req, res, next) => {
       employee_range: employeeRange || "0 a 5 personas",
       address: address || "",
       // Pasar userId para asignación de prospecto
-      user_id: req.user?.id || null,
+      // Usar salesPartnerId si viene de Service Key, o user.id si viene de JWT
+      user_id: req.salesPartnerId || req.user?.id || null,
     };
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", agentsSdkUrl + "/api/sdr/initiate-call");
