@@ -139,13 +139,21 @@ async function handleCallResult(req, res, next) {
             bestCallTime: bestCallTime || null,
 
             // Metadata.
-            // Si tenemos userId, usarlo para asignar el prospecto al usuario
-            // De lo contrario, marcar como "SDR Agent" y no se asignará a nadie
-            enrichedBy: userId || "SDR Agent (sin usuario asignado)",
             enrichedAt: new Date(),
-            lastUpdatedBy: userId || "SDR Agent",
             updatedAt: new Date(),
         };
+
+        // ===== IMPORTANTE: Solo asignar enrichedBy en registros NUEVOS =====
+        // Si el registro ya existe (ej: alguien lo agregó a contactos), 
+        // NO cambiar el enrichedBy para mantener la asignación original
+        if (!enrichment) {
+            // Registro nuevo: usar userId si está disponible
+            enrichmentData.enrichedBy = userId || "SDR Agent (sin usuario asignado)";
+            enrichmentData.lastUpdatedBy = userId || "SDR Agent";
+        } else {
+            // Registro existente: solo actualizar lastUpdatedBy
+            enrichmentData.lastUpdatedBy = userId || enrichment.enrichedBy || "SDR Agent";
+        }
 
         // Agregar nota sobre origen SDR al callSummary si hay userId
         if (userId && callSummary) {
