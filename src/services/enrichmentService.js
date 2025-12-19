@@ -784,12 +784,18 @@ async function deleteEnrichment(establishmentId, partnerId) {
       throw new Error("No tienes permisos para eliminar este enriquecimiento");
     }
 
-    await prisma.establishmentEnrichment.delete({
-      where: { establishmentId },
-    });
+    // Eliminar el enriquecimiento y el registro asociado en LeadProspect
+    await prisma.$transaction([
+      prisma.establishmentEnrichment.delete({
+        where: { establishmentId },
+      }),
+      prisma.leadProspect.deleteMany({
+        where: { establishmentId },
+      }),
+    ]);
 
     logger.info(
-      `Enriquecimiento eliminado para establecimiento ${establishmentId}`
+      `Enriquecimiento y LeadProspect eliminados para establecimiento ${establishmentId}`
     );
     return true;
   } catch (error) {
@@ -1070,12 +1076,18 @@ async function adminDeleteEnrichment(establishmentId) {
       throw new Error("Enriquecimiento no encontrado");
     }
 
-    await prisma.establishmentEnrichment.delete({
-      where: { establishmentId },
-    });
+    // Eliminar el enriquecimiento y el registro asociado en LeadProspect
+    await prisma.$transaction([
+      prisma.establishmentEnrichment.delete({
+        where: { establishmentId },
+      }),
+      prisma.leadProspect.deleteMany({
+        where: { establishmentId },
+      }),
+    ]);
 
     logger.info(
-      `Enriquecimiento eliminado por admin para establecimiento ${establishmentId}`
+      `Enriquecimiento y LeadProspect eliminados por admin para establecimiento ${establishmentId}`
     );
     return true;
   } catch (error) {
