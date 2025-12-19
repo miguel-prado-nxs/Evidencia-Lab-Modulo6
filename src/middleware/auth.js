@@ -178,6 +178,9 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
         req.user = { ...user, partner: salesPartner };
       }
 
+      // Establecer salesPartnerId para los controladores de ventas
+      req.salesPartnerId = salesPartner.id;
+
       logger.info(`Autenticación de servicio Ventas: ${salesUserEmail}`);
       return next();
     }
@@ -372,6 +375,29 @@ const generateToken = (user) => {
   );
 };
 
+/**
+ * Middleware para verificar que el usuario de ventas es admin
+ * Verifica el header X-Sales-User-Role
+ */
+const requireVentasAdmin = (req, res, next) => {
+  // Obtener rol del header
+  const salesUserRole = req.headers["x-sales-user-role"];
+  
+  logger.debug("Verificando rol de ventas:", { 
+    salesUserRole, 
+    headers: req.headers 
+  });
+
+  if (!salesUserRole || salesUserRole !== "admin") {
+    return res.status(403).json({
+      success: false,
+      error: "Se requiere rol de administrador de ventas para acceder a este recurso",
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   authenticateJWT,
   authenticateJWTOrServiceKey,
@@ -379,6 +405,6 @@ module.exports = {
   authenticateApiKey,
   requireAdmin,
   requireActivePartner,
+  requireVentasAdmin,
   generateToken,
 };
-
