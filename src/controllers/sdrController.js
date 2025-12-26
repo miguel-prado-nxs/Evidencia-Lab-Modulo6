@@ -196,6 +196,47 @@ async function handleCallResult(req, res, next) {
             });
         }
 
+        // ==================== LEAD PROSPECT CREATION ====================
+        // Cuando se identifica un tomador de decisiones (PROSPECT), también debemos
+        // crear/actualizar el registro en lead_prospects para que aparezca en "Mis Prospectos"
+        if (enrichmentData.level === "PROSPECT" && userId) {
+            try {
+                // Verificar si ya existe un lead_prospect para este establecimiento
+                let leadProspect = await prisma.leadProspect.findFirst({
+                    where: { establishmentId: establishmentId },
+                });
+
+                if (leadProspect) {
+                    // Actualizar si ya existe (asignar al usuario que hizo la llamada SDR)
+                    leadProspect = await prisma.leadProspect.update({
+                        where: { id: leadProspect.id },
+                        data: {
+                            partnerId: userId,  // userId es el salesPartnerId
+                            status: "ASSIGNED",
+                            assignedAt: new Date(),
+                            notes: `Asignado por SDR Agent - Tomador de decisiones identificado: ${decisionMaker.name || 'N/A'}`,
+                        },
+                    });
+                    logger.info(`[SDR] lead_prospect actualizado para ${establishmentId}, asignado a ${userId}`);
+                } else {
+                    // Crear nuevo lead_prospect
+                    leadProspect = await prisma.leadProspect.create({
+                        data: {
+                            establishmentId: establishmentId,
+                            partnerId: userId,  // userId es el salesPartnerId
+                            status: "ASSIGNED",
+                            assignedAt: new Date(),
+                            notes: `Creado por SDR Agent - Tomador de decisiones identificado: ${decisionMaker.name || 'N/A'}`,
+                        },
+                    });
+                    logger.info(`[SDR] lead_prospect creado para ${establishmentId}, asignado a ${userId}`);
+                }
+            } catch (prospectError) {
+                // No fallar todo el flujo si hay error creando lead_prospect
+                logger.error(`[SDR] Error creando/actualizando lead_prospect: ${prospectError.message}`);
+            }
+        }
+
         logger.info(`SDR call result saved for ${establishmentId}`, {
             apiKey: req.apiKey?.name,
             status: callStatus,

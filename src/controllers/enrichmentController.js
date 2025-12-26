@@ -163,7 +163,8 @@ async function getStatsByLevel(req, res, next) {
  */
 async function getMyEnrichments(req, res, next) {
   try {
-    const partnerId = req.user.partner?.id;
+    // Para Service Key, usar salesPartnerId. Para JWT, usar user.partner.id
+    const partnerId = req.salesPartnerId || req.user?.partner?.id;
     const { level } = req.query;
 
     if (!partnerId) {
@@ -172,6 +173,9 @@ async function getMyEnrichments(req, res, next) {
         error: "Solo partners pueden ver sus enriquecimientos",
       });
     }
+
+    // DEBUG: Log para identificar discrepancia de IDs
+    logger.info(`[DEBUG getMyEnrichments] PartnerId usado para filtrar: ${partnerId}, Level: ${level || 'all'}`);
 
     const enrichments = await enrichmentService.getEnrichmentsByPartner(partnerId, level);
 
@@ -192,7 +196,8 @@ async function getMyEnrichments(req, res, next) {
  */
 async function getMyStats(req, res, next) {
   try {
-    const partnerId = req.user.partner?.id;
+    // Para Service Key, usar salesPartnerId. Para JWT, usar user.partner.id
+    const partnerId = req.salesPartnerId || req.user?.partner?.id;
 
     if (!partnerId) {
       return res.status(403).json({

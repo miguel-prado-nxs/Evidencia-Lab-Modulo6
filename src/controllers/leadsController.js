@@ -327,6 +327,133 @@ const autoEnrich = async (req, res, next) => {
 };
 
 
+/**
+ * POST /leads/auto-qualify
+ * Inicia una llamada de calificación automática para un prospecto
+ * 
+ * Body:
+ * - establishmentId: ID del establecimiento (requerido)
+ * - establishmentName: Nombre del negocio (requerido)
+ * - decisionMakerName: Nombre del tomador de decisiones (requerido)
+ * - decisionMakerPhone: Teléfono del tomador de decisiones (requerido)
+ * - decisionMakerPosition: Posición (opcional)
+ * - decisionMakerEmail: Email (opcional)
+ * 
+ * La llamada usa el agente de Qualification para:
+ * - Recopilar información BANT
+ * - Identificar intent, fear, pain, desire
+ * - Agendar demo en Calendly si es necesario
+ * - Convertir PROSPECT -> LEAD
+ */
+const autoQualify = async (req, res, next) => {
+  try {
+    const {
+      establishmentId,
+      establishmentName,
+      decisionMakerName,
+      decisionMakerPhone,
+      decisionMakerPosition,
+      decisionMakerEmail,
+    } = req.body;
+
+    // Validación de campos requeridos
+    if (!establishmentId || !establishmentName || !decisionMakerName || !decisionMakerPhone) {
+      return res.status(400).json({
+        success: false,
+        error: "Se requieren establishmentId, establishmentName, decisionMakerName y decisionMakerPhone",
+      });
+    }
+
+    console.log("=== AUTO-QUALIFY DATOS RECIBIDOS (PARTNERS API) ===");
+    console.log("Nombre del negocio:", establishmentName);
+    console.log("Tomador de decisiones:", decisionMakerName);
+    console.log("Teléfono:", decisionMakerPhone);
+    console.log("Posición:", decisionMakerPosition || "No especificado");
+    console.log("Email:", decisionMakerEmail || "No especificado");
+    console.log("Establishment ID:", establishmentId);
+    console.log("Usuario:", req.salesPartnerId || req.user?.id || "No identificado");
+    console.log("===================================================");
+
+    // URL del agente de qualification
+    const agentsSdkUrl = process.env.AGENTS_SDK_URL;
+    if (!agentsSdkUrl) {
+      logger.error("[AUTO-QUALIFY] AGENTS_SDK_URL no configurada");
+      return res.status(500).json({
+        success: false,
+        error: "Servicio de agentes no configurado",
+        details: {
+          establishmentName,
+          decisionMakerName,
+        },
+      });
+    }
+
+    // Llamar al agente de Qualification en agentes-crm-sdk
+    const axios = require("axios");
+
+    const qualificationPayload = {
+      establishment_id: establishmentId,
+      establishment_name: establishmentName,
+      phone: decisionMakerPhone,
+      decision_maker_name: decisionMakerName,
+      decision_maker_position: decisionMakerPosition || null,
+      decision_maker_email: decisionMakerEmail || null,
+      // Pasar userId para asignación
+      user_id: req.salesPartnerId || req.user?.id || null,
+    };
+
+    console.log("[AUTO-QUALIFY] Llamando al agente de Qualification:", agentsSdkUrl + "/api/qualification/initiate-call");
+    console.log("[AUTO-QUALIFY] Payload:", JSON.stringify(qualificationPayload, null, 2));
+
+    // Obtener API Key para autenticación con agentes-crm-sdk
+    const sdrApiKey = process.env.SDR_API_KEY;
+    if (!sdrApiKey) {
+      logger.warn("[AUTO-QUALIFY] SDR_API_KEY no configurada - llamada puede fallar");
+    }
+
+    const qualificationResponse = await axios.post(
+      agentsSdkUrl + "/api/qualification/initiate-call",
+      qualificationPayload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": sdrApiKey || "",
+        },
+        timeout: 30000,
+      }
+    );
+
+    console.log("[AUTO-QUALIFY] Respuesta del agente de Qualification:", JSON.stringify(qualificationResponse.data, null, 2));
+
+    res.json({
+      success: true,
+      message: "Llamada de calificación iniciada exitosamente",
+      qualificationResponse: qualificationResponse.data,
+      receivedData: {
+        establishmentName,
+        decisionMakerName,
+        decisionMakerPhone,
+        establishmentId,
+      },
+    });
+  } catch (error) {
+    // Solo loggear el mensaje para evitar error de estructura circular
+    logger.error("Error en auto-qualify:", error.message);
+
+    // Si el error es de axios, extraer mensaje
+    if (error.response) {
+      console.log("[AUTO-QUALIFY] Error respuesta:", error.response.status, error.response.data);
+      return res.status(error.response.status || 500).json({
+        success: false,
+        error: `Error del agente de Qualification: ${error.response.data?.error || error.response.data?.detail?.error || error.message}`,
+      });
+    }
+
+    next(error);
+  }
+};
+
+
 module.exports = {
   list,
   getById,
@@ -335,5 +462,6 @@ module.exports = {
   updateStatus,
   track,
   autoEnrich,
+  autoQualify,
 };
 

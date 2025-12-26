@@ -140,6 +140,9 @@ model Partner {
   
   // Establishment meetings
   establishmentMeetings EstablishmentMeeting[]
+  
+  // Call leads (resultados de llamadas de calificación)
+  callLeads CallLead[]
 
   @@index([code])
   @@index([type])
@@ -916,4 +919,87 @@ model EstablishmentMeeting {
   @@index([meetingScheduled])
   @@index([meetingDate])
   @@map("establishment_meetings")
+}
+
+// ========== CALL LEADS - RESULTADOS DE LLAMADAS DE CALIFICACIÓN ==========
+
+model CallLead {
+  id String @id @default(uuid())
+
+  // Datos del prospecto
+  fullName String  @map("full_name")
+  phone    String
+  email    String?
+
+  // Referencia al establecimiento (para flujo de ventas)
+  establishmentId String? @map("establishment_id")
+
+  // Preferencia de llamada
+  preferredTime String    @default("now") @map("preferred_time") // 'now', 'morning', 'afternoon', 'scheduled'
+  scheduledAt   DateTime? @map("scheduled_at")
+
+  // Estado de la llamada
+  callStatus String @default("pending") @map("call_status")
+  // 'pending', 'in_progress', 'completed', 'failed', 'no_answer', 'scheduled'
+
+  // Resultados de la llamada (llenado por agente IA)
+  callSummary         String? @map("call_summary") @db.Text
+  callTranscript      Json?   @map("call_transcript") // Transcripción completa
+  callDurationSeconds Int?    @map("call_duration_seconds")
+
+  // Calificación del lead
+  qualificationScore   String? @map("qualification_score") // 'A', 'B', 'C', 'D'
+  intentScore          Int?    @map("intent_score") // 0-100
+  qualificationDetails Json?   @map("qualification_details")
+  // {
+  //   "current_situation": "Manual, no system",
+  //   "pain_points": ["Lost orders", "Slow service"],
+  //   "business_size": "10-20 employees",
+  //   "interests": ["POS", "Digital menu"],
+  //   "urgency": "high",
+  //   "decision_maker": true,
+  //   "next_step": "demo_scheduled",
+  //   "bant": { "budget": {...}, "authority": {...}, "need": {...}, "timeline": {...} }
+  // }
+
+  // Datos BANT específicos (intent, fear, pain, desire)
+  intent String? @db.Text
+  fear   String? @db.Text
+  pain   String? @db.Text
+  desire String? @db.Text
+
+  // Seguimiento
+  nextAction     String?   @map("next_action") // 'schedule_demo', 'send_info', 'follow_up_later', 'not_interested'
+  nextActionDate DateTime? @map("next_action_date")
+
+  // Método de agendamiento
+  bookingMethod String? @map("booking_method") // 'verbal', 'calendly_link', 'agent_scheduled'
+
+  // Conversión
+  convertedToLeadId String? @map("converted_to_lead_id")
+
+  // Asignación
+  partnerId         String? @map("partner_id") // Partner/Vendedor asignado
+  representativeName String? @map("representative_name")
+
+  // Tracking
+  source         String  @default("sales_qualification")
+  utmData        Json?   @map("utm_data")
+  twilioCallSid  String? @map("twilio_call_sid")
+
+  // Timestamps
+  calledAt  DateTime? @map("called_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([callStatus])
+  @@index([phone])
+  @@index([qualificationScore])
+  @@index([establishmentId])
+  @@index([partnerId])
+  @@index([createdAt(sort: Desc)])
+  @@map("call_leads")
 }

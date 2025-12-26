@@ -181,6 +181,9 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
       // Establecer salesPartnerId para los controladores de ventas
       req.salesPartnerId = salesPartner.id;
 
+      // DEBUG: Log detallado de IDs para depuración
+      logger.info(`[DEBUG AUTH] SalesUserId header: ${salesPartnerId}, Partner code: ${salesPartner.code}, Partner.id (salesPartnerId): ${salesPartner.id}, req.user.partner.id: ${req.user?.partner?.id}`);
+
       logger.info(`Autenticación de servicio Ventas: ${salesUserEmail}`);
       return next();
     }
@@ -382,10 +385,10 @@ const generateToken = (user) => {
 const requireVentasAdmin = (req, res, next) => {
   // Obtener rol del header
   const salesUserRole = req.headers["x-sales-user-role"];
-  
-  logger.debug("Verificando rol de ventas:", { 
-    salesUserRole, 
-    headers: req.headers 
+
+  logger.debug("Verificando rol de ventas:", {
+    salesUserRole,
+    headers: req.headers
   });
 
   if (!salesUserRole || salesUserRole !== "admin") {
