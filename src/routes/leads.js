@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const leadsController = require("../controllers/leadsController");
 const { authenticateJWT, authenticateApiKey, authenticateJWTOrServiceKey } = require("../middleware/auth");
+const { validateEnrichmentAgent } = require("../middleware/enrichmentAgent");
 const { validate } = require("../middleware/validation");
 const { z } = require("zod");
 
@@ -51,7 +52,9 @@ const trackLeadSchema = z.object({
 
 // Ruta pública para tracking (con API Key)
 router.post("/track", authenticateApiKey, validate(trackLeadSchema), leadsController.track);
-router.post("/auto-enrich", authenticateJWTOrServiceKey, leadsController.autoEnrich);
+
+// Rutas protegidas para agente de enriquecimiento (solo agente autorizado)
+router.post("/auto-enrich", validateEnrichmentAgent, leadsController.autoEnrich);
 router.post("/auto-qualify", authenticateJWTOrServiceKey, leadsController.autoQualify);
 
 // Rutas protegidas
@@ -64,4 +67,3 @@ router.patch("/:id", leadsController.update);
 router.patch("/:id/status", leadsController.updateStatus);
 
 module.exports = router;
-
