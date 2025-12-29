@@ -501,11 +501,131 @@ async function getStatsByLevelForPartner(partnerId) {
  * 
  * Combina con datos de establecimientos de Mapa DB y meetings
  */
+
+/**
+ * Obtener PROSPECT directamente de establishmentEnrichment (para SDR)
+ * El agente SDR guarda con level=PROSPECT directamente en esta tabla
+ */
+async function getEnrichmentProspectsDirect(partnerId) {
+  try {
+    // Obtener enrichments con level=PROSPECT
+    const enrichments = await prisma.establishmentEnrichment.findMany({
+      where: {
+        enrichedBy: partnerId,
+        level: "PROSPECT",
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    if (enrichments.length === 0) {
+      return [];
+    }
+
+    // Obtener IDs de establecimientos
+    const establishmentIds = enrichments.map((e) => e.establishmentId);
+
+    // DEBUG: Log IDs encontrados
+    logger.info(`[getEnrichmentProspectsDirect] Encontrados ${enrichments.length} enrichments con level=PROSPECT, IDs: ${establishmentIds.join(', ')}`);
+
+    // Obtener datos de establecimientos de Mapa DB (IDs son strings)
+    const establishments = await prismaGeo.establishment.findMany({
+      where: { id: { in: establishmentIds } },
+      select: {
+        id: true,
+        name: true,
+        activityName: true,
+        phone: true,
+        email: true,
+        website: true,
+        latitude: true,
+        longitude: true,
+        municipalityName: true,
+        stateName: true,
+      },
+    });
+
+    logger.info(`[getEnrichmentProspectsDirect] Encontrados ${establishments.length} establecimientos en Mapa DB`);
+
+    // Obtener meetings del partner para estos establecimientos
+    const meetings = await prisma.establishmentMeeting.findMany({
+      where: {
+        partnerId,
+        establishmentId: { in: establishmentIds },
+      },
+    });
+
+    // Crear mapas para lookup rápido (convertir ID a string para match con enrichment.establishmentId)
+    const establishmentMap = establishments.reduce((acc, e) => {
+      acc[String(e.id)] = e;
+      return acc;
+    }, {});
+
+    const meetingMap = meetings.reduce((acc, m) => {
+      acc[m.establishmentId] = {
+        meetingScheduled: m.meetingScheduled,
+        meetingDate: m.meetingDate,
+        meetingLink: m.meetingLink,
+        notes: m.notes,
+      };
+      return acc;
+    }, {});
+
+    // Combinar datos - formato compatible con frontend (establishment como propiedad anidada)
+    return enrichments.map((enrichment) => {
+      const establishment = establishmentMap[enrichment.establishmentId] || {};
+      const meeting = meetingMap[enrichment.establishmentId] || {};
+
+      return {
+        // Campos del enrichment a nivel raíz
+        ...enrichment,
+        establishmentId: enrichment.establishmentId,
+        // Establishment como objeto anidado (requerido por frontend)
+        establishment: {
+          id: enrichment.establishmentId,
+          name: establishment.name || "Establecimiento",
+          activityName: establishment.activityName || "",
+          phone: establishment.phone || enrichment.decisionMakerPhone || "",
+          email: establishment.email || enrichment.decisionMakerEmail || "",
+          website: establishment.website || "",
+          latitude: establishment.latitude,
+          longitude: establishment.longitude,
+          municipalityName: establishment.municipalityName || "",
+          stateName: establishment.stateName || "",
+        },
+        meeting,
+      };
+    });
+  } catch (error) {
+    logger.error("Error en getEnrichmentProspectsDirect:", error);
+    return [];
+  }
+}
+
 async function getEnrichmentsByPartner(partnerId, level = null) {
   try {
-    // Para PROSPECT: obtener de lead_prospects EXCLUYENDO los que ya avanzaron
+    // Para PROSPECT: obtener de lead_prospects Y de establishmentEnrichment con level=PROSPECT
+    // El agente SDR guarda directamente en establishmentEnrichment con level=PROSPECT
     if (level === "PROSPECT") {
-      return await getProspectsByPartner(partnerId);
+      // Obtener de lead_prospects (método tradicional)
+      const leadProspects = await getProspectsByPartner(partnerId);
+      logger.info(`[getEnrichmentsByPartner] leadProspects count: ${leadProspects.length}`);
+
+      // Obtener también de establishmentEnrichment donde level=PROSPECT
+      const enrichmentProspects = await getEnrichmentProspectsDirect(partnerId);
+      logger.info(`[getEnrichmentsByPartner] enrichmentProspects count: ${enrichmentProspects.length}`);
+
+      // Combinar ambas fuentes, evitando duplicados por establishmentId
+      const combined = [...leadProspects];
+      const existingIds = new Set(leadProspects.map(p => p.enrichment?.establishmentId || p.establishmentId));
+
+      for (const ep of enrichmentProspects) {
+        if (!existingIds.has(ep.enrichment?.establishmentId)) {
+          combined.push(ep);
+        }
+      }
+
+      logger.info(`[getEnrichmentsByPartner] combined PROSPECT count: ${combined.length}`);
+      return combined;
     }
 
     // Para CONTACT, LEAD y CLIENT: obtener directamente de EstablishmentEnrichment

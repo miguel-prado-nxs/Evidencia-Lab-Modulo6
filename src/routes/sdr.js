@@ -2,16 +2,16 @@
  * SDR Agent Routes
  * Rutas para la API del Agente SDR (agentes-crm-sdk)
  * 
- * Autenticación: API Key via header x-api-key
+ * Autenticación: X-Enrichment-Agent-Key header
  */
 
 const express = require("express");
 const router = express.Router();
 const sdrController = require("../controllers/sdrController");
-const { authenticateApiKey } = require("../middleware/auth");
+const { validateEnrichmentAgent } = require("../middleware/enrichmentAgent");
 
-// Todas las rutas SDR requieren API Key
-router.use(authenticateApiKey);
+// Todas las rutas SDR requieren Enrichment Agent Key
+router.use(validateEnrichmentAgent);
 
 /**
  * POST /api/v1/sdr/call-result
