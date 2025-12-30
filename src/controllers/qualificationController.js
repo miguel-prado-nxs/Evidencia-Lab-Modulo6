@@ -10,6 +10,7 @@
 
 const { PrismaClient } = require("@prisma/client");
 const logger = require("../config/logger");
+const { emitLevelChanged, emitEnrichmentUpdated } = require("../config/sseEvents");
 
 const prisma = new PrismaClient();
 
@@ -311,6 +312,25 @@ async function handleCallResult(req, res, next) {
                 });
 
                 logger.info(`[Qualification] EstablishmentEnrichment actualizado: ${establishmentId}`);
+
+                // Emitir evento SSE si el nivel cambió
+                if (qualificationCompleted && existingEnrichment.level !== "LEAD") {
+                    const enrichedBy = userId || existingEnrichment.enrichedBy;
+                    if (enrichedBy) {
+                        emitLevelChanged({
+                            partnerId: enrichedBy,
+                            establishmentId,
+                            previousLevel: existingEnrichment.level,
+                            newLevel: "LEAD",
+                            enrichment: {
+                                id: existingEnrichment.id,
+                                level: "LEAD",
+                                decisionMakerName: existingEnrichment.decisionMakerName,
+                                updatedAt: new Date(),
+                            },
+                        });
+                    }
+                }
             }
 
             // =========================================

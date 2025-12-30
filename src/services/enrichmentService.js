@@ -13,6 +13,7 @@ const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 const geoService = require("./geoService");
 const leadService = require("./leadService");
+const { emitLevelChanged, emitEnrichmentUpdated } = require("../config/sseEvents");
 
 /**
  * Calcular el nivel de un establecimiento basado en sus datos
@@ -217,6 +218,9 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
     const level = calculateLevel(establishment, enrichmentData);
     enrichmentData.level = level;
 
+    // Guardar nivel anterior para detectar cambios
+    const previousLevel = existing?.level || null;
+
     let enrichment;
 
     if (existing) {
@@ -228,6 +232,36 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       logger.info(
         `Enriquecimiento actualizado para establecimiento ${establishmentId} - Nivel: ${level}`
       );
+
+      // Emitir evento SSE si el nivel cambió
+      if (previousLevel && previousLevel !== level) {
+        emitLevelChanged({
+          partnerId: existing.enrichedBy || partnerId,
+          establishmentId,
+          previousLevel,
+          newLevel: level,
+          enrichment: {
+            id: enrichment.id,
+            level,
+            decisionMakerName: enrichmentData.decisionMakerName,
+            updatedAt: enrichment.updatedAt,
+          },
+        });
+      } else {
+        // Emitir evento de actualización sin cambio de nivel
+        emitEnrichmentUpdated({
+          partnerId: existing.enrichedBy || partnerId,
+          establishmentId,
+          previousLevel,
+          newLevel: level,
+          enrichment: {
+            id: enrichment.id,
+            level,
+            decisionMakerName: enrichmentData.decisionMakerName,
+            updatedAt: enrichment.updatedAt,
+          },
+        });
+      }
     } else {
       // Crear nuevo en Partners DB
       enrichment = await prisma.establishmentEnrichment.create({
@@ -241,6 +275,20 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       logger.info(
         `Enriquecimiento creado para establecimiento ${establishmentId} - Nivel: ${level}`
       );
+
+      // Emitir evento de nuevo enriquecimiento
+      emitEnrichmentUpdated({
+        partnerId,
+        establishmentId,
+        previousLevel: null,
+        newLevel: level,
+        enrichment: {
+          id: enrichment.id,
+          level,
+          decisionMakerName: enrichmentData.decisionMakerName,
+          updatedAt: enrichment.updatedAt,
+        },
+      });
     }
 
     // Auto-promoción según datos proporcionados (sin cambios de esquema)
@@ -268,20 +316,26 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
 
     // Ejecutar promociones de manera segura y mínima
     let ensuredProspect = null;
+    logger.info(`[Auto-Promoción] hasDecisionMaker=${hasDecisionMaker}, hasQualification=${hasQualification}, hasClientInfo=${hasClientInfo}, partnerId=${partnerId}`);
+    
     if (hasDecisionMaker && partnerId) {
       try {
         // Verificar prospect existente para este establecimiento
         ensuredProspect = await prisma.leadProspect.findFirst({
           where: { establishmentId },
         });
+        
+        logger.info(`[Auto-Promoción] Prospect existente: ${ensuredProspect ? `id=${ensuredProspect.id}, status=${ensuredProspect.status}, partnerId=${ensuredProspect.partnerId}` : 'NO EXISTE'}`);
 
         if (!ensuredProspect || ensuredProspect.status === "AVAILABLE") {
           // Asignar prospect al partner
           ensuredProspect = await geoService.assignProspect(establishmentId, partnerId, "Auto-asignado por enriquecimiento (Tomador)");
-          logger.info(`Auto-promoción: Prospect asegurado para est ${establishmentId} y partner ${partnerId}`);
+          logger.info(`[Auto-Promoción] Prospect CREADO/ASIGNADO: id=${ensuredProspect.id}, status=${ensuredProspect.status} para est ${establishmentId} y partner ${partnerId}`);
+        } else {
+          logger.info(`[Auto-Promoción] Prospect ya existe y no está AVAILABLE, no se reasigna`);
         }
       } catch (promoErr) {
-        logger.warn("Auto-promoción (Prospect) falló:", promoErr);
+        logger.warn("[Auto-Promoción] (Prospect) falló:", promoErr.message);
       }
     }
 
@@ -464,6 +518,8 @@ async function getStatsByLevel(partnerId = null) {
  */
 async function getStatsByLevelForPartner(partnerId) {
   try {
+    logger.info(`[getStatsByLevelForPartner] Calculando stats para partnerId=${partnerId}`);
+    
     // Contar enriquecimientos del partner por nivel
     const enrichmentStats = await prisma.establishmentEnrichment.groupBy({
       by: ["level"],
@@ -475,32 +531,24 @@ async function getStatsByLevelForPartner(partnerId) {
       acc[stat.level] = stat._count.id;
       return acc;
     }, {});
+    
+    logger.info(`[getStatsByLevelForPartner] enrichmentByLevel:`, JSON.stringify(enrichmentByLevel));
 
-    // Obtener IDs de establecimientos que ya tienen nivel LEAD o CLIENT
-    const advancedEnrichments = await prisma.establishmentEnrichment.findMany({
-      where: {
-        enrichedBy: partnerId,
-        level: { in: ["LEAD", "CLIENT"] }
-      },
-      select: { establishmentId: true },
-    });
-    const advancedIds = advancedEnrichments.map(e => e.establishmentId);
-
-    // Contar prospectos asignados EXCLUYENDO los que ya avanzaron a LEAD o CLIENT
-    const totalProspects = await prisma.leadProspect.count({
-      where: {
-        partnerId,
-        status: "ASSIGNED",
-        establishmentId: advancedIds.length > 0 ? { notIn: advancedIds } : undefined
-      },
-    });
-
-    return {
+    // ARQUITECTURA SIMPLIFICADA: 
+    // Ahora PROSPECT también se cuenta desde establishmentEnrichment
+    // ya que el agente SDR guarda directamente ahí con level=PROSPECT
+    // Esto es más consistente y evita problemas de sincronización entre tablas
+    
+    const result = {
       CONTACT: enrichmentByLevel.CONTACT || 0,
-      PROSPECT: totalProspects,
+      PROSPECT: enrichmentByLevel.PROSPECT || 0,  // Ahora desde enrichment, no leadProspect
       LEAD: enrichmentByLevel.LEAD || 0,
       CLIENT: enrichmentByLevel.CLIENT || 0,
     };
+    
+    logger.info(`[getStatsByLevelForPartner] Resultado final:`, JSON.stringify(result));
+
+    return result;
   } catch (error) {
     logger.error("Error obteniendo estadísticas del partner por nivel:", error);
     throw error;
