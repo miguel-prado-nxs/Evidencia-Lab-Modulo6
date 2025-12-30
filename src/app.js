@@ -24,6 +24,7 @@ const referralsRoutes = require("./routes/referrals");
 const settingsRoutes = require("./routes/settings");
 const sdrRoutes = require("./routes/sdr");
 const qualificationRoutes = require("./routes/qualification");
+const eventsRoutes = require("./routes/events");
 
 // Crear aplicación Express
 const app = express();
@@ -131,6 +132,7 @@ app.use("/api/v1/referrals", referralsRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/sdr", sdrRoutes);
 app.use("/api/v1/qualification", qualificationRoutes);
+app.use("/api/v1/events", eventsRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
