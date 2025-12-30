@@ -553,6 +553,12 @@ model EstablishmentEnrichment {
   gatekeeperInfo       Json?     @map("gatekeeper_info")
   bestCallTime         String?   @db.VarChar(50) @map("best_call_time")
 
+  // ==================== DATOS DEL ESTABLECIMIENTO (para Orchestrator) ====================
+  // Copia de datos de BD 801k para evitar joins cross-database
+  // Campos: name, phone, email, employee_range, activity_code, activity_name, 
+  //         latitude, longitude, state_name, municipality_name
+  establishmentData    Json?     @map("establishment_data")
+
   // ==================== ÍNDICES (ACTUALIZAR) ====================
   @@index([level])
   @@index([establishmentId])

@@ -36,7 +36,11 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
         phone: true,
         email: true,
         website: true,
+        activityCode: true,
         activityName: true,
+        employeeRange: true,
+        latitude: true,
+        longitude: true,
         municipalityName: true,
         stateName: true,
       },
@@ -68,6 +72,19 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
         enrichedBy: partnerId,
         enrichedAt: new Date(),
         lastUpdatedBy: partnerId,
+        // Datos del establecimiento para Orchestrator (evita query a BD 801k)
+        establishmentData: {
+          name: establishment.name || null,
+          phone: establishment.phone || null,
+          email: establishment.email || null,
+          employee_range: establishment.employeeRange || null,
+          activity_code: establishment.activityCode || null,
+          activity_name: establishment.activityName || null,
+          latitude: establishment.latitude?.toString() || null,
+          longitude: establishment.longitude?.toString() || null,
+          state_name: establishment.stateName || null,
+          municipality_name: establishment.municipalityName || null,
+        },
       },
     });
 
