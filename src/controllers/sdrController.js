@@ -117,6 +117,11 @@ async function handleCallResult(req, res, next) {
             where: { establishmentId: establishmentId },
         });
 
+        // ===== Calcular attemptNumber real desde sdr_interactions =====
+        const sdrInteractionsService = require("../services/sdrInteractionsService");
+        const previousAttempts = await sdrInteractionsService.countAttempts(establishmentId);
+        const attemptNumber = previousAttempts + 1;
+
         // Preparar datos para upsert (usa nuevas columnas de migración).
         const enrichmentData = {
             // Decision Maker fields (solo actualizar si hay nuevos datos).
@@ -132,7 +137,7 @@ async function handleCallResult(req, res, next) {
                 : null,
             callSummary: callSummary,
             strategy: strategy,
-            callAttempts: callAttempts || 1,
+            callAttempts: attemptNumber,
             callDurationSeconds: callDurationSeconds || 0,
             callStatus: callStatus,
             enrichmentStatus: enrichmentStatus,
@@ -194,6 +199,28 @@ async function handleCallResult(req, res, next) {
                     ...enrichmentData,
                 },
             });
+        }
+
+        // ==================== GUARDAR EN SDR_INTERACTIONS ====================
+        // Guardar historial de la llamada para métricas A/B
+        try {
+            await sdrInteractionsService.createInteraction({
+                establishmentId,
+                callStatus,
+                enrichmentStatus,
+                decisionMakerFound: !!decisionMaker?.name,
+                decisionMakerName: decisionMaker?.name || null,
+                decisionMakerRole: decisionMaker?.position || null,
+                callSummary,
+                callDurationSeconds,
+                attemptNumber,  // Usar el valor calculado arriba
+                strategy,
+                gatekeeperInfo,
+                twilioCallSid: null, // TODO: agregar si viene del agente
+            });
+        } catch (interactionError) {
+            // No bloquear el flujo principal si falla el guardado de interacción
+            logger.error(`[SDR] Error guardando interacción: ${interactionError.message}`);
         }
 
         // ==================== LEAD PROSPECT CREATION ====================
