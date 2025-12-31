@@ -317,8 +317,14 @@ async function getEstablishmentForCall(req, res, next) {
  * @access Privado (requiere API Key)
  */
 async function getStats(req, res, next) {
+    const sdrInteractionsService = require("../services/sdrInteractionsService");
+
     try {
-        const stats = await sdrService.getSDRStats();
+        // Stats de enrichment (resultados finales)
+        const enrichmentStats = await sdrService.getSDRStats();
+
+        // Stats de interacciones (historial detallado con A/B)
+        const interactionStats = await sdrInteractionsService.getStats();
 
         logger.info("SDR stats retrieved", {
             apiKey: req.apiKey?.name,
@@ -326,10 +332,49 @@ async function getStats(req, res, next) {
 
         res.json({
             success: true,
-            data: stats,
+            data: {
+                enrichments: enrichmentStats,
+                interactions: interactionStats,
+            },
         });
     } catch (error) {
         logger.error("[SDR Controller] Error obteniendo stats:", error);
+        next(error);
+    }
+}
+
+/**
+ * GET /api/v1/sdr/interactions/:establishmentId
+ * Obtiene historial de interacciones SDR para un establecimiento.
+ * 
+ * @route GET /api/v1/sdr/interactions/:establishmentId
+ * @access Privado (requiere API Key)
+ */
+async function getInteractions(req, res, next) {
+    const sdrInteractionsService = require("../services/sdrInteractionsService");
+
+    try {
+        const { establishmentId } = req.params;
+
+        if (!establishmentId) {
+            return res.status(400).json({
+                success: false,
+                error: "establishmentId es requerido",
+            });
+        }
+
+        const interactions = await sdrInteractionsService.getByEstablishment(establishmentId);
+
+        res.json({
+            success: true,
+            data: {
+                establishmentId,
+                totalInteractions: interactions.length,
+                interactions,
+            },
+        });
+    } catch (error) {
+        logger.error("[SDR Controller] Error obteniendo interacciones:", error);
         next(error);
     }
 }
@@ -338,4 +383,5 @@ module.exports = {
     handleCallResult,
     getEstablishmentForCall,
     getStats,
+    getInteractions,
 };

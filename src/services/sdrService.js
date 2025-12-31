@@ -91,27 +91,67 @@ async function saveCallResult(establishmentId, data) {
 
 /**
  * Registrar interacción SDR
- * Guarda metadatos de la llamada para análisis y métricas A/B
+ * Guarda en sdr_interactions y actualiza campos en establishment_enrichments
  * 
  * @param {string} establishmentId - ID del establecimiento
  * @param {Object} interactionData - Datos de la interacción
  */
 async function logSDRInteraction(establishmentId, interactionData) {
+    const sdrInteractionsService = require("./sdrInteractionsService");
+
     try {
-        // Por ahora, logueamos a archivo/consola
-        // En el futuro, se puede agregar una tabla sdr_interactions
-        logger.info(`SDR Interaction logged for ${establishmentId}:`, {
-            ...interactionData,
+        const {
+            callStatus,
+            enrichmentStatus,
+            callSummary,
+            gatekeeperInfo,
+            strategy,
+            callAttempts,
+            callDurationSeconds,
+            decisionMaker,
+            twilioCallSid,
+        } = interactionData;
+
+        // 1. Contar intentos previos para este establecimiento
+        const previousAttempts = await sdrInteractionsService.countAttempts(establishmentId);
+        const attemptNumber = previousAttempts + 1;
+
+        // 2. Guardar en sdr_interactions (historial completo)
+        await sdrInteractionsService.createInteraction({
             establishmentId,
+            callStatus,
+            enrichmentStatus,
+            decisionMakerFound: !!decisionMaker?.name,
+            decisionMakerName: decisionMaker?.name || null,
+            decisionMakerRole: decisionMaker?.position || null,
+            callSummary,
+            callDurationSeconds,
+            attemptNumber,
+            strategy,
+            gatekeeperInfo,
+            twilioCallSid,
         });
 
-        // TODO: Crear tabla sdr_interactions para métricas A/B
-        // await prisma.sdrInteraction.create({
-        //   data: {
-        //     establishmentId,
-        //     ...interactionData,
-        //   },
-        // });
+        // 3. Actualizar campos agregados en establishment_enrichments
+        await prisma.establishmentEnrichment.updateMany({
+            where: { establishmentId },
+            data: {
+                callAttempts: attemptNumber,
+                callDurationSeconds: callDurationSeconds || 0,
+                callStatus,
+                enrichmentStatus,
+                strategy,
+                gatekeeperInfo,
+                callSummary,
+            },
+        });
+
+        logger.info(`SDR Interaction logged for ${establishmentId}`, {
+            attemptNumber,
+            callStatus,
+            enrichmentStatus,
+            decisionMakerFound: !!decisionMaker?.name,
+        });
 
         return true;
     } catch (error) {
