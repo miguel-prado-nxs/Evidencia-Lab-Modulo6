@@ -14,6 +14,7 @@ const logger = require("../config/logger");
 const geoService = require("./geoService");
 const leadService = require("./leadService");
 const { emitLevelChanged, emitEnrichmentUpdated } = require("../config/sseEvents");
+const { enqueueSync } = require("./twenty/twentySyncService");
 
 /**
  * Calcular el nivel de un establecimiento basado en sus datos
@@ -374,6 +375,17 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
         if (recentLead) {
           await leadService.updateLeadStatus(recentLead.id, "WON", "Marcado como cliente (WON) por enriquecimiento");
           logger.info(`Auto-promoción: Lead ${recentLead.id} marcado como WON/cliente`);
+        }
+
+        // Encolar sincronizacion con Twenty CRM si el nivel es CLIENT (non-blocking)
+        if (level === "CLIENT") {
+          enqueueSync({
+            establishmentId,
+            partnerId,
+            reason: "ENRICHMENT_TO_CLIENT",
+          }).catch((err) => {
+            logger.warn("[EnrichmentService] Error encolando sync (no critico)", { error: err.message });
+          });
         }
       } catch (promoErr) {
         logger.warn("Auto-promoción (Client) falló:", promoErr);

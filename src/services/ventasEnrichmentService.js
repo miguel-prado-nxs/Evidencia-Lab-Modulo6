@@ -16,6 +16,7 @@
 const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
+const { enqueueSync } = require("./twenty/twentySyncService");
 
 /**
  * Agregar un establecimiento a contactos del usuario de ventas
@@ -89,6 +90,15 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     });
 
     logger.info(`[VentasEnrichment] Contacto agregado: ${establishment.name} por partner ${partnerId}`);
+
+    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    enqueueSync({
+      establishmentId,
+      partnerId,
+      reason: "ADD_TO_CONTACTS",
+    }).catch((err) => {
+      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
+    });
 
     return {
       ...enrichment,
@@ -187,6 +197,15 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     });
 
     logger.info(`[VentasEnrichment] Contacto convertido a prospecto: ${establishment?.name} por partner ${partnerId}`);
+
+    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    enqueueSync({
+      establishmentId,
+      partnerId,
+      reason: "CONTACT_TO_PROSPECT",
+    }).catch((err) => {
+      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
+    });
 
     return {
       ...enrichment,
@@ -338,6 +357,15 @@ async function updateProspect(establishmentId, data, partnerId) {
         municipalityName: true,
         stateName: true,
       },
+    });
+
+    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    enqueueSync({
+      establishmentId,
+      partnerId,
+      reason: "UPDATE_PROSPECT",
+    }).catch((err) => {
+      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
     });
 
     return {

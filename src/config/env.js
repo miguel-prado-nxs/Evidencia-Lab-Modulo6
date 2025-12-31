@@ -23,6 +23,15 @@ const config = {
   logging: {
     level: process.env.LOG_LEVEL || "info",
   },
+  // Twenty CRM Integration
+  twenty: {
+    baseUrl: process.env.TWENTY_BASE_URL || "https://api.crm.development.easyorder.mx",
+    apiKey: process.env.TWENTY_API_KEY || "",
+    // Worker configuration
+    syncEnabled: process.env.TWENTY_SYNC_ENABLED !== "false",
+    syncIntervalMs: parseInt(process.env.TWENTY_SYNC_INTERVAL_MS || "10000", 10),
+    maxRetries: parseInt(process.env.TWENTY_MAX_RETRIES || "5", 10),
+  },
 };
 
 module.exports = config;

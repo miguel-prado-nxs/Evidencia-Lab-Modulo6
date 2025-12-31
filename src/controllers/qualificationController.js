@@ -11,6 +11,7 @@
 const { PrismaClient } = require("@prisma/client");
 const logger = require("../config/logger");
 const { emitLevelChanged, emitEnrichmentUpdated } = require("../config/sseEvents");
+const { enqueueSync } = require("../services/twenty/twentySyncService");
 
 const prisma = new PrismaClient();
 
@@ -328,6 +329,15 @@ async function handleCallResult(req, res, next) {
                                 decisionMakerName: existingEnrichment.decisionMakerName,
                                 updatedAt: new Date(),
                             },
+                        });
+
+                        // Encolar sincronizacion con Twenty CRM (non-blocking)
+                        enqueueSync({
+                            establishmentId,
+                            partnerId: enrichedBy,
+                            reason: "QUALIFICATION_TO_LEAD",
+                        }).catch((err) => {
+                            logger.warn("[Qualification] Error encolando sync (no critico)", { error: err.message });
                         });
                     }
                 }

@@ -7,6 +7,7 @@ const config = require("./config/env");
 const logger = require("./config/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const { initSocket } = require("./config/socket");
+const twentySyncWorker = require("./workers/twentySyncWorker");
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
@@ -157,6 +158,9 @@ server.listen(PORT, () => {
   logger.info(`📊 API: http://localhost:${PORT}/api/v1`);
   logger.info(`🏥 Health check: http://localhost:${PORT}/health`);
   logger.info(`🔌 WebSocket: ws://localhost:${PORT}`);
+
+  // Iniciar worker de sincronizacion con Twenty CRM
+  twentySyncWorker.start();
 });
 
 // Manejo de errores no capturados
