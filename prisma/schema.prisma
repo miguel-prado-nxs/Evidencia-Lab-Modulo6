@@ -569,6 +569,52 @@ model EstablishmentEnrichment {
   @@map("establishment_enrichments")
 }
 
+// ========== INTERACCIONES SDR ==========
+// Registro de todas las llamadas del agente SDR (exitosas y fallidas)
+model SdrInteraction {
+  id              String   @id @default(uuid())
+  establishmentId String   @map("establishment_id") // Referencia a Mapa DB (sin FK)
+  
+  // Estado de la llamada
+  callStatus        String?  @map("call_status") @db.VarChar(30)
+  // 'completed', 'no_answer', 'busy', 'failed', 'voicemail'
+  
+  enrichmentStatus  String?  @map("enrichment_status") @db.VarChar(30)
+  // 'identified', 'not_found', 'gatekeeper_blocked', 'callback_scheduled', 'contacted'
+  
+  // Resultado
+  decisionMakerFound  Boolean  @default(false) @map("decision_maker_found")
+  decisionMakerName   String?  @map("decision_maker_name")
+  decisionMakerRole   String?  @map("decision_maker_role")
+  
+  // Detalles de la llamada
+  callSummary         String?  @map("call_summary") @db.Text
+  callDurationSeconds Int?     @map("call_duration_seconds")
+  attemptNumber       Int      @default(1) @map("attempt_number")
+  
+  // Estrategia A/B
+  strategy            String?  @db.VarChar(10)
+  
+  // Info del gatekeeper (si aplica)
+  gatekeeperInfo      Json?    @map("gatekeeper_info")
+  // { name: "María", message: "El dueño no está", callback_time: "14:00" }
+  
+  // Twilio
+  twilioCallSid       String?  @map("twilio_call_sid") @db.VarChar(50)
+  
+  // Timestamps
+  createdAt           DateTime @default(now()) @map("created_at")
+  
+  // Índices
+  @@index([establishmentId])
+  @@index([callStatus])
+  @@index([enrichmentStatus])
+  @@index([strategy])
+  @@index([decisionMakerFound])
+  @@index([createdAt])
+  @@map("sdr_interactions")
+}
+
 // ========== PROSPECTS DESDE DENUE ==========
 // NOTA: establishmentId referencia a Mapa DB, NO hay FK constraint
 

@@ -62,4 +62,10 @@ router.get("/establishment/:id", sdrController.getEstablishmentForCall);
  */
 router.get("/stats", sdrController.getStats);
 
+/**
+ * GET /api/v1/sdr/interactions/:establishmentId
+ * Obtiene historial de interacciones SDR para un establecimiento
+ */
+router.get("/interactions/:establishmentId", sdrController.getInteractions);
+
 module.exports = router;

@@ -312,7 +312,7 @@ const autoEnrich = async (req, res, next) => {
       },
     });
   } catch (error) {
-    logger.error("Error en auto-enrich:", error);
+    logger.error("Error en auto-enrich:", { message: error.message, status: error.response?.status });
 
     // Si el error es de axios, extraer mensaje
     if (error.response) {
