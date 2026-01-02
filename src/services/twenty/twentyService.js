@@ -272,6 +272,57 @@ class TwentyService {
   }
 
   /**
+   * Eliminar contacto por ID
+   */
+  async deleteContacto(contactoId) {
+    try {
+      await this.client.delete(`/contactos/${contactoId}`);
+      logger.info(`[TwentyService] Contacto eliminado: ${contactoId}`);
+      return true;
+    } catch (error) {
+      logger.error("[TwentyService] Error eliminando contacto:", {
+        error: error.response?.data || error.message,
+        contactoId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Eliminar prospecto por ID
+   */
+  async deleteProspecto(prospectoId) {
+    try {
+      await this.client.delete(`/prospectos/${prospectoId}`);
+      logger.info(`[TwentyService] Prospecto eliminado: ${prospectoId}`);
+      return true;
+    } catch (error) {
+      logger.error("[TwentyService] Error eliminando prospecto:", {
+        error: error.response?.data || error.message,
+        prospectoId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Eliminar opportunity por ID
+   */
+  async deleteOpportunity(opportunityId) {
+    try {
+      await this.client.delete(`/opportunities/${opportunityId}`);
+      logger.info(`[TwentyService] Opportunity eliminado: ${opportunityId}`);
+      return true;
+    } catch (error) {
+      logger.error("[TwentyService] Error eliminando opportunity:", {
+        error: error.response?.data || error.message,
+        opportunityId,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Buscar contacto por email con paginacion
    */
   async findContactoByEmail(email) {
@@ -413,6 +464,23 @@ class TwentyService {
       return updated;
     } catch (error) {
       logger.error("[TwentyService] Error actualizando prospecto:", {
+        error: error.response?.data || error.message,
+        prospectoId,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Eliminar prospecto por ID
+   */
+  async deleteProspecto(prospectoId) {
+    try {
+      await this.client.delete(`/prospectos/${prospectoId}`);
+      logger.info(`[TwentyService] Prospecto eliminado: ${prospectoId}`);
+      return true;
+    } catch (error) {
+      logger.error("[TwentyService] Error eliminando prospecto:", {
         error: error.response?.data || error.message,
         prospectoId,
       });

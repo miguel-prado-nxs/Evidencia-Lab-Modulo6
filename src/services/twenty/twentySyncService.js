@@ -290,55 +290,58 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
 
     // 5. Si currentLevel >= PROSPECT: Upsert Prospecto
     if (LEVEL_ORDER[currentLevel] >= LEVEL_ORDER.PROSPECT) {
-      // Si no hay contacto pero ahora si hay phone/email del tomador, crear contacto primero
-      if (!twentyIds.contactoId) {
-        const decisionMakerPhone = enrichment.decisionMakerPhone || enrichment.decisionMakerWhatsApp;
-        const decisionMakerEmail = enrichment.decisionMakerEmail;
+      // Solo actualizar contacto si NO existe prospecto aún
+      // Porque al crear prospecto se elimina el contacto
+      const decisionMakerPhone = enrichment.decisionMakerPhone || enrichment.decisionMakerWhatsApp;
+      const decisionMakerEmail = enrichment.decisionMakerEmail;
 
-        if (decisionMakerPhone || decisionMakerEmail) {
-          logger.info("[TwentySyncService] Creando contacto desde datos del tomador de decisiones", {
-            establishmentId,
-          });
+      if (!twentyIds.prospectoId && twentyIds.contactoId && (decisionMakerPhone || decisionMakerEmail)) {
+        logger.info("[TwentySyncService] Actualizando contacto con datos del tomador de decisiones", {
+          establishmentId,
+          contactoId: twentyIds.contactoId,
+        });
 
+        try {
+          // Actualizar el contacto existente con los datos del tomador de decisiones
           twentyIds.contactoId = await upsertContacto(
             establishmentData,
             enrichment,
             twentyIds.establecimientoId,
-            null,
+            twentyIds.contactoId,  // Usar el ID existente para actualizar
             true // useDecisionMakerData
           );
+        } catch (error) {
+          // Si el contacto ya no existe (404), continuar sin error
+          if (error.message && error.message.includes("404")) {
+            logger.info("[TwentySyncService] Contacto ya no existe, fue eliminado al crear prospecto", {
+              contactoId: twentyIds.contactoId,
+            });
+            twentyIds.contactoId = null;
+          } else {
+            throw error;
+          }
         }
       }
 
       twentyIds.prospectoId = await upsertProspecto(
+        establishmentData,
         enrichment,
         twentyIds.establecimientoId,
         twentyIds.contactoId,
-        twentyIds.prospectoId
+        twentyIds.prospectoId,
+        partnerId
       );
     }
 
     // 6. Si currentLevel >= LEAD: Upsert Opportunity
     if (LEVEL_ORDER[currentLevel] >= LEVEL_ORDER.LEAD) {
-      // Intentar obtener el LeadStatus del lead asociado
-      let leadStatus = null;
-      const lead = await prisma.lead.findFirst({
-        where: {
-          notes: { contains: `ID Establecimiento: ${establishmentId}` },
-        },
-      });
-
-      if (lead) {
-        leadStatus = lead.status;
-      }
-
       twentyIds.opportunityId = await upsertOpportunity(
         establishmentData,
         enrichment,
         twentyIds.establecimientoId,
         twentyIds.prospectoId,
         twentyIds.opportunityId,
-        leadStatus
+        null // leadStatus - se puede agregar después si se necesita
       );
     }
 
@@ -409,120 +412,50 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
 
 /**
  * Upsert de Establecimiento (Company) en Twenty
- * Usa los campos personalizados configurados en Twenty CRM
+ * IMPORTANTE: Los establecimientos ya existen en Twenty (importados de DENUE)
+ * Solo actualizamos nivelPipeline, NO creamos nuevos ni modificamos otros campos
  */
 async function upsertEstablecimiento(establishmentId, establishmentData, enrichment, currentLevel, existingId) {
-  const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
-
-  const companyData = {
-    name,
+  // Solo actualizar nivelPipeline
+  const updateData = {
     nivelPipeline: currentLevel,
   };
 
-  // Clave DENUE (ID del establecimiento)
-  if (establishmentId) {
-    companyData.claveDenue = establishmentId;
-  }
-
-  // Telefono DENUE - formatear con codigo de pais
-  if (establishmentData.phone) {
-    let formattedPhone = String(establishmentData.phone).replace(/\D/g, "");
-    if (formattedPhone.length === 10) {
-      formattedPhone = "+52" + formattedPhone;
-    } else if (formattedPhone.length === 12 && formattedPhone.startsWith("52")) {
-      formattedPhone = "+" + formattedPhone;
-    } else if (!formattedPhone.startsWith("+")) {
-      formattedPhone = "+" + formattedPhone;
-    }
-    companyData.telefonoDenue = { 
-      primaryPhoneNumber: formattedPhone,
-      primaryPhoneCountryCode: "MX",
-      primaryPhoneCallingCode: "+52"
-    };
-  }
-
-  // Email DENUE
-  if (establishmentData.email) {
-    companyData.emailDenue = { primaryEmail: establishmentData.email };
-  }
-
-  // Website DENUE
-  if (establishmentData.website) {
-    companyData.websiteDenue = { primaryLinkUrl: establishmentData.website, primaryLinkLabel: establishmentData.website };
-    // Tambien en domainName estandar
-    companyData.domainName = { primaryLinkUrl: establishmentData.website, primaryLinkLabel: establishmentData.website };
-  }
-
-  // Giro/Actividad economica
-  if (establishmentData.activity_name) {
-    companyData.giro = establishmentData.activity_name;
-  }
-
-  // Estado
-  if (establishmentData.state_name) {
-    companyData.estado = establishmentData.state_name;
-  }
-
-  // Municipio
-  if (establishmentData.municipality_name) {
-    companyData.municipio = establishmentData.municipality_name;
-  }
-
-  // Codigo Postal
-  if (establishmentData.codigo_postal) {
-    companyData.codigoPostal = establishmentData.codigo_postal;
-  }
-
-  // Latitud y Longitud
-  if (establishmentData.latitude) {
-    companyData.latitud = parseFloat(establishmentData.latitude);
-  }
-  if (establishmentData.longitude) {
-    companyData.longitud = parseFloat(establishmentData.longitude);
-  }
-
-  // Address (campo estandar de Twenty)
-  const addressParts = {};
-  if (establishmentData.street) addressParts.addressStreet1 = establishmentData.street;
-  if (establishmentData.municipality_name) addressParts.addressCity = establishmentData.municipality_name;
-  if (establishmentData.state_name) addressParts.addressState = establishmentData.state_name;
-  if (establishmentData.codigo_postal) addressParts.addressPostcode = establishmentData.codigo_postal;
-  addressParts.addressCountry = "Mexico";
-  if (establishmentData.latitude) addressParts.addressLat = parseFloat(establishmentData.latitude);
-  if (establishmentData.longitude) addressParts.addressLng = parseFloat(establishmentData.longitude);
-
-  if (Object.keys(addressParts).length > 1) {
-    companyData.address = addressParts;
-  }
-
-  // Si ya existe en Twenty, actualizar
+  // Si ya tenemos el ID de Twenty, actualizar directamente
   if (existingId) {
-    await twentyService.updateEstablecimiento(existingId, companyData);
+    await twentyService.updateEstablecimiento(existingId, updateData);
+    logger.info("[TwentySyncService] Company actualizado (nivelPipeline)", {
+      twentyId: existingId,
+      nivelPipeline: currentLevel,
+    });
     return existingId;
   }
 
-  // Buscar por claveDenue primero (deduplicacion mas precisa)
+  // Buscar por claveDenue (establecimiento debe existir en Twenty)
   let existing = null;
   if (establishmentId) {
     existing = await twentyService.findEstablecimientoByClaveDenue(establishmentId);
   }
-  // Si no se encontro por clave, buscar por email
-  if (!existing && establishmentData.email) {
-    existing = await twentyService.findEstablecimientoByEmail(establishmentData.email);
-  }
-  // Si no se encontro por email, buscar por telefono
-  if (!existing && establishmentData.phone) {
-    existing = await twentyService.findEstablecimientoByPhone(establishmentData.phone);
-  }
 
   if (existing) {
-    await twentyService.updateEstablecimiento(existing.id, companyData);
+    await twentyService.updateEstablecimiento(existing.id, updateData);
+    logger.info("[TwentySyncService] Company encontrado y actualizado (nivelPipeline)", {
+      twentyId: existing.id,
+      claveDenue: establishmentId,
+      nivelPipeline: currentLevel,
+    });
     return existing.id;
   }
 
-  // Crear nuevo
-  const created = await twentyService.createEstablecimiento(companyData);
-  return created.id;
+  // ERROR: El establecimiento NO existe en Twenty
+  // Esto NO debería ocurrir si todos los establecimientos fueron importados de DENUE
+  logger.error("[TwentySyncService] Establecimiento NO encontrado en Twenty", {
+    establishmentId,
+    claveDenue: establishmentId,
+    message: "Este establecimiento no existe en Twenty. Verifica que fue importado correctamente desde DENUE.",
+  });
+  
+  throw new Error(`Establecimiento ${establishmentId} no existe en Twenty CRM. Debe ser importado desde DENUE primero.`);
 }
 
 /**
@@ -607,31 +540,94 @@ async function upsertContacto(establishmentData, enrichment, establecimientoId, 
 /**
  * Upsert de Prospecto en Twenty
  */
-async function upsertProspecto(enrichment, establecimientoId, contactoId, existingId) {
+/**
+ * Mapeo de posiciones a valores del ENUM de Twenty
+ */
+const TOMADOR_CARGO_MAP = {
+  'dueño': 'DUENO',
+  'dueno': 'DUENO',
+  'gerente': 'GERENTE',
+  'encargado': 'ENCARGADO',
+  'administrador': 'ADMINISTRADOR',
+  'socio': 'SOCIO',
+  'otro': 'OTRO',
+};
+
+/**
+ * Upsert de Prospecto en Twenty
+ */
+async function upsertProspecto(establishmentData, enrichment, establecimientoId, contactoId, existingId, partnerId) {
+  const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
+
   const prospectoData = {
-    establecimientoId,
+    name, // Nombre del establecimiento
+    establecimientoId, // Relación con Company
   };
 
-  // Datos del tomador de decisiones
+  if (contactoId) {
+    prospectoData.contactoId = contactoId;
+  }
+
+  // Nombre del tomador
   if (enrichment.decisionMakerName) {
     prospectoData.tomadorNombre = enrichment.decisionMakerName;
   }
 
+  // Cargo del tomador - mapear a ENUM
+  let tomadorCargo = null;
   if (enrichment.decisionMakerPosition) {
-    prospectoData.tomadorCargo = enrichment.decisionMakerPosition;
+    const cargoLower = enrichment.decisionMakerPosition.toLowerCase();
+    tomadorCargo = TOMADOR_CARGO_MAP[cargoLower] || 'OTRO';
+    prospectoData.tomadorCargo = tomadorCargo;
   }
 
-  const phone = enrichment.decisionMakerPhone || enrichment.decisionMakerWhatsApp;
-  if (phone) {
-    prospectoData.tomadorTelefono = { primaryPhoneNumber: phone };
+  // Es Gatekeeper: false si es DUENO o GERENTE
+  if (tomadorCargo === 'DUENO' || tomadorCargo === 'GERENTE') {
+    prospectoData.esGatekeeper = false;
   }
 
+  // Fuente Identificación: el partner que agregó el prospecto
+  if (enrichment.enrichedBy) {
+    prospectoData.fuenteIdentificacion = enrichment.enrichedBy;
+  }
+
+  // Email del tomador
   if (enrichment.decisionMakerEmail) {
     prospectoData.tomadorEmail = { primaryEmail: enrichment.decisionMakerEmail };
   }
 
-  if (contactoId) {
-    prospectoData.contactoId = contactoId;
+  // WhatsApp del tomador
+  if (enrichment.decisionMakerWhatsApp) {
+    let phone = String(enrichment.decisionMakerWhatsApp).replace(/\D/g, "");
+    if (phone.length === 10) {
+      phone = "+52" + phone;
+    } else if (phone.length === 12 && phone.startsWith("52")) {
+      phone = "+" + phone;
+    } else if (!phone.startsWith("+")) {
+      phone = "+" + phone;
+    }
+    prospectoData.tomadorWhatsapp = { 
+      primaryPhoneNumber: phone,
+      primaryPhoneCountryCode: "MX",
+      primaryPhoneCallingCode: "+52"
+    };
+  }
+
+  // Teléfono directo del tomador
+  if (enrichment.decisionMakerPhone) {
+    let phone = String(enrichment.decisionMakerPhone).replace(/\D/g, "");
+    if (phone.length === 10) {
+      phone = "+52" + phone;
+    } else if (phone.length === 12 && phone.startsWith("52")) {
+      phone = "+" + phone;
+    } else if (!phone.startsWith("+")) {
+      phone = "+" + phone;
+    }
+    prospectoData.tomadorTelefonoDirecto = { 
+      primaryPhoneNumber: phone,
+      primaryPhoneCountryCode: "MX",
+      primaryPhoneCallingCode: "+52"
+    };
   }
 
   // Si ya existe en Twenty, actualizar
@@ -640,21 +636,34 @@ async function upsertProspecto(enrichment, establecimientoId, contactoId, existi
     return existingId;
   }
 
-  // Buscar por establecimientoId
-  let existing = await twentyService.findProspectoByEstablecimientoId(establecimientoId);
-
-  // Si no se encontro, buscar por email
-  if (!existing && enrichment.decisionMakerEmail) {
-    existing = await twentyService.findProspectoByEmail(enrichment.decisionMakerEmail);
+  // Buscar por email
+  if (enrichment.decisionMakerEmail) {
+    const existing = await twentyService.findProspectoByEmail(enrichment.decisionMakerEmail);
+    if (existing) {
+      await twentyService.updateProspecto(existing.id, prospectoData);
+      return existing.id;
+    }
   }
 
-  if (existing) {
-    await twentyService.updateProspecto(existing.id, prospectoData);
-    return existing.id;
-  }
-
-  // Crear nuevo
+  // Crear nuevo prospecto
   const created = await twentyService.createProspecto(prospectoData);
+  
+  // IMPORTANTE: Eliminar el contacto anterior (Person) ya que ahora es prospecto
+  if (contactoId) {
+    try {
+      await twentyService.deleteContacto(contactoId);
+      logger.info("[TwentySyncService] Contacto eliminado después de crear prospecto", {
+        contactoId,
+        prospectoId: created.id
+      });
+    } catch (error) {
+      logger.warn("[TwentySyncService] Error eliminando contacto anterior (no crítico)", {
+        contactoId,
+        error: error.message
+      });
+    }
+  }
+  
   return created.id;
 }
 
@@ -668,15 +677,25 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
   const opportunityData = {
     name: `Lead - ${name}${decisionMakerName ? ` - ${decisionMakerName}` : ""}`,
     establecimientoId,
+    estadoLead: "NUEVO", // Estado inicial
+    pipelineVentasEasyorder: "DISCOVERY", // Etapa inicial del pipeline
+    prioridad: "B_WARM", // Prioridad por defecto
   };
 
-  if (prospectoId) {
-    opportunityData.prospectoId = prospectoId;
-  }
+  // NO incluir prospectoId porque el prospecto se eliminará
 
-  // Mapear estadoLead - NO incluir pipelineVentasEasyorder
-  if (leadStatus && LEAD_STATUS_MAP[leadStatus]) {
-    opportunityData.estadoLead = LEAD_STATUS_MAP[leadStatus];
+  // Datos de cualificación (IFPD)
+  if (enrichment.intent) {
+    opportunityData.intent = enrichment.intent;
+  }
+  if (enrichment.fear) {
+    opportunityData.fear = enrichment.fear;
+  }
+  if (enrichment.pain) {
+    opportunityData.pain = enrichment.pain;
+  }
+  if (enrichment.desire) {
+    opportunityData.desire = enrichment.desire;
   }
 
   // Si ya existe en Twenty, actualizar
@@ -695,6 +714,23 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
 
   // Crear nuevo
   const created = await twentyService.createOpportunity(opportunityData);
+  
+  // IMPORTANTE: Eliminar el prospecto anterior ya que ahora es lead
+  if (prospectoId) {
+    try {
+      await twentyService.deleteProspecto(prospectoId);
+      logger.info("[TwentySyncService] Prospecto eliminado después de crear opportunity", {
+        prospectoId,
+        opportunityId: created.id
+      });
+    } catch (error) {
+      logger.warn("[TwentySyncService] Error eliminando prospecto anterior (no crítico)", {
+        prospectoId,
+        error: error.message
+      });
+    }
+  }
+  
   return created.id;
 }
 
@@ -710,11 +746,9 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
     estatusCliente: enrichment.clientStatus || "ACTIVO",
   };
 
-  if (opportunityId) {
-    clienteData.leadId = opportunityId;
-  }
+  // NO incluir leadId porque el opportunity se eliminará
 
-  // Producto adquirido - mapear a enum si es posible
+  // Producto adquirido - mapear a enum
   if (enrichment.productPurchased) {
     const productMap = {
       STARTER: "STARTER",
@@ -727,7 +761,22 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
 
   // Monto primera compra
   if (enrichment.purchaseAmount) {
-    clienteData.montoPrimeraCompra = parseFloat(enrichment.purchaseAmount);
+    clienteData.montoPrimeraCompra = {
+      amountMicros: Math.round(parseFloat(enrichment.purchaseAmount) * 1000000),
+      currencyCode: "MXN"
+    };
+  }
+
+  // Cliente desde
+  if (enrichment.clientSince) {
+    clienteData.clienteDesde = new Date(enrichment.clientSince).toISOString();
+  } else if (enrichment.purchaseDate) {
+    clienteData.clienteDesde = new Date(enrichment.purchaseDate).toISOString();
+  }
+
+  // Notas del cliente
+  if (enrichment.clientNotes) {
+    clienteData.notasDeCliente = enrichment.clientNotes;
   }
 
   // Si ya existe en Twenty, actualizar
@@ -746,6 +795,23 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
 
   // Crear nuevo
   const created = await twentyService.createCliente(clienteData);
+  
+  // IMPORTANTE: Eliminar el opportunity anterior ya que ahora es cliente
+  if (opportunityId) {
+    try {
+      await twentyService.deleteOpportunity(opportunityId);
+      logger.info("[TwentySyncService] Opportunity eliminado después de crear cliente", {
+        opportunityId,
+        clienteId: created.id
+      });
+    } catch (error) {
+      logger.warn("[TwentySyncService] Error eliminando opportunity anterior (no crítico)", {
+        opportunityId,
+        error: error.message
+      });
+    }
+  }
+  
   return created.id;
 }
 

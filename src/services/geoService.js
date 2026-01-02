@@ -381,12 +381,15 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
     throw new Error("El prospect debe estar asignado a un partner");
   }
 
+  logger.info(`[ConvertProspectToLead] Buscando establishment con id: ${prospect.establishmentId}`);
+
   // Obtener datos del establecimiento de Mapa DB
   const establishment = await prismaGeo.establishment.findUnique({
     where: { id: prospect.establishmentId },
   });
 
   if (!establishment) {
+    logger.error(`[ConvertProspectToLead] Establecimiento no encontrado. prospect.establishmentId: ${prospect.establishmentId}`);
     throw new Error("Establecimiento no encontrado");
   }
 

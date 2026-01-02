@@ -26,7 +26,7 @@ Cada nivel corresponde a un tipo de registro en Twenty:
 
 ```bash
 # URL base de la API de Twenty CRM
-TWENTY_BASE_URL=https://api.crm.development.easyorder.mx/rest
+TWENTY_BASE_URL=https://api.crm.development.easyorder.mx
 
 # API Key de Twenty (requerido para habilitar sync)
 TWENTY_API_KEY=your-api-key
@@ -78,10 +78,22 @@ TWENTY_MAX_RETRIES=5
 La sincronizacion usa las siguientes estrategias para evitar duplicados:
 
 ### Company (Establecimiento)
-1. Buscar por `sourceId` (establishmentId de Partners)
-2. Si no existe, buscar por email DENUE
-3. Si no existe, buscar por telefono DENUE
-4. Si no existe, crear nuevo
+**IMPORTANTE**: Los establecimientos ya existen en Twenty (importados previamente desde DENUE). **NO se crean nuevos establecimientos**.
+
+1. Buscar por `claveDenue` (= `Establishment.clee` de la BD DENUE)
+2. Si existe → **SOLO actualizar `nivelPipeline`** (no otros campos)
+3. Si NO existe → **ERROR**: El establecimiento debe existir en Twenty
+
+**Campos que se actualizan:**
+- `nivelPipeline` únicamente
+
+**Campos que NO se modifican:**
+- Nombre, teléfono, email, dirección, giro, estado, municipio, etc. (vienen de importación DENUE)
+
+### Mapeo de IDs
+- `EstablishmentEnrichment.establishmentId` = `Establishment.clee` (clave DENUE)
+- `claveDenue` (Twenty) = `Establishment.clee` (DENUE)
+- El UUID de `Establishment.id` solo se usa para búsquedas en la BD geo, luego se convierte a `clee`
 
 ### Contacto
 1. Buscar por `establecimientoId` (ID del Company en Twenty)
