@@ -406,9 +406,87 @@ async function getInteractions(req, res, next) {
     }
 }
 
+/**
+ * GET /geo/ventas/sdr-calls/:establishmentId
+ * Obtener información de llamadas SDR para un establecimiento
+ */
+async function getSDRCallInfo(req, res) {
+  try {
+    const { establishmentId } = req.params;
+
+    if (!establishmentId) {
+      return res.status(400).json({
+        success: false,
+        error: "establishmentId es requerido",
+      });
+    }
+
+    const callInfo = await sdrService.getSDRCallInfo(establishmentId);
+
+    if (!callInfo) {
+      return res.json({
+        success: true,
+        data: null,
+        message: "Sin llamadas registradas para este contacto",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: callInfo,
+    });
+  } catch (error) {
+    logger.error("[VentasController] Error en getSDRCallInfo:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Error obteniendo información de llamadas",
+    });
+  }
+}
+
+
+/**
+ * GET /geo/ventas/lead-calls/:establishmentId
+ * Obtener información de llamadas de calificación (call_leads) para un prospecto
+ */
+async function getLeadCallInfo(req, res) {
+  try {
+    const { establishmentId } = req.params;
+
+    if (!establishmentId) {
+      return res.status(400).json({
+        success: false,
+        error: "establishmentId es requerido",
+      });
+    }
+
+    const callInfo = await sdrService.getLeadCallInfo(establishmentId);
+
+    if (!callInfo) {
+      return res.json({
+        success: true,
+        data: null,
+        message: "Sin llamadas registradas para este prospecto",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: callInfo,
+    });
+  } catch (error) {
+    logger.error("[VentasController] Error en getLeadCallInfo:", error);
+    res.status(500).json({
+      success: false,
+      error: "Error obteniendo información de llamadas",
+    });
+  }
+}
 module.exports = {
     handleCallResult,
     getEstablishmentForCall,
     getStats,
     getInteractions,
+    getSDRCallInfo,
+    getLeadCallInfo,
 };

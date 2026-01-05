@@ -260,10 +260,173 @@ async function getSDRStats() {
     }
 }
 
+
+/**
+ * Obtener información de llamadas SDR para un establecimiento
+ * @param {string} establishmentId - ID del establecimiento
+ * @returns {Object} - Información de las llamadas SDR
+ */
+async function getSDRCallInfo(establishmentId) {
+  try {
+    // Obtener interacciones SDR desde la tabla sdr_interactions
+    const sdrInteractions = await prisma.sdrInteraction.findMany({
+      where: { establishmentId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Si no hay interacciones, retornar null
+    if (!sdrInteractions || sdrInteractions.length === 0) {
+      return null;
+    }
+
+    // Obtener la última interacción (la más reciente)
+    const lastInteraction = sdrInteractions[0];
+
+    // Calcular estadísticas
+    const totalAttempts = sdrInteractions.length;
+    const successfulCalls = sdrInteractions.filter(i => i.decisionMakerFound).length;
+    const totalDuration = sdrInteractions.reduce((sum, i) => sum + (i.callDurationSeconds || 0), 0);
+
+    return {
+      // Datos de la última llamada
+      lastCall: {
+        enrichmentStatus: lastInteraction.enrichmentStatus,
+        decisionMakerFound: lastInteraction.decisionMakerFound,
+        decisionMakerName: lastInteraction.decisionMakerName,
+        decisionMakerRole: lastInteraction.decisionMakerRole,
+        callSummary: lastInteraction.callSummary,
+        attemptNumber: lastInteraction.attemptNumber,
+        callStatus: lastInteraction.callStatus,
+        callDurationSeconds: lastInteraction.callDurationSeconds,
+        strategy: lastInteraction.strategy,
+        createdAt: lastInteraction.createdAt,
+      },
+      // Estadísticas generales
+      stats: {
+        totalAttempts,
+        successfulCalls,
+        totalDuration,
+        lastCallDate: lastInteraction.createdAt,
+      },
+      // Historial completo
+      history: sdrInteractions.map(i => ({
+        id: i.id,
+        callStatus: i.callStatus,
+        enrichmentStatus: i.enrichmentStatus,
+        decisionMakerFound: i.decisionMakerFound,
+        decisionMakerName: i.decisionMakerName,
+        attemptNumber: i.attemptNumber,
+        callDurationSeconds: i.callDurationSeconds,
+        strategy: i.strategy,
+        createdAt: i.createdAt,
+      })),
+    };
+  } catch (error) {
+    logger.error("[VentasEnrichment] Error obteniendo info de llamadas SDR:", error);
+    throw error;
+  }
+}
+
+
+/**
+ * Obtener información de llamadas de calificación (call_leads) para un prospecto
+ * @param {string} establishmentId - ID del establecimiento
+ * @returns {Object|null} - Información agregada de llamadas o null si no hay
+ */
+async function getLeadCallInfo(establishmentId) {
+  try {
+    // Obtener todas las llamadas para este establecimiento, ordenadas por fecha
+    const calls = await prisma.callLead.findMany({
+      where: { establishmentId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        callStatus: true,
+        callSummary: true,
+        intent: true,
+        fear: true,
+        pain: true,
+        desire: true,
+        nextAction: true,
+        qualificationScore: true,
+        intentScore: true,
+        bookingMethod: true,
+        scheduledAt: true,
+        callDurationSeconds: true,
+        createdAt: true,
+        fullName: true,
+        phone: true,
+        email: true,
+      },
+    });
+
+    if (!calls || calls.length === 0) {
+      return null;
+    }
+
+    // Última llamada
+    const lastCall = calls[0];
+
+    // Estadísticas
+    const stats = {
+      totalCalls: calls.length,
+      completedCalls: calls.filter((c) => c.callStatus === "completed").length,
+      totalDuration: calls.reduce((sum, c) => sum + (c.callDurationSeconds || 0), 0),
+      averageScore: calls.filter((c) => c.intentScore).length > 0
+        ? Math.round(
+            calls
+              .filter((c) => c.intentScore)
+              .reduce((sum, c) => sum + c.intentScore, 0) / 
+            calls.filter((c) => c.intentScore).length
+          )
+        : null,
+    };
+
+    // Historial (todas las llamadas)
+    const history = calls.map((call) => ({
+      id: call.id,
+      callStatus: call.callStatus,
+      qualificationScore: call.qualificationScore,
+      intentScore: call.intentScore,
+      nextAction: call.nextAction,
+      scheduledAt: call.scheduledAt,
+      createdAt: call.createdAt,
+    }));
+
+    return {
+      lastCall: {
+        callStatus: lastCall.callStatus,
+        callSummary: lastCall.callSummary,
+        intent: lastCall.intent,
+        fear: lastCall.fear,
+        pain: lastCall.pain,
+        desire: lastCall.desire,
+        nextAction: lastCall.nextAction,
+        qualificationScore: lastCall.qualificationScore,
+        intentScore: lastCall.intentScore,
+        bookingMethod: lastCall.bookingMethod,
+        scheduledAt: lastCall.scheduledAt,
+        callDurationSeconds: lastCall.callDurationSeconds,
+        createdAt: lastCall.createdAt,
+        fullName: lastCall.fullName,
+        phone: lastCall.phone,
+        email: lastCall.email,
+      },
+      stats,
+      history,
+    };
+  } catch (error) {
+    logger.error("[VentasEnrichment] Error obteniendo info de llamadas de leads:", error);
+    throw error;
+  }
+}
+
 module.exports = {
     saveCallResult,
     logSDRInteraction,
     getEstablishmentForCall,
     getRecommendedStrategy,
     getSDRStats,
+    getSDRCallInfo,
+    getLeadCallInfo,
 };

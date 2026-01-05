@@ -8,9 +8,27 @@
 const express = require("express");
 const router = express.Router();
 const sdrController = require("../controllers/sdrController");
+const { authenticateJWT, authenticateJWTOrServiceKey, optionalAuth, requireAdmin, requireVentasAdmin } = require("../middleware/auth");
 const { validateEnrichmentAgent } = require("../middleware/enrichmentAgent");
 
-// Todas las rutas SDR requieren Enrichment Agent Key
+/**
+ * GET /api/v1/sdr/establishment/sdr-calls/:establishmentId
+ * Obtener información de llamadas SDR para un establecimiento (para ventas)
+ * Muestra el historial de interacciones del agente SDR con el contacto
+ * Esta ruta NO requiere Enrichment Agent Key, usa JWT o Service Key
+ */
+router.get("/establishment/sdr-calls/:establishmentId", authenticateJWTOrServiceKey, sdrController.getSDRCallInfo);
+
+/**
+ * GET /api/v1/geo/ventas/lead-calls/:establishmentId
+ * Obtener información de llamadas de calificación para un prospecto
+ * Muestra el historial de llamadas y calificación BANT del prospecto
+ */
+router.get("/establishment/lead-calls/:establishmentId", authenticateJWTOrServiceKey, sdrController.getLeadCallInfo);
+
+// ============================================
+// Todas las rutas siguientes requieren Enrichment Agent Key
+// ============================================
 router.use(validateEnrichmentAgent);
 
 /**
