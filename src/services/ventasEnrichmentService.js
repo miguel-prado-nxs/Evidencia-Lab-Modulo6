@@ -185,9 +185,9 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     });
 
     // 4. Crear o actualizar registro en leadProspect para rastreo
-    // NOTA: leadProspect usa el UUID (establishment.id), no el clee
+    // NOTA: leadProspect usa el clee (igual que establishment_enrichments)
     let prospect = await prisma.leadProspect.findFirst({
-      where: { establishmentId: establishment.id },
+      where: { establishmentId: clee },
     });
 
     if (prospect) {
@@ -198,16 +198,18 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
           partnerId,
           status: "ASSIGNED",
           assignedAt: new Date(),
+          notes: `Actualizado a Prospecto el ${new Date().toLocaleDateString('es-MX')}. Partner: ${partnerId}`,
         },
       });
     } else {
       // Crear si no existe
       prospect = await prisma.leadProspect.create({
         data: {
-          establishmentId: establishment.id,
+          establishmentId: clee,
           partnerId,
           status: "ASSIGNED",
           assignedAt: new Date(),
+          notes: `Creado como Prospecto el ${new Date().toLocaleDateString('es-MX')}. Tomador de decisiones: ${contactData.decisionMakerName}`,
         },
       });
     }

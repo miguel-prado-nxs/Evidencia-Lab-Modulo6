@@ -412,17 +412,39 @@ class TwentyService {
     if (!establecimientoId) return null;
     
     try {
-      const response = await this.client.get("/contactos", { params: { limit: 200 } });
+      // Usar filtro de API para búsqueda exacta
+      const response = await this.client.get("/contactos", { 
+        params: { 
+          limit: 1,
+          filter: `establecimientoId[eq]:${establecimientoId}` 
+        } 
+      });
       const contactos = response.data.data?.contactos || response.data.data || [];
 
-      const found = contactos.find((c) => c.establecimientoId === establecimientoId);
-
-      if (found) {
-        logger.info(`[TwentyService] Contacto encontrado por establecimientoId: ${found.id}`);
+      if (contactos.length > 0) {
+        logger.info(`[TwentyService] Contacto encontrado por establecimientoId: ${contactos[0].id}`);
+        return contactos[0];
       }
 
-      return found || null;
+      return null;
     } catch (error) {
+      // Fallback a búsqueda manual si el filtro falla
+      if (error.response?.status === 400) {
+        try {
+          const response = await this.client.get("/contactos", { params: { limit: 1000 } });
+          const contactos = response.data.data?.contactos || response.data.data || [];
+          const found = contactos.find((c) => c.establecimientoId === establecimientoId);
+          if (found) {
+            logger.info(`[TwentyService] Contacto encontrado por establecimientoId (manual): ${found.id}`);
+          }
+          return found || null;
+        } catch (innerError) {
+          logger.error("[TwentyService] Error buscando contacto por establecimientoId (manual):", {
+            error: innerError.response?.data || innerError.message,
+          });
+          return null;
+        }
+      }
       logger.error("[TwentyService] Error buscando contacto por establecimientoId:", {
         error: error.response?.data || error.message,
       });
@@ -548,17 +570,39 @@ class TwentyService {
     if (!establecimientoId) return null;
     
     try {
-      const response = await this.client.get("/prospectos", { params: { limit: 200 } });
+      // Usar filtro de API para búsqueda exacta
+      const response = await this.client.get("/prospectos", { 
+        params: { 
+          limit: 1,
+          filter: `establecimientoId[eq]:${establecimientoId}` 
+        } 
+      });
       const prospectos = response.data.data?.prospectos || response.data.data || [];
 
-      const found = prospectos.find((p) => p.establecimientoId === establecimientoId);
-
-      if (found) {
-        logger.info(`[TwentyService] Prospecto encontrado por establecimientoId: ${found.id}`);
+      if (prospectos.length > 0) {
+        logger.info(`[TwentyService] Prospecto encontrado por establecimientoId: ${prospectos[0].id}`);
+        return prospectos[0];
       }
 
-      return found || null;
+      return null;
     } catch (error) {
+      // Fallback a búsqueda manual si el filtro falla
+      if (error.response?.status === 400) {
+        try {
+          const response = await this.client.get("/prospectos", { params: { limit: 1000 } });
+          const prospectos = response.data.data?.prospectos || response.data.data || [];
+          const found = prospectos.find((p) => p.establecimientoId === establecimientoId);
+          if (found) {
+            logger.info(`[TwentyService] Prospecto encontrado por establecimientoId (manual): ${found.id}`);
+          }
+          return found || null;
+        } catch (innerError) {
+          logger.error("[TwentyService] Error buscando prospecto por establecimientoId (manual):", {
+            error: innerError.response?.data || innerError.message,
+          });
+          return null;
+        }
+      }
       logger.error("[TwentyService] Error buscando prospecto por establecimientoId:", {
         error: error.response?.data || error.message,
       });
@@ -641,17 +685,39 @@ class TwentyService {
     if (!establecimientoId) return null;
     
     try {
-      const response = await this.client.get("/opportunities", { params: { limit: 200 } });
+      // Usar filtro de API para búsqueda exacta
+      const response = await this.client.get("/opportunities", { 
+        params: { 
+          limit: 1,
+          filter: `establecimientoId[eq]:${establecimientoId}` 
+        } 
+      });
       const opportunities = response.data.data?.opportunities || response.data.data || [];
 
-      const found = opportunities.find((o) => o.establecimientoId === establecimientoId);
-
-      if (found) {
-        logger.info(`[TwentyService] Opportunity encontrada por establecimientoId: ${found.id}`);
+      if (opportunities.length > 0) {
+        logger.info(`[TwentyService] Opportunity encontrado por establecimientoId: ${opportunities[0].id}`);
+        return opportunities[0];
       }
 
-      return found || null;
+      return null;
     } catch (error) {
+      // Fallback a búsqueda manual si el filtro falla
+      if (error.response?.status === 400) {
+        try {
+          const response = await this.client.get("/opportunities", { params: { limit: 1000 } });
+          const opportunities = response.data.data?.opportunities || response.data.data || [];
+          const found = opportunities.find((o) => o.establecimientoId === establecimientoId);
+          if (found) {
+            logger.info(`[TwentyService] Opportunity encontrado por establecimientoId (manual): ${found.id}`);
+          }
+          return found || null;
+        } catch (innerError) {
+          logger.error("[TwentyService] Error buscando opportunity por establecimientoId (manual):", {
+            error: innerError.response?.data || innerError.message,
+          });
+          return null;
+        }
+      }
       logger.error("[TwentyService] Error buscando opportunity por establecimientoId:", {
         error: error.response?.data || error.message,
       });
@@ -709,17 +775,39 @@ class TwentyService {
     if (!establecimientoId) return null;
     
     try {
-      const response = await this.client.get("/clientes", { params: { limit: 200 } });
+      // Usar filtro de API para búsqueda exacta - CRÍTICO para evitar duplicados
+      const response = await this.client.get("/clientes", { 
+        params: { 
+          limit: 1,
+          filter: `establecimientoId[eq]:${establecimientoId}` 
+        } 
+      });
       const clientes = response.data.data?.clientes || response.data.data || [];
 
-      const found = clientes.find((c) => c.establecimientoId === establecimientoId);
-
-      if (found) {
-        logger.info(`[TwentyService] Cliente encontrado por establecimientoId: ${found.id}`);
+      if (clientes.length > 0) {
+        logger.info(`[TwentyService] Cliente encontrado por establecimientoId: ${clientes[0].id}`);
+        return clientes[0];
       }
 
-      return found || null;
+      return null;
     } catch (error) {
+      // Fallback a búsqueda manual si el filtro falla
+      if (error.response?.status === 400) {
+        try {
+          const response = await this.client.get("/clientes", { params: { limit: 1000 } });
+          const clientes = response.data.data?.clientes || response.data.data || [];
+          const found = clientes.find((c) => c.establecimientoId === establecimientoId);
+          if (found) {
+            logger.info(`[TwentyService] Cliente encontrado por establecimientoId (manual): ${found.id}`);
+          }
+          return found || null;
+        } catch (innerError) {
+          logger.error("[TwentyService] Error buscando cliente por establecimientoId (manual):", {
+            error: innerError.response?.data || innerError.message,
+          });
+          return null;
+        }
+      }
       logger.error("[TwentyService] Error buscando cliente por establecimientoId:", {
         error: error.response?.data || error.message,
       });

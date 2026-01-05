@@ -315,7 +315,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
     throw new Error("Establecimiento no encontrado");
   }
 
-  // Verificar si ya existe un prospect en Partners DB
+  // Verificar si ya existe un prospect en Partners DB (usa clee como establishmentId)
   let prospect = await prisma.leadProspect.findFirst({
     where: { establishmentId },
   });
@@ -336,7 +336,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
       },
     });
   } else {
-    // Crear nuevo prospect en Partners DB
+    // Crear nuevo prospect en Partners DB (establishmentId = clee)
     prospect = await prisma.leadProspect.create({
       data: {
         establishmentId,
@@ -368,30 +368,39 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
  * Lee establecimiento de Mapa DB, actualiza prospect y crea lead en Partners DB
  */
 async function convertProspectToLead(prospectId, additionalData = {}) {
+  logger.info(`[ConvertProspectToLead] Iniciando conversión de prospect ${prospectId}`);
+  
   // Obtener prospect de Partners DB
   const prospect = await prisma.leadProspect.findUnique({
     where: { id: prospectId },
   });
 
   if (!prospect) {
+    logger.error(`[ConvertProspectToLead] Prospect ${prospectId} no encontrado`);
     throw new Error("Prospect no encontrado");
   }
 
+  logger.info(`[ConvertProspectToLead] Prospect encontrado: ${prospect.establishmentId}, status: ${prospect.status}`);
+
   if (!prospect.partnerId) {
+    logger.error(`[ConvertProspectToLead] Prospect ${prospectId} no tiene partnerId`);
     throw new Error("El prospect debe estar asignado a un partner");
   }
 
-  logger.info(`[ConvertProspectToLead] Buscando establishment con id: ${prospect.establishmentId}`);
+  logger.info(`[ConvertProspectToLead] Buscando establishment con clee: ${prospect.establishmentId}`);
 
-  // Obtener datos del establecimiento de Mapa DB
-  const establishment = await prismaGeo.establishment.findUnique({
-    where: { id: prospect.establishmentId },
+  // Obtener datos del establecimiento de Mapa DB (por clee)
+  const establishment = await prismaGeo.establishment.findFirst({
+    where: { clee: prospect.establishmentId },
   });
 
   if (!establishment) {
-    logger.error(`[ConvertProspectToLead] Establecimiento no encontrado. prospect.establishmentId: ${prospect.establishmentId}`);
+    logger.error(`[ConvertProspectToLead] Establecimiento no encontrado. prospect.establishmentId (clee): ${prospect.establishmentId}`);
     throw new Error("Establecimiento no encontrado");
   }
+
+  logger.info(`[ConvertProspectToLead] Establishment encontrado: ${establishment.name}`);
+  logger.info(`[ConvertProspectToLead] Creando lead...`);
 
   // Crear lead en Partners DB
   const lead = await prisma.lead.create({
@@ -409,16 +418,21 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
     },
   });
 
+  logger.info(`[ConvertProspectToLead] Lead creado: ${lead.id}, actualizando prospect...`);
+
   // Actualizar prospect en Partners DB
-  await prisma.leadProspect.update({
+  const updatedProspect = await prisma.leadProspect.update({
     where: { id: prospectId },
     data: {
       status: "CONVERTED",
       convertedAt: new Date(),
+      notes: `Convertido a Lead el ${new Date().toLocaleDateString('es-MX')}. Lead ID: ${lead.id}`,
     },
   });
 
-  logger.info(`Prospect ${prospectId} convertido a lead ${lead.id}`);
+  logger.info(`[ConvertProspectToLead] Prospect actualizado a status: ${updatedProspect.status}`);
+  logger.info(`[ConvertProspectToLead] Conversión completada exitosamente. Prospect ${prospectId} -> Lead ${lead.id}`);
+  
   return lead;
 }
 
@@ -440,14 +454,15 @@ async function getPartnerProspects(partnerId, status = null) {
     return [];
   }
 
-  // Obtener IDs únicos de establecimientos
-  const establishmentIds = [...new Set(prospects.map(p => p.establishmentId))];
+  // Obtener IDs únicos de establecimientos (clees)
+  const establishmentClees = [...new Set(prospects.map(p => p.establishmentId))];
 
-  // Obtener datos de establecimientos de Mapa DB
+  // Obtener datos de establecimientos de Mapa DB (por clee)
   const establishments = await prismaGeo.establishment.findMany({
-    where: { id: { in: establishmentIds } },
+    where: { clee: { in: establishmentClees } },
     select: {
       id: true,
+      clee: true,
       name: true,
       activityName: true,
       latitude: true,
@@ -459,9 +474,9 @@ async function getPartnerProspects(partnerId, status = null) {
     },
   });
 
-  // Crear mapa para lookup rápido
+  // Crear mapa para lookup rápido (por clee)
   const establishmentMap = establishments.reduce((acc, e) => {
-    acc[e.id] = e;
+    acc[e.clee] = e;
     return acc;
   }, {});
 

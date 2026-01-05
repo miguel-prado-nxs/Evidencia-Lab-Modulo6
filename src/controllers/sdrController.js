@@ -199,9 +199,10 @@ async function handleCallResult(req, res, next) {
         // ==================== LEAD PROSPECT CREATION ====================
         // Cuando se identifica un tomador de decisiones (PROSPECT), también debemos
         // crear/actualizar el registro en lead_prospects para que aparezca en "Mis Prospectos"
+        // NOTA: establishmentId debe ser el clee (consistente con establishment_enrichments)
         if (enrichmentData.level === "PROSPECT" && userId) {
             try {
-                // Verificar si ya existe un lead_prospect para este establecimiento
+                // Verificar si ya existe un lead_prospect para este establecimiento (usa clee)
                 let leadProspect = await prisma.leadProspect.findFirst({
                     where: { establishmentId: establishmentId },
                 });

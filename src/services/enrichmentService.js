@@ -309,6 +309,52 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       });
     }
 
+    // Si el nivel cambió a LEAD, crear automáticamente el registro en la tabla leads
+    if (level === "LEAD" && previousLevel !== "LEAD") {
+      logger.info(`[EnrichmentService] Nivel cambió a LEAD, creando registro en tabla leads para ${clee}`);
+      
+      try {
+        // Buscar el leadProspect correspondiente
+        const prospect = await prisma.leadProspect.findFirst({
+          where: { establishmentId: clee },
+        });
+
+        if (prospect && prospect.status !== "CONVERTED") {
+          // Convertir automáticamente usando geoService
+          const geoService = require("./geoService");
+          const lead = await geoService.convertProspectToLead(prospect.id, {
+            contactName: enrichmentData.decisionMakerName || "Contacto Principal",
+            email: enrichmentData.decisionMakerEmail,
+            phone: enrichmentData.decisionMakerPhone,
+            interests: ["POS"],
+          });
+          logger.info(`[EnrichmentService] Lead creado automáticamente: ${lead.id} para ${clee}`);
+        } else if (!prospect) {
+          // Si no hay leadProspect, crear el lead directamente
+          const lead = await prisma.lead.create({
+            data: {
+              partnerId,
+              businessName: establishment.name,
+              contactName: enrichmentData.decisionMakerName || "Contacto Principal",
+              email: enrichmentData.decisionMakerEmail || establishment.email || "",
+              phone: enrichmentData.decisionMakerPhone || establishment.phone,
+              businessType: establishment.activityName,
+              location: `${establishment.municipalityName}, ${establishment.stateName}`,
+              interests: ["POS"],
+              status: "NEW",
+              notes: `Creado automáticamente al actualizar nivel a LEAD. Establishment: ${clee}`,
+            },
+          });
+          logger.info(`[EnrichmentService] Lead creado directamente (sin prospect previo): ${lead.id} para ${clee}`);
+        } else {
+          logger.info(`[EnrichmentService] Prospect ya está CONVERTED, lead debería existir para ${clee}`);
+        }
+      } catch (leadError) {
+        logger.error(`[EnrichmentService] Error creando lead automáticamente para ${clee}:`, leadError);
+        // No fallar el update del enrichment por esto
+      }
+    }
+
     // Retornar con datos del establecimiento
     return {
       ...enrichment,

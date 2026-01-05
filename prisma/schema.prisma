@@ -570,11 +570,11 @@ model EstablishmentEnrichment {
 }
 
 // ========== PROSPECTS DESDE DENUE ==========
-// NOTA: establishmentId referencia a Mapa DB, NO hay FK constraint
+// NOTA: establishmentId referencia a Mapa DB usando clee (DENUE), NO hay FK constraint
 
 model LeadProspect {
   id              String @id @default(uuid())
-  establishmentId String @map("establishment_id") // Referencia a Mapa DB (sin FK)
+  establishmentId String @map("establishment_id") // Clee del establecimiento DENUE (sin FK)
   partnerId       String? @map("partner_id")
 
   status   ProspectStatus @default(AVAILABLE)

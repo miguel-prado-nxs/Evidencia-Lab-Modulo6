@@ -278,51 +278,20 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
       twentyIds.establecimientoId
     );
 
-    // 4. Si currentLevel >= CONTACT: Upsert Contacto (si hay phone o email)
-    if (LEVEL_ORDER[currentLevel] >= LEVEL_ORDER.CONTACT) {
+    // 4. Procesar SOLO el nivel actual (no todos los anteriores)
+    // Los registros anteriores se eliminan al avanzar de nivel
+    
+    if (currentLevel === "CONTACT") {
+      // Nivel CONTACT: Solo crear/actualizar Person
       twentyIds.contactoId = await upsertContacto(
         establishmentData,
         enrichment,
         twentyIds.establecimientoId,
         twentyIds.contactoId
       );
-    }
-
-    // 5. Si currentLevel >= PROSPECT: Upsert Prospecto
-    if (LEVEL_ORDER[currentLevel] >= LEVEL_ORDER.PROSPECT) {
-      // Solo actualizar contacto si NO existe prospecto aún
-      // Porque al crear prospecto se elimina el contacto
-      const decisionMakerPhone = enrichment.decisionMakerPhone || enrichment.decisionMakerWhatsApp;
-      const decisionMakerEmail = enrichment.decisionMakerEmail;
-
-      if (!twentyIds.prospectoId && twentyIds.contactoId && (decisionMakerPhone || decisionMakerEmail)) {
-        logger.info("[TwentySyncService] Actualizando contacto con datos del tomador de decisiones", {
-          establishmentId,
-          contactoId: twentyIds.contactoId,
-        });
-
-        try {
-          // Actualizar el contacto existente con los datos del tomador de decisiones
-          twentyIds.contactoId = await upsertContacto(
-            establishmentData,
-            enrichment,
-            twentyIds.establecimientoId,
-            twentyIds.contactoId,  // Usar el ID existente para actualizar
-            true // useDecisionMakerData
-          );
-        } catch (error) {
-          // Si el contacto ya no existe (404), continuar sin error
-          if (error.message && error.message.includes("404")) {
-            logger.info("[TwentySyncService] Contacto ya no existe, fue eliminado al crear prospecto", {
-              contactoId: twentyIds.contactoId,
-            });
-            twentyIds.contactoId = null;
-          } else {
-            throw error;
-          }
-        }
-      }
-
+    } 
+    else if (currentLevel === "PROSPECT") {
+      // Nivel PROSPECT: Crear Prospecto y eliminar Contacto anterior
       twentyIds.prospectoId = await upsertProspecto(
         establishmentData,
         enrichment,
@@ -331,22 +300,24 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
         twentyIds.prospectoId,
         partnerId
       );
-    }
-
-    // 6. Si currentLevel >= LEAD: Upsert Opportunity
-    if (LEVEL_ORDER[currentLevel] >= LEVEL_ORDER.LEAD) {
+      // El upsertProspecto ya elimina el contacto, solo limpiamos el ID
+      twentyIds.contactoId = null;
+    } 
+    else if (currentLevel === "LEAD") {
+      // Nivel LEAD: Crear Opportunity y eliminar Prospecto anterior
       twentyIds.opportunityId = await upsertOpportunity(
         establishmentData,
         enrichment,
         twentyIds.establecimientoId,
         twentyIds.prospectoId,
         twentyIds.opportunityId,
-        null // leadStatus - se puede agregar después si se necesita
+        null
       );
-    }
-
-    // 7. Si currentLevel >= CLIENT: Upsert Cliente
-    if (LEVEL_ORDER[currentLevel] >= LEVEL_ORDER.CLIENT) {
+      // El upsertOpportunity ya elimina el prospecto, solo limpiamos el ID
+      twentyIds.prospectoId = null;
+    } 
+    else if (currentLevel === "CLIENT") {
+      // Nivel CLIENT: Crear Cliente y eliminar Opportunity anterior
       twentyIds.clienteId = await upsertCliente(
         establishmentData,
         enrichment,
@@ -354,22 +325,8 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
         twentyIds.opportunityId,
         twentyIds.clienteId
       );
-
-      // Actualizar opportunity.estadoLead a GANADO
-      if (twentyIds.opportunityId) {
-        try {
-          await twentyService.updateOpportunity(twentyIds.opportunityId, {
-            estadoLead: "GANADO",
-          });
-          logger.info("[TwentySyncService] Opportunity actualizada a GANADO", {
-            opportunityId: twentyIds.opportunityId,
-          });
-        } catch (error) {
-          logger.warn("[TwentySyncService] Error actualizando opportunity a GANADO", {
-            error: error.message,
-          });
-        }
-      }
+      // El upsertCliente ya elimina el opportunity, solo limpiamos el ID
+      twentyIds.opportunityId = null;
     }
 
     // 8. Actualizar TwentySyncState
@@ -460,7 +417,6 @@ async function upsertEstablecimiento(establishmentId, establishmentData, enrichm
 
 /**
  * Upsert de Contacto en Twenty
- * IMPORTANTE: NO crear contacto si no hay phone ni email
  */
 async function upsertContacto(establishmentData, enrichment, establecimientoId, existingId, useDecisionMakerData = false) {
   // Determinar phone y email a usar
@@ -470,14 +426,6 @@ async function upsertContacto(establishmentData, enrichment, establecimientoId, 
   if (useDecisionMakerData || (!phone && !email)) {
     phone = phone || enrichment.decisionMakerPhone || enrichment.decisionMakerWhatsApp;
     email = email || enrichment.decisionMakerEmail;
-  }
-
-  // Validar que hay al menos phone o email
-  if (!phone && !email) {
-    logger.info("[TwentySyncService] Omitiendo creacion de contacto - sin phone ni email", {
-      establecimientoId,
-    });
-    return existingId || null;
   }
 
   const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
@@ -564,9 +512,8 @@ async function upsertProspecto(establishmentData, enrichment, establecimientoId,
     establecimientoId, // Relación con Company
   };
 
-  if (contactoId) {
-    prospectoData.contactoId = contactoId;
-  }
+  // NOTA: NO incluir contactoId - el modelo Prospecto en Twenty no tiene ese campo
+  // El contacto se elimina después de crear el prospecto (ver final de la función)
 
   // Nombre del tomador
   if (enrichment.decisionMakerName) {
@@ -740,10 +687,22 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
 async function upsertCliente(establishmentData, enrichment, establecimientoId, opportunityId, existingId) {
   const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
 
+  // Mapeo de estatusCliente - normalizar a mayúsculas
+  let estatusCliente = "ACTIVO"; // Default
+  if (enrichment.clientStatus) {
+    const statusMap = {
+      ACTIVO: "ACTIVO",
+      INACTIVO: "INACTIVO",
+      CHURNED: "CHURNED",
+      SUSPENDIDO: "SUSPENDIDO",
+    };
+    estatusCliente = statusMap[enrichment.clientStatus.toUpperCase()] || "ACTIVO";
+  }
+
   const clienteData = {
     name,
     establecimientoId,
-    estatusCliente: enrichment.clientStatus || "ACTIVO",
+    estatusCliente,
   };
 
   // NO incluir leadId porque el opportunity se eliminará

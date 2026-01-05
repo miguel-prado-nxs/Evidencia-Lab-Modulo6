@@ -1,6 +1,16 @@
 /**
- * Test End-to-End de sincronización Twenty CRM
- * Valida el flujo completo: ESTABLISHMENT → CONTACT → PROSPECT → LEAD → CLIENT
+ * Test End-to-End de sincronizacion Twenty CRM
+ * Valida el flujo completo: ESTABLISHMENT -> CONTACT -> PROSPECT -> LEAD -> CLIENT
+ * 
+ * REQUISITOS:
+ * 1. Servidor Partners API debe estar corriendo (npm run dev)
+ * 2. Worker de Twenty debe estar activo
+ * 3. Variables de entorno configuradas (TWENTY_API_KEY, etc.)
+ * 4. Base de datos accesible
+ * 
+ * USO:
+ * 1. En una terminal: npm run dev
+ * 2. En otra terminal: node scripts/test-twenty-sync-e2e.js
  */
 
 const { PrismaClient } = require('@prisma/client');
@@ -28,7 +38,7 @@ async function testE2E() {
     console.log('1. Limpiando estado previo...');
     await prisma.twentySyncJob.deleteMany({});
     await prisma.twentySyncState.deleteMany({});
-    console.log('   ✓ Estado limpiado\n');
+    console.log('   Estado limpiado\n');
 
     // 2. Verificar establecimiento existe
     console.log('2. Verificando establecimiento en BD Geo...');
@@ -38,7 +48,7 @@ async function testE2E() {
     if (!establishment) {
       throw new Error('Establecimiento de prueba no encontrado');
     }
-    console.log(`   ✓ Establecimiento encontrado: ${establishment.name}\n`);
+    console.log(`   Establecimiento encontrado: ${establishment.name}\n`);
 
     // 3. TEST NIVEL CONTACT
     console.log('3. TEST NIVEL CONTACT');
@@ -83,14 +93,14 @@ async function testE2E() {
     });
     
     if (!syncState || !syncState.twentyEstablecimientoId) {
-      throw new Error('No se creó el Company en Twenty');
+      throw new Error('No se creo el Company en Twenty');
     }
-    console.log(`   ✓ Company creado en Twenty: ${syncState.twentyEstablecimientoId}`);
+    console.log(`   Company creado en Twenty: ${syncState.twentyEstablecimientoId}`);
     
     if (!syncState.twentyContactoId) {
-      throw new Error('No se creó el Contacto en Twenty');
+      throw new Error('No se creo el Contacto en Twenty');
     }
-    console.log(`   ✓ Contacto creado en Twenty: ${syncState.twentyContactoId}\n`);
+    console.log(`   Contacto creado en Twenty: ${syncState.twentyContactoId}\n`);
 
     // 4. TEST NIVEL PROSPECT
     console.log('4. TEST NIVEL PROSPECT');
@@ -120,15 +130,15 @@ async function testE2E() {
     });
 
     if (!syncState.twentyProspectoId) {
-      throw new Error('No se creó el Prospecto en Twenty');
+      throw new Error('No se creo el Prospecto en Twenty');
     }
-    console.log(`   ✓ Prospecto creado en Twenty: ${syncState.twentyProspectoId}`);
+    console.log(`   Prospecto creado en Twenty: ${syncState.twentyProspectoId}`);
     
     // Verificar que el contacto fue eliminado
     if (syncState.twentyContactoId) {
-      console.log('   ⚠ ADVERTENCIA: El contacto debería haberse eliminado');
+      console.log('   ADVERTENCIA: El contacto deberia haberse eliminado');
     } else {
-      console.log('   ✓ Contacto eliminado correctamente\n');
+      console.log('   Contacto eliminado correctamente\n');
     }
 
     // 5. TEST NIVEL LEAD
@@ -158,15 +168,15 @@ async function testE2E() {
     });
 
     if (!syncState.twentyOpportunityId) {
-      throw new Error('No se creó el Opportunity en Twenty');
+      throw new Error('No se creo el Opportunity en Twenty');
     }
-    console.log(`   ✓ Opportunity creado en Twenty: ${syncState.twentyOpportunityId}`);
+    console.log(`   Opportunity creado en Twenty: ${syncState.twentyOpportunityId}`);
     
     // Verificar que el prospecto fue eliminado
     if (syncState.twentyProspectoId) {
-      console.log('   ⚠ ADVERTENCIA: El prospecto debería haberse eliminado');
+      console.log('   ADVERTENCIA: El prospecto deberia haberse eliminado');
     } else {
-      console.log('   ✓ Prospecto eliminado correctamente\n');
+      console.log('   Prospecto eliminado correctamente\n');
     }
 
     // 6. TEST NIVEL CLIENT
@@ -198,35 +208,35 @@ async function testE2E() {
     });
 
     if (!syncState.twentyClienteId) {
-      throw new Error('No se creó el Cliente en Twenty');
+      throw new Error('No se creo el Cliente en Twenty');
     }
-    console.log(`   ✓ Cliente creado en Twenty: ${syncState.twentyClienteId}`);
+    console.log(`   Cliente creado en Twenty: ${syncState.twentyClienteId}`);
     
     // Verificar que el opportunity fue eliminado
     if (syncState.twentyOpportunityId) {
-      console.log('   ⚠ ADVERTENCIA: El opportunity debería haberse eliminado');
+      console.log('   ADVERTENCIA: El opportunity deberia haberse eliminado');
     } else {
-      console.log('   ✓ Opportunity eliminado correctamente\n');
+      console.log('   Opportunity eliminado correctamente\n');
     }
 
-    // 7. VERIFICACIÓN FINAL
-    console.log('7. VERIFICACIÓN FINAL');
+    // 7. VERIFICACION FINAL
+    console.log('7. VERIFICACION FINAL');
     console.log('   Estado final en Twenty:');
     console.log(`   - Company ID: ${syncState.twentyEstablecimientoId}`);
     console.log(`   - Contacto ID: ${syncState.twentyContactoId || 'ELIMINADO'}`);
     console.log(`   - Prospecto ID: ${syncState.twentyProspectoId || 'ELIMINADO'}`);
     console.log(`   - Opportunity ID: ${syncState.twentyOpportunityId || 'ELIMINADO'}`);
     console.log(`   - Cliente ID: ${syncState.twentyClienteId}`);
-    console.log(`   - Último nivel sync: ${syncState.lastSyncedLevel}\n`);
+    console.log(`   - Ultimo nivel sync: ${syncState.lastSyncedLevel}\n`);
 
     console.log('========================================');
-    console.log('✓ TEST END-TO-END COMPLETADO EXITOSAMENTE');
+    console.log('TEST END-TO-END COMPLETADO EXITOSAMENTE');
     console.log('========================================\n');
 
     return true;
 
   } catch (error) {
-    console.error('\n❌ ERROR EN TEST END-TO-END:', error.message);
+    console.error('\nERROR EN TEST END-TO-END:', error.message);
     console.error(error);
     return false;
   } finally {
