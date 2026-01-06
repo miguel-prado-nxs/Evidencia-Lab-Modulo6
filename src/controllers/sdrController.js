@@ -117,6 +117,11 @@ async function handleCallResult(req, res, next) {
             where: { establishmentId: establishmentId },
         });
 
+        // ===== Calcular attemptNumber real desde sdr_interactions =====
+        const sdrInteractionsService = require("../services/sdrInteractionsService");
+        const previousAttempts = await sdrInteractionsService.countAttempts(establishmentId);
+        const attemptNumber = previousAttempts + 1;
+
         // Preparar datos para upsert (usa nuevas columnas de migración).
         const enrichmentData = {
             // Decision Maker fields (solo actualizar si hay nuevos datos).
@@ -132,7 +137,7 @@ async function handleCallResult(req, res, next) {
                 : null,
             callSummary: callSummary,
             strategy: strategy,
-            callAttempts: callAttempts || 1,
+            callAttempts: attemptNumber,
             callDurationSeconds: callDurationSeconds || 0,
             callStatus: callStatus,
             enrichmentStatus: enrichmentStatus,
@@ -194,6 +199,28 @@ async function handleCallResult(req, res, next) {
                     ...enrichmentData,
                 },
             });
+        }
+
+        // ==================== GUARDAR EN SDR_INTERACTIONS ====================
+        // Guardar historial de la llamada para métricas A/B
+        try {
+            await sdrInteractionsService.createInteraction({
+                establishmentId,
+                callStatus,
+                enrichmentStatus,
+                decisionMakerFound: !!decisionMaker?.name,
+                decisionMakerName: decisionMaker?.name || null,
+                decisionMakerRole: decisionMaker?.position || null,
+                callSummary,
+                callDurationSeconds,
+                attemptNumber,  // Usar el valor calculado arriba
+                strategy,
+                gatekeeperInfo,
+                twilioCallSid: null, // TODO: agregar si viene del agente
+            });
+        } catch (interactionError) {
+            // No bloquear el flujo principal si falla el guardado de interacción
+            logger.error(`[SDR] Error guardando interacción: ${interactionError.message}`);
         }
 
         // ==================== LEAD PROSPECT CREATION ====================
@@ -318,8 +345,14 @@ async function getEstablishmentForCall(req, res, next) {
  * @access Privado (requiere API Key)
  */
 async function getStats(req, res, next) {
+    const sdrInteractionsService = require("../services/sdrInteractionsService");
+
     try {
-        const stats = await sdrService.getSDRStats();
+        // Stats de enrichment (resultados finales)
+        const enrichmentStats = await sdrService.getSDRStats();
+
+        // Stats de interacciones (historial detallado con A/B)
+        const interactionStats = await sdrInteractionsService.getStats();
 
         logger.info("SDR stats retrieved", {
             apiKey: req.apiKey?.name,
@@ -327,7 +360,10 @@ async function getStats(req, res, next) {
 
         res.json({
             success: true,
-            data: stats,
+            data: {
+                enrichments: enrichmentStats,
+                interactions: interactionStats,
+            },
         });
     } catch (error) {
         logger.error("[SDR Controller] Error obteniendo stats:", error);
@@ -335,8 +371,123 @@ async function getStats(req, res, next) {
     }
 }
 
+/**
+ * GET /api/v1/sdr/interactions/:establishmentId
+ * Obtiene historial de interacciones SDR para un establecimiento.
+ * 
+ * @route GET /api/v1/sdr/interactions/:establishmentId
+ * @access Privado (requiere API Key)
+ */
+async function getInteractions(req, res, next) {
+    const sdrInteractionsService = require("../services/sdrInteractionsService");
+
+    try {
+        const { establishmentId } = req.params;
+
+        if (!establishmentId) {
+            return res.status(400).json({
+                success: false,
+                error: "establishmentId es requerido",
+            });
+        }
+
+        const interactions = await sdrInteractionsService.getByEstablishment(establishmentId);
+
+        res.json({
+            success: true,
+            data: {
+                establishmentId,
+                totalInteractions: interactions.length,
+                interactions,
+            },
+        });
+    } catch (error) {
+        logger.error("[SDR Controller] Error obteniendo interacciones:", error);
+        next(error);
+    }
+}
+
+/**
+ * GET /geo/ventas/sdr-calls/:establishmentId
+ * Obtener información de llamadas SDR para un establecimiento
+ */
+async function getSDRCallInfo(req, res) {
+  try {
+    const { establishmentId } = req.params;
+
+    if (!establishmentId) {
+      return res.status(400).json({
+        success: false,
+        error: "establishmentId es requerido",
+      });
+    }
+
+    const callInfo = await sdrService.getSDRCallInfo(establishmentId);
+
+    if (!callInfo) {
+      return res.json({
+        success: true,
+        data: null,
+        message: "Sin llamadas registradas para este contacto",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: callInfo,
+    });
+  } catch (error) {
+    logger.error("[VentasController] Error en getSDRCallInfo:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Error obteniendo información de llamadas",
+    });
+  }
+}
+
+
+/**
+ * GET /geo/ventas/lead-calls/:establishmentId
+ * Obtener información de llamadas de calificación (call_leads) para un prospecto
+ */
+async function getLeadCallInfo(req, res) {
+  try {
+    const { establishmentId } = req.params;
+
+    if (!establishmentId) {
+      return res.status(400).json({
+        success: false,
+        error: "establishmentId es requerido",
+      });
+    }
+
+    const callInfo = await sdrService.getLeadCallInfo(establishmentId);
+
+    if (!callInfo) {
+      return res.json({
+        success: true,
+        data: null,
+        message: "Sin llamadas registradas para este prospecto",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: callInfo,
+    });
+  } catch (error) {
+    logger.error("[VentasController] Error en getLeadCallInfo:", error);
+    res.status(500).json({
+      success: false,
+      error: "Error obteniendo información de llamadas",
+    });
+  }
+}
 module.exports = {
     handleCallResult,
     getEstablishmentForCall,
     getStats,
+    getInteractions,
+    getSDRCallInfo,
+    getLeadCallInfo,
 };
