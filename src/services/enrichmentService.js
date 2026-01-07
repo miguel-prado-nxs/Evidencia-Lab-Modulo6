@@ -298,7 +298,100 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       });
     }
 
+    // Auto-promoción según datos proporcionados (sin cambios de esquema)
+    // IMPORTANTE: Esta lógica se ejecuta ANTES del sync con Twenty para garantizar
+    // que los registros (leadProspect, lead) existan antes de sincronizar
+    
+    // 1) Si hay datos de tomador de decisiones -> asegurar Prospect asignado al partner
+    const hasDecisionMaker = (
+      !!enrichmentData.decisionMakerName ||
+      !!enrichmentData.decisionMakerPhone ||
+      !!enrichmentData.decisionMakerWhatsApp
+    );
+
+    // 2) Si hay datos de cualificación (IFPD) -> asegurar Lead creado para el partner
+    const hasQualification = (
+      !!enrichmentData.intent ||
+      !!enrichmentData.fear ||
+      !!enrichmentData.pain ||
+      !!enrichmentData.desire
+    );
+
+    // 3) Si hay datos de cliente -> marcar lead como CLIENT
+    const hasClientInfo = (
+      !!enrichmentData.purchaseDate ||
+      !!enrichmentData.productPurchased ||
+      !!enrichmentData.clientStatus
+    );
+
+    // Ejecutar promociones de manera segura y mínima
+    let ensuredProspect = null;
+    logger.info(`[Auto-Promoción] hasDecisionMaker=${hasDecisionMaker}, hasQualification=${hasQualification}, hasClientInfo=${hasClientInfo}, partnerId=${partnerId}`);
+    
+    if (hasDecisionMaker && partnerId) {
+      try {
+        // Verificar prospect existente para este establecimiento
+        ensuredProspect = await prisma.leadProspect.findFirst({
+          where: { establishmentId: estabId },
+        });
+        
+        logger.info(`[Auto-Promoción] Prospect existente: ${ensuredProspect ? `id=${ensuredProspect.id}, status=${ensuredProspect.status}, partnerId=${ensuredProspect.partnerId}` : 'NO EXISTE'}`);
+
+        if (!ensuredProspect || ensuredProspect.status === "AVAILABLE") {
+          // Asignar prospect al partner
+          ensuredProspect = await geoService.assignProspect(estabId, partnerId, "Auto-asignado por enriquecimiento (Tomador)");
+          logger.info(`[Auto-Promoción] Prospect CREADO/ASIGNADO: id=${ensuredProspect.id}, status=${ensuredProspect.status} para est ${estabId} y partner ${partnerId}`);
+        } else {
+          logger.info(`[Auto-Promoción] Prospect ya existe y no está AVAILABLE, no se reasigna`);
+        }
+      } catch (promoErr) {
+        logger.warn("[Auto-Promoción] (Prospect) falló:", promoErr.message);
+      }
+    }
+
+    if (hasQualification && partnerId) {
+      try {
+        // Asegurar que exista un prospect asignado; si no, crear y asignar primero
+        if (!ensuredProspect) {
+          ensuredProspect = await prisma.leadProspect.findFirst({ where: { establishmentId: estabId } });
+          if (!ensuredProspect) {
+            ensuredProspect = await geoService.assignProspect(estabId, partnerId, "Auto-asignado por enriquecimiento (IFPD)");
+          }
+        }
+
+        // Convertir a lead si aún no está convertido
+        if (ensuredProspect && ensuredProspect.status !== "CONVERTED") {
+          await geoService.convertProspectToLead(ensuredProspect.id, {
+            contactName: enrichmentData.decisionMakerName || "Contacto",
+            email: establishment.email || enrichmentData.decisionMakerEmail || undefined,
+            phone: establishment.phone || enrichmentData.decisionMakerPhone || enrichmentData.decisionMakerWhatsApp || undefined,
+            interests: ["POS"],
+          });
+          logger.info(`[Auto-Promoción] Prospect ${ensuredProspect.id} convertido a Lead por cualificación`);
+        }
+      } catch (promoErr) {
+        logger.warn("[Auto-Promoción] (Lead) falló:", promoErr);
+      }
+    }
+
+    if (hasClientInfo && partnerId) {
+      try {
+        // Buscar lead más reciente del partner para este establecimiento (si existe relación)
+        const recentLead = await prisma.lead.findFirst({
+          where: { partnerId },
+          orderBy: { createdAt: "desc" },
+        });
+        if (recentLead) {
+          await leadService.updateLeadStatus(recentLead.id, "WON", "Marcado como cliente (WON) por enriquecimiento");
+          logger.info(`[Auto-Promoción] Lead ${recentLead.id} marcado como WON/cliente`);
+        }
+      } catch (promoErr) {
+        logger.warn("[Auto-Promoción] (Client) falló:", promoErr);
+      }
+    }
+
     // Encolar sincronizacion con Twenty CRM (non-blocking)
+    // Se ejecuta DESPUÉS de la auto-promoción para garantizar que los registros existan
     if (partnerId) {
       let syncReason;
       if (previousLevel && previousLevel !== level) {
@@ -319,52 +412,6 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       }).catch((err) => {
         logger.warn("[EnrichmentService] Error encolando sync (no critico)", { error: err.message });
       });
-    }
-
-    // Si el nivel cambió a LEAD, crear automáticamente el registro en la tabla leads
-    if (level === "LEAD" && previousLevel !== "LEAD") {
-      logger.info(`[EnrichmentService] Nivel cambió a LEAD, creando registro en tabla leads para ${estabId}`);
-      
-      try {
-        // Buscar el leadProspect correspondiente
-        const prospect = await prisma.leadProspect.findFirst({
-          where: { establishmentId: estabId },
-        });
-
-        if (prospect && prospect.status !== "CONVERTED") {
-          // Convertir automáticamente usando geoService
-          const geoService = require("./geoService");
-          const lead = await geoService.convertProspectToLead(prospect.id, {
-            contactName: enrichmentData.decisionMakerName || "Contacto Principal",
-            email: enrichmentData.decisionMakerEmail,
-            phone: enrichmentData.decisionMakerPhone,
-            interests: ["POS"],
-          });
-          logger.info(`[EnrichmentService] Lead creado automáticamente: ${lead.id} para ${estabId}`);
-        } else if (!prospect) {
-          // Si no hay leadProspect, crear el lead directamente
-          const lead = await prisma.lead.create({
-            data: {
-              partnerId,
-              businessName: establishment.name,
-              contactName: enrichmentData.decisionMakerName || "Contacto Principal",
-              email: enrichmentData.decisionMakerEmail || establishment.email || "",
-              phone: enrichmentData.decisionMakerPhone || establishment.phone,
-              businessType: establishment.activityName,
-              location: `${establishment.municipalityName}, ${establishment.stateName}`,
-              interests: ["POS"],
-              status: "NEW",
-              notes: `Creado automáticamente al actualizar nivel a LEAD. Establishment: ${estabId}`,
-            },
-          });
-          logger.info(`[EnrichmentService] Lead creado directamente (sin prospect previo): ${lead.id} para ${estabId}`);
-        } else {
-          logger.info(`[EnrichmentService] Prospect ya está CONVERTED, lead debería existir para ${estabId}`);
-        }
-      } catch (leadError) {
-        logger.error(`[EnrichmentService] Error creando lead automáticamente para ${estabId}:`, leadError);
-        // No fallar el update del enrichment por esto
-      }
     }
 
     // Retornar con datos del establecimiento

@@ -296,6 +296,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
     else if (currentLevel === "PROSPECT") {
       // Nivel PROSPECT: Crear Prospecto y eliminar Contacto anterior
       twentyIds.prospectoId = await upsertProspecto(
+        establishmentId,
         establishmentData,
         enrichment,
         twentyIds.establecimientoId,
@@ -505,13 +506,45 @@ const TOMADOR_CARGO_MAP = {
 /**
  * Upsert de Prospecto en Twenty
  */
-async function upsertProspecto(establishmentData, enrichment, establecimientoId, contactoId, existingId, partnerId) {
+async function upsertProspecto(establishmentId, establishmentData, enrichment, establecimientoId, contactoId, existingId, partnerId) {
   const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
 
   const prospectoData = {
     name, // Nombre del establecimiento
     establecimientoId, // Relación con Company
   };
+
+  // Fecha de identificación (cuándo se enriqueció)
+  if (enrichment.enrichedAt) {
+    prospectoData.fechaIdentificacion = enrichment.enrichedAt;
+  }
+
+  // Buscar mejor horario de contacto en sdr_interactions
+  const sdrInteraction = await prisma.sdrInteraction.findFirst({
+    where: { 
+      establishmentId,
+      callSummary: { contains: 'Mejor horario', mode: 'insensitive' }
+    },
+    select: { callSummary: true },
+    orderBy: { createdAt: 'desc' }
+  });
+  
+  if (sdrInteraction && sdrInteraction.callSummary) {
+    // Extraer el texto después de "Mejor horario"
+    const match = sdrInteraction.callSummary.match(/Mejor horario[:\s]*(.*?)(?:\n|\.|$)/i);
+    if (match && match[1]) {
+      prospectoData.mejorHorarioContacto = match[1].trim();
+    }
+  }
+
+  // Buscar notas en lead_prospects
+  const leadProspect = await prisma.leadProspect.findFirst({
+    where: { establishmentId },
+    select: { notes: true }
+  });
+  if (leadProspect && leadProspect.notes) {
+    prospectoData.notasProspecto = leadProspect.notes;
+  }
 
   // NOTA: NO incluir contactoId - el modelo Prospecto en Twenty no tiene ese campo
   // El contacto se elimina después de crear el prospecto (ver final de la función)
@@ -711,16 +744,28 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
       "plan básico": "STARTER",
       "plan basico": "STARTER",
       basic: "STARTER",
+      "starter pos": "STARTER",
+      "pos starter": "STARTER",
       growth: "GROWTH",
       "plan growth": "GROWTH",
+      "growth pos": "GROWTH",
+      "pos growth": "GROWTH",
       premium: "PREMIUM",
       "plan premium": "PREMIUM",
-      enterprise: "ENTERPRISE",
-      "plan enterprise": "ENTERPRISE",
+      "premium pos": "PREMIUM",
+      "pos premium": "PREMIUM",
+      "pos terminal premium": "PREMIUM",
+      "terminal premium": "PREMIUM",
+      "pos terminal": "PREMIUM",
+      "terminal": "PREMIUM",
       avanzado: "PREMIUM",
       "plan avanzado": "PREMIUM",
       profesional: "PREMIUM",
       "plan profesional": "PREMIUM",
+      enterprise: "ENTERPRISE",
+      "plan enterprise": "ENTERPRISE",
+      "enterprise pos": "ENTERPRISE",
+      "pos enterprise": "ENTERPRISE",
     };
     clienteData.productoAdquirido = productMap[productValue] || "OTRO";
   }
