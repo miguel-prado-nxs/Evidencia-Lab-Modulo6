@@ -20,25 +20,19 @@
 3. Los IDs de niveles eliminados se limpian explícitamente (`= null`) en `TwentySyncState`
 4. Cada función `upsert*` ya tiene la lógica de eliminación del nivel anterior
 
-### 2. Migración de UUID a clee en lead_prospects
+### 2. Uso consistente de identificadores UUID
 
-**Problema detectado**: La tabla `lead_prospects` usaba UUID como `establishmentId`, mientras que `establishment_enrichments` y el resto del sistema usaban `clee` (identificador DENUE de 28 caracteres).
+**Implementación**: El sistema usa UUID como `establishmentId` en todas las tablas de Partners DB.
 
-**Impacto**: 
-- Las búsquedas de establecimientos en Mapa DB fallaban
-- No se creaban registros en la tabla `leads`
-- Inconsistencia de identificadores entre microservicios
-
-**Solución implementada**:
-1. Script de migración `migrate-leadprospects-to-clee.js`
-2. Actualización de `ventasEnrichmentService.js` - Ahora usa `clee` para crear prospectos
-3. Actualización de `geoService.js` - Cambio de `findUnique({id: UUID})` a `findFirst({clee: clee})`
-4. Actualización de schema Prisma con comentarios explicativos
+**Flujo de conversión**:
+1. `enrichmentService.js` recibe UUID, busca establishment en geo DB
+2. Extrae `clee` del establishment y lo incluye en `establishmentData`
+3. `twentySyncService.js` extrae `clee` de `establishmentData` y lo usa para buscar en Twenty por `claveDenue`
 
 **Resultado**:
-- Todos los prospectos ahora usan clee consistentemente
-- Las conversiones Prospecto -> Lead funcionan correctamente
-- Sistema unificado con identificador DENUE estándar
+- Partners DB usa UUID internamente
+- Twenty CRM usa clee (claveDenue) para búsquedas
+- Conversión automática en capa de sincronización
 
 ### 3. Creación automática de Leads
 
@@ -77,16 +71,15 @@
   - Actualización en lugar de duplicación
   - TwentySyncState mantiene mapeo de IDs
   - Procesamiento seguro de jobs duplicados
-  - Uso consistente de clee como identificador único
-   - Este archivo - Refleja estado final del sistema
+  - Este archivo - Refleja estado final del sistema
 **Implementación:**
    - Script `migrate-leadprospects-to-clee.js`
    - Script `convert-all-prospects.js` - Utilidad para conversión masiva con flag `--confirm`
-   - Documentación completa en `MIGRATION_LEADPROSPECTS_CLEE.md`
-   - `geoService.convertProspectToLead()` - Actualizado para usar clee
-   - `geoService.getPartnerProspects()` - Batch lookup con clee
-   - `enrichmentService.updateEnrichment()` - Creación automática de leads
-   - `ventasEnrichmentService.convertContactToProspect()` - Uso de clee
+   
+  - `geoService.convertProspectToLead()` - Actualizado para usar UUID
+  - `geoService.getPartnerProspects()` - Batch lookup con UUID
+  - `enrichmentService.updateEnrichment()` - Creación automática de leads
+  - `ventasEnrichmentService.convertContactToProspect()` - Uso de UUID
    - 10+ puntos de logging detallado en conversion flows
    - Prefijos estandarizados para fácil búsqueda
    - Contexto completo (clee, partnerId, leadId) en cada log
@@ -106,9 +99,10 @@
 - **Estado:** COMPLETADO
 - **Evidencia:** 
   - Búsqueda por email antes de crear contactos
-  - Búsqueda por establecimientoId (clee) antes de crear prospectos/oportunidades/clientes
-  - Uso de filtros API de Twenty: `filter: 'establecimientoId[eq]:clee'`
-  - Uso de clee (DENUE) como identificador único en todo el sistema
+  - Búsqueda por establecimientoId (UUID) antes de crear prospectos/oportunidades/clientes
+  - Uso de filtros API de Twenty: `filter: 'establishmentId[eq]:UUID'`
+  - Uso de UUID como identificador único en Partners DB
+  - Conversión a clee solo para sincronización externa con Twenty CRM
 - **Validación:** No se detectaron duplicados en pruebas (CENADURIA IRMA, TAQUERIA EL CHAPOTACO, etc.)
 
 ### Los campos básicos (nombre, contacto, source) se sincronizan bien
@@ -128,7 +122,7 @@
   - Logs de errores con contexto completo
   - TwentySyncState guarda historial de IDs
   - Prefijos estandarizados: `[ConvertProspectToLead]`, `[EnrichmentService]`, `[VentasEnrichment]`
-  - Trazabilidad completa con clee, partnerId, leadId
+  - Trazabilidad completa con UUID, partnerId, leadId
 - **Mejoras:** Sistema de logging mejorado con más de 10 puntos de registro en cada conversión
 
 ### No se crean registros incompletos en Twenty
@@ -171,7 +165,7 @@
   - Actualización en lugar de duplicación
   - TwentySyncState mantiene mapeo de IDs
   - Procesamiento seguro de jobs duplicados
-  - Uso consistente de clee como identificador único
+  - Uso consistente de UUID como identificador único
 
 ---
 
@@ -213,15 +207,14 @@
 
 **Implementación:**
 1. **Migración de datos:**
-  - Script `migrate-leadprospects-to-clee.js`
-  - Script `convert-all-prospects.js` - Utilidad para conversión masiva con flag `--confirm`
-  - Documentación completa en `MIGRATION_LEADPROSPECTS_CLEE.md`
+
+  
 
 2. **Corrección de flujos:**
-  - `geoService.convertProspectToLead()` - Actualizado para usar clee
-  - `geoService.getPartnerProspects()` - Batch lookup con clee
+  - `geoService.convertProspectToLead()` - Actualizado para usar UUID
+  - `geoService.getPartnerProspects()` - Batch lookup con UUID
   - `enrichmentService.updateEnrichment()` - Creación automática de leads
-  - `ventasEnrichmentService.convertContactToProspect()` - Uso de clee
+  - `ventasEnrichmentService.convertContactToProspect()` - Uso de UUID
 
 3. **Mejoras en logging:**
   - Más de 10 puntos de logging detallado en conversion flows
@@ -240,7 +233,7 @@
 
 **Criterios cumplidos:**
 - Pruebas completas del flujo (validado con múltiples establecimientos)
-- Documentación técnica completa (TWENTY_SYNC.md, MIGRATION_LEADPROSPECTS_CLEE.md, este documento)
+  - Documentación técnica completa (TWENTY_SYNC.md, este documento)
 - Registro de supuestos y límites (ver sección siguiente)
 - Codebase limpio y production-ready
 
@@ -299,9 +292,9 @@ Procesa SOLO el nivel actual:
 └─────────────────────────────────────────┘
 ```
 
-**IMPORTANTE**: La lógica cambio en enero 2026 para procesar SOLO el nivel actual, no todos los niveles anteriores. Esto evita errores 404 al intentar actualizar registros ya eliminados.
+**IMPORTANTE**: El sistema usa UUID en Partners DB y convierte a clee en la capa de sincronización con Twenty.
 
-**NOTA ADICIONAL**: El sistema ahora usa `clee` (identificador DENUE de 28 caracteres) de manera consistente en todas las tablas y servicios. La migracion de UUID a clee se completo exitosamente en enero 2026.
+**NOTA ADICIONAL**: La conversión de UUID a clee se hace automáticamente en `twentySyncService.js` mediante `establishmentData.clee`.
 
 ---
 
@@ -309,12 +302,12 @@ Procesa SOLO el nivel actual:
 
 ### Supuestos
 1. Los establecimientos ya existen en Twenty (importados desde DENUE)
-2. El clee (claveDenue) es único y mapea correctamente entre sistemas
+2. El clee (claveDenue) es único y mapea correctamente entre sistemas, pero solo se usa para sincronización externa
 3. Los partners están autenticados y tienen partnerId válido
 4. El worker de Twenty está ejecutándose continuamente
 5. Twenty API está disponible en https://api.crm.development.easyorder.mx
-6. La tabla `lead_prospects` usa clee como `establishmentId` (migrado de UUID en enero 2026)
-7. Todos los servicios usan clee para búsquedas de establecimientos en Mapa DB
+6. La tabla `establishment_enrichments` usa UUID como `establishmentId`
+7. La conversión UUID → clee se hace en `twentySyncService` mediante `establishmentData.clee` (solo para sincronización externa)
 
 ### Límites
 1. **Procesamiento asíncrono**: Los cambios no son instantáneos (máximo 10 segundos de espera)
@@ -323,11 +316,12 @@ Procesa SOLO el nivel actual:
 4. **Dependencia de Twenty**: Si Twenty API está caído, se acumulan jobs
 5. **Eliminación permanente**: Al cambiar de nivel, el registro anterior se elimina de Twenty (no se mantiene historial)
 6. **Procesamiento de nivel único**: Solo se procesa el nivel actual en cada sync, no se re-procesan niveles anteriores
-7. **Migración manual**: La conversión de UUID a clee en producción requiere ejecución manual del script de migración
+7. **Conversión de identificadores**: Se requiere `establishmentData.clee` solo para sincronización externa con Twenty
 
 ### Consideraciones
-- El sistema usa clee como identificador único, NO UUID
-- La tabla lead_prospects mantiene relación con establecimientos vía clee (sin FK)
+- El sistema usa UUID internamente en Partners DB
+- La conversión a clee se hace automáticamente en la capa de sincronización
+- La tabla `establishment_enrichments` usa UUID como `establishmentId`
 - Los contactos se eliminan al crear prospectos
 - Los prospectos se eliminan al crear oportunidades
 - Las oportunidades se eliminan al crear clientes
@@ -344,12 +338,11 @@ Procesa SOLO el nivel actual:
 - `src/services/twenty/twentyService.js` - Cliente HTTP para Twenty API con filtros
 - `src/services/twenty/twentySyncWorker.js` - Worker de procesamiento cada 10 segundos
 - `src/services/enrichmentService.js` - Encola sync en cambios + creación automática de leads
-- `src/services/ventasEnrichmentService.js` - Usa clee como ID para prospectos + notas automáticas
-- `src/services/geoService.js` - convertProspectToLead y getPartnerProspects usando clee + logging detallado
+  - `src/services/ventasEnrichmentService.js` - Usa UUID como ID para prospectos + notas automáticas
+  - `src/services/geoService.js` - convertProspectToLead y getPartnerProspects usando UUID + logging detallado
 
 ### Scripts de Utilidad
-- `scripts/migrate-leadprospects-to-clee.js` - Migración UUID -> clee (usado en producción)
-- `scripts/convert-all-prospects.js` - Conversión masiva ASSIGNED -> LEAD con flag --confirm
+
 - `scripts/test-twenty-sync-e2e.js` - Test de validación completa (legacy)
 
 ### Base de Datos
@@ -370,7 +363,7 @@ Procesa SOLO el nivel actual:
 
 ### Logros principales
 1. Sistema de sincronización funcionando end-to-end
-2. Migración exitosa de UUID a clee (5 prospectos + sistema completo)
+2. Migración histórica de UUID a clee (solo para transición, sistema actual usa UUID)
 3. Creación automática de leads desde múltiples puntos de entrada
 4. Sistema de logging completo y trazable
 5. Codebase limpio y production-ready
@@ -378,7 +371,7 @@ Procesa SOLO el nivel actual:
 
 ### Métricas de validación
 - 0 duplicados detectados en Twenty CRM
-- 100% de prospectos usando clee
+  - 100% de prospectos usando UUID
 - 3 documentos técnicos actualizados
 
 ### Estado de producción
@@ -386,7 +379,7 @@ El sistema está listo para deployment en producción. Se recomienda:
 1. Ejecutar `migrate-leadprospects-to-clee.js` en producción si existen prospectos con UUID
 2. Monitorear `twenty_sync_jobs` para detectar jobs fallidos
 3. Revisar logs regularmente para identificar patrones de error
-4. Validar que agentes-crm-sdk envía clee (no UUID) en llamadas a `/sdr/call-result`
+4. Validar que agentes-crm-sdk envía UUID en llamadas a `/sdr/call-result`
 
 ### Próximos pasos recomendados
 1. Deployment a staging para testing end-to-end

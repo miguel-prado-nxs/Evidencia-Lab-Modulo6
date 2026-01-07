@@ -218,7 +218,7 @@ async function processPendingJobs(limit = 10) {
  * Sincroniza el pipeline de un establecimiento hacia Twenty CRM
  * Esta es la funcion principal que maneja toda la logica de upsert
  * 
- * @param {string} establishmentId - ID del establecimiento en Partners
+ * @param {string} establishmentId - UUID del establecimiento en Partners DB
  * @param {string} partnerId - ID del partner (para logs)
  * @param {string} reason - Razon del sync
  */
@@ -269,16 +269,19 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
   };
 
   try {
-    // 3. SIEMPRE: Upsert Establecimiento (Company)
+    // 3. Obtener el clee del establishment desde establishmentData (ya viene incluido)
+    const clee = establishmentData.clee || establishmentId;
+    
+    // 4. SIEMPRE: Upsert Establecimiento (Company) usando clee
     twentyIds.establecimientoId = await upsertEstablecimiento(
-      establishmentId,
+      clee,
       establishmentData,
       enrichment,
       currentLevel,
       twentyIds.establecimientoId
     );
 
-    // 4. Procesar SOLO el nivel actual (no todos los anteriores)
+    // 5. Procesar SOLO el nivel actual (no todos los anteriores)
     // Los registros anteriores se eliminan al avanzar de nivel
     
     if (currentLevel === "CONTACT") {
@@ -329,7 +332,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
       twentyIds.opportunityId = null;
     }
 
-    // 8. Actualizar TwentySyncState
+    // 6. Actualizar TwentySyncState
     await prisma.twentySyncState.update({
       where: { establishmentId },
       data: {
@@ -371,8 +374,10 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
  * Upsert de Establecimiento (Company) en Twenty
  * IMPORTANTE: Los establecimientos ya existen en Twenty (importados de DENUE)
  * Solo actualizamos nivelPipeline, NO creamos nuevos ni modificamos otros campos
+ * 
+ * @param {string} clee - Clave DENUE del establecimiento (para buscar en Twenty)
  */
-async function upsertEstablecimiento(establishmentId, establishmentData, enrichment, currentLevel, existingId) {
+async function upsertEstablecimiento(clee, establishmentData, enrichment, currentLevel, existingId) {
   // Solo actualizar nivelPipeline
   const updateData = {
     nivelPipeline: currentLevel,
@@ -390,15 +395,15 @@ async function upsertEstablecimiento(establishmentId, establishmentData, enrichm
 
   // Buscar por claveDenue (establecimiento debe existir en Twenty)
   let existing = null;
-  if (establishmentId) {
-    existing = await twentyService.findEstablecimientoByClaveDenue(establishmentId);
+  if (clee) {
+    existing = await twentyService.findEstablecimientoByClaveDenue(clee);
   }
 
   if (existing) {
     await twentyService.updateEstablecimiento(existing.id, updateData);
     logger.info("[TwentySyncService] Company encontrado y actualizado (nivelPipeline)", {
       twentyId: existing.id,
-      claveDenue: establishmentId,
+      claveDenue: clee,
       nivelPipeline: currentLevel,
     });
     return existing.id;
@@ -407,12 +412,11 @@ async function upsertEstablecimiento(establishmentId, establishmentData, enrichm
   // ERROR: El establecimiento NO existe en Twenty
   // Esto NO debería ocurrir si todos los establecimientos fueron importados de DENUE
   logger.error("[TwentySyncService] Establecimiento NO encontrado en Twenty", {
-    establishmentId,
-    claveDenue: establishmentId,
+    claveDenue: clee,
     message: "Este establecimiento no existe en Twenty. Verifica que fue importado correctamente desde DENUE.",
   });
   
-  throw new Error(`Establecimiento ${establishmentId} no existe en Twenty CRM. Debe ser importado desde DENUE primero.`);
+  throw new Error(`Establecimiento ${clee} no existe en Twenty CRM. Debe ser importado desde DENUE primero.`);
 }
 
 /**
@@ -458,31 +462,28 @@ async function upsertContacto(establishmentData, enrichment, establecimientoId, 
     contactoData.emailPrincipal = { primaryEmail: email };
   }
 
-  // Si ya existe en Twenty, actualizar
+  let contactoId = null;
   if (existingId) {
     await twentyService.updateContacto(existingId, contactoData);
-    return existingId;
+    contactoId = existingId;
+  } else {
+    let existing = await twentyService.findContactoByEstablecimientoId(establecimientoId);
+    if (!existing && email) {
+      existing = await twentyService.findContactoByEmail(email);
+    }
+    if (!existing && phone) {
+      existing = await twentyService.findContactoByPhone(phone);
+    }
+    if (existing) {
+      await twentyService.updateContacto(existing.id, contactoData);
+      contactoId = existing.id;
+    } else {
+      const created = await twentyService.createContacto(contactoData);
+      contactoId = created.id;
+    }
   }
-
-  // Buscar por establecimientoId
-  let existing = await twentyService.findContactoByEstablecimientoId(establecimientoId);
-
-  // Si no se encontro, buscar por email o telefono
-  if (!existing && email) {
-    existing = await twentyService.findContactoByEmail(email);
-  }
-  if (!existing && phone) {
-    existing = await twentyService.findContactoByPhone(phone);
-  }
-
-  if (existing) {
-    await twentyService.updateContacto(existing.id, contactoData);
-    return existing.id;
-  }
-
-  // Crear nuevo
-  const created = await twentyService.createContacto(contactoData);
-  return created.id;
+  // No hay pipeline anterior a eliminar para contacto
+  return contactoId;
 }
 
 /**
@@ -577,31 +578,30 @@ async function upsertProspecto(establishmentData, enrichment, establecimientoId,
     };
   }
 
-  // Si ya existe en Twenty, actualizar
+  let prospectoId = null;
   if (existingId) {
     await twentyService.updateProspecto(existingId, prospectoData);
-    return existingId;
-  }
-
-  // Buscar por email
-  if (enrichment.decisionMakerEmail) {
-    const existing = await twentyService.findProspectoByEmail(enrichment.decisionMakerEmail);
+    prospectoId = existingId;
+  } else {
+    let existing = null;
+    if (enrichment.decisionMakerEmail) {
+      existing = await twentyService.findProspectoByEmail(enrichment.decisionMakerEmail);
+    }
     if (existing) {
       await twentyService.updateProspecto(existing.id, prospectoData);
-      return existing.id;
+      prospectoId = existing.id;
+    } else {
+      const created = await twentyService.createProspecto(prospectoData);
+      prospectoId = created.id;
     }
   }
-
-  // Crear nuevo prospecto
-  const created = await twentyService.createProspecto(prospectoData);
-  
   // IMPORTANTE: Eliminar el contacto anterior (Person) ya que ahora es prospecto
   if (contactoId) {
     try {
       await twentyService.deleteContacto(contactoId);
       logger.info("[TwentySyncService] Contacto eliminado después de crear prospecto", {
         contactoId,
-        prospectoId: created.id
+        prospectoId: prospectoId
       });
     } catch (error) {
       logger.warn("[TwentySyncService] Error eliminando contacto anterior (no crítico)", {
@@ -610,8 +610,7 @@ async function upsertProspecto(establishmentData, enrichment, establecimientoId,
       });
     }
   }
-  
-  return created.id;
+  return prospectoId;
 }
 
 /**
@@ -645,30 +644,27 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
     opportunityData.desire = enrichment.desire;
   }
 
-  // Si ya existe en Twenty, actualizar
+  let opportunityId = null;
   if (existingId) {
     await twentyService.updateOpportunity(existingId, opportunityData);
-    return existingId;
+    opportunityId = existingId;
+  } else {
+    let existing = await twentyService.findOpportunityByEstablecimientoId(establecimientoId);
+    if (existing) {
+      await twentyService.updateOpportunity(existing.id, opportunityData);
+      opportunityId = existing.id;
+    } else {
+      const created = await twentyService.createOpportunity(opportunityData);
+      opportunityId = created.id;
+    }
   }
-
-  // Buscar por establecimientoId
-  let existing = await twentyService.findOpportunityByEstablecimientoId(establecimientoId);
-
-  if (existing) {
-    await twentyService.updateOpportunity(existing.id, opportunityData);
-    return existing.id;
-  }
-
-  // Crear nuevo
-  const created = await twentyService.createOpportunity(opportunityData);
-  
   // IMPORTANTE: Eliminar el prospecto anterior ya que ahora es lead
   if (prospectoId) {
     try {
       await twentyService.deleteProspecto(prospectoId);
       logger.info("[TwentySyncService] Prospecto eliminado después de crear opportunity", {
         prospectoId,
-        opportunityId: created.id
+        opportunityId: opportunityId
       });
     } catch (error) {
       logger.warn("[TwentySyncService] Error eliminando prospecto anterior (no crítico)", {
@@ -677,8 +673,7 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
       });
     }
   }
-  
-  return created.id;
+  return opportunityId;
 }
 
 /**
@@ -707,15 +702,27 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
 
   // NO incluir leadId porque el opportunity se eliminará
 
-  // Producto adquirido - mapear a enum
+  // Producto adquirido - mapear a enum con variantes
   if (enrichment.productPurchased) {
+    const productValue = enrichment.productPurchased.trim().toLowerCase();
     const productMap = {
-      STARTER: "STARTER",
-      GROWTH: "GROWTH",
-      PREMIUM: "PREMIUM",
-      ENTERPRISE: "ENTERPRISE",
+      starter: "STARTER",
+      "plan starter": "STARTER",
+      "plan básico": "STARTER",
+      "plan basico": "STARTER",
+      basic: "STARTER",
+      growth: "GROWTH",
+      "plan growth": "GROWTH",
+      premium: "PREMIUM",
+      "plan premium": "PREMIUM",
+      enterprise: "ENTERPRISE",
+      "plan enterprise": "ENTERPRISE",
+      avanzado: "PREMIUM",
+      "plan avanzado": "PREMIUM",
+      profesional: "PREMIUM",
+      "plan profesional": "PREMIUM",
     };
-    clienteData.productoAdquirido = productMap[enrichment.productPurchased.toUpperCase()] || "OTRO";
+    clienteData.productoAdquirido = productMap[productValue] || "OTRO";
   }
 
   // Monto primera compra
@@ -738,30 +745,31 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
     clienteData.notasDeCliente = enrichment.clientNotes;
   }
 
+  let clienteId = null;
   // Si ya existe en Twenty, actualizar
   if (existingId) {
     await twentyService.updateCliente(existingId, clienteData);
-    return existingId;
+    clienteId = existingId;
+  } else {
+    // Buscar por establecimientoId
+    let existing = await twentyService.findClienteByEstablecimientoId(establecimientoId);
+    if (existing) {
+      await twentyService.updateCliente(existing.id, clienteData);
+      clienteId = existing.id;
+    } else {
+      // Crear nuevo
+      const created = await twentyService.createCliente(clienteData);
+      clienteId = created.id;
+    }
   }
 
-  // Buscar por establecimientoId
-  let existing = await twentyService.findClienteByEstablecimientoId(establecimientoId);
-
-  if (existing) {
-    await twentyService.updateCliente(existing.id, clienteData);
-    return existing.id;
-  }
-
-  // Crear nuevo
-  const created = await twentyService.createCliente(clienteData);
-  
   // IMPORTANTE: Eliminar el opportunity anterior ya que ahora es cliente
   if (opportunityId) {
     try {
       await twentyService.deleteOpportunity(opportunityId);
       logger.info("[TwentySyncService] Opportunity eliminado después de crear cliente", {
         opportunityId,
-        clienteId: created.id
+        clienteId: clienteId
       });
     } catch (error) {
       logger.warn("[TwentySyncService] Error eliminando opportunity anterior (no crítico)", {
@@ -770,8 +778,7 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
       });
     }
   }
-  
-  return created.id;
+  return clienteId;
 }
 
 /**

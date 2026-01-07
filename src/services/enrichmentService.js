@@ -102,10 +102,10 @@ async function getEnrichmentByEstablishment(establishmentId) {
  */
 async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
   try {
-    // El establishmentId que llega es el clee (DENUE key)
+    // El establishmentId que llega es el UUID del establishment
     // Obtener el establecimiento de Mapa DB para validar y calcular nivel
     const establishment = await prismaGeo.establishment.findFirst({
-      where: { clee: establishmentId },
+      where: { id: establishmentId },
       select: {
         id: true,
         clee: true,
@@ -127,12 +127,12 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       throw new Error("Establecimiento no encontrado");
     }
 
-    // Usar el clee como establishmentId para la tabla establishmentEnrichment
-    const clee = establishment.clee;
+    // Usar el UUID como establishmentId para la tabla establishmentEnrichment
+    const estabId = establishment.id;
 
     // Buscar si ya existe un enriquecimiento en Partners DB
     const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId: clee },
+      where: { establishmentId: estabId },
     });
 
     // Preparar datos de enriquecimiento preservando los existentes
@@ -207,6 +207,7 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       lastUpdatedBy: partnerId,
       // Datos del establecimiento para Orchestrator (evita query a BD 801k)
       establishmentData: {
+        clee: establishment.clee || null, // IMPORTANTE: Incluir clee para Twenty sync
         name: establishment.name || null,
         phone: establishment.phone || null,
         email: establishment.email || null,
@@ -232,18 +233,18 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
     if (existing) {
       // Actualizar existente
       enrichment = await prisma.establishmentEnrichment.update({
-        where: { establishmentId: clee },
+        where: { establishmentId: estabId },
         data: enrichmentData,
       });
       logger.info(
-        `Enriquecimiento actualizado para establecimiento ${clee} - Nivel: ${level}`
+        `Enriquecimiento actualizado para establecimiento ${estabId} - Nivel: ${level}`
       );
 
       // Emitir evento SSE si el nivel cambió
       if (previousLevel && previousLevel !== level) {
         emitLevelChanged({
           partnerId: existing.enrichedBy || partnerId,
-          establishmentId: clee,
+          establishmentId: estabId,
           previousLevel,
           newLevel: level,
           enrichment: {
@@ -257,7 +258,7 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
         // Emitir evento de actualización sin cambio de nivel
         emitEnrichmentUpdated({
           partnerId: existing.enrichedBy || partnerId,
-          establishmentId: clee,
+          establishmentId: estabId,
           previousLevel,
           newLevel: level,
           enrichment: {
@@ -273,19 +274,19 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       enrichment = await prisma.establishmentEnrichment.create({
         data: {
           ...enrichmentData,
-          establishmentId: clee,
+          establishmentId: estabId,
           enrichedBy: partnerId,
           enrichedAt: new Date(),
         },
       });
       logger.info(
-        `Enriquecimiento creado para establecimiento ${clee} - Nivel: ${level}`
+        `Enriquecimiento creado para establecimiento ${estabId} - Nivel: ${level}`
       );
 
       // Emitir evento de nuevo enriquecimiento
       emitEnrichmentUpdated({
         partnerId,
-        establishmentId: clee,
+        establishmentId: estabId,
         previousLevel: null,
         newLevel: level,
         enrichment: {
@@ -297,11 +298,22 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       });
     }
 
-    // Encolar sincronizacion con Twenty CRM cuando cambia el nivel (non-blocking)
-    if (previousLevel && previousLevel !== level && partnerId) {
-      const syncReason = `${previousLevel}_TO_${level}`;
+    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    if (partnerId) {
+      let syncReason;
+      if (previousLevel && previousLevel !== level) {
+        // Cambio de nivel
+        syncReason = `${previousLevel}_TO_${level}`;
+      } else if (existing) {
+        // Actualización de datos sin cambio de nivel
+        syncReason = `UPDATE_${level}`;
+      } else {
+        // Nuevo enriquecimiento
+        syncReason = `NEW_${level}`;
+      }
+      
       enqueueSync({
-        establishmentId: clee,
+        establishmentId: estabId,
         partnerId,
         reason: syncReason,
       }).catch((err) => {
@@ -311,12 +323,12 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
 
     // Si el nivel cambió a LEAD, crear automáticamente el registro en la tabla leads
     if (level === "LEAD" && previousLevel !== "LEAD") {
-      logger.info(`[EnrichmentService] Nivel cambió a LEAD, creando registro en tabla leads para ${clee}`);
+      logger.info(`[EnrichmentService] Nivel cambió a LEAD, creando registro en tabla leads para ${estabId}`);
       
       try {
         // Buscar el leadProspect correspondiente
         const prospect = await prisma.leadProspect.findFirst({
-          where: { establishmentId: clee },
+          where: { establishmentId: estabId },
         });
 
         if (prospect && prospect.status !== "CONVERTED") {
@@ -328,7 +340,7 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
             phone: enrichmentData.decisionMakerPhone,
             interests: ["POS"],
           });
-          logger.info(`[EnrichmentService] Lead creado automáticamente: ${lead.id} para ${clee}`);
+          logger.info(`[EnrichmentService] Lead creado automáticamente: ${lead.id} para ${estabId}`);
         } else if (!prospect) {
           // Si no hay leadProspect, crear el lead directamente
           const lead = await prisma.lead.create({
@@ -342,15 +354,15 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
               location: `${establishment.municipalityName}, ${establishment.stateName}`,
               interests: ["POS"],
               status: "NEW",
-              notes: `Creado automáticamente al actualizar nivel a LEAD. Establishment: ${clee}`,
+              notes: `Creado automáticamente al actualizar nivel a LEAD. Establishment: ${estabId}`,
             },
           });
-          logger.info(`[EnrichmentService] Lead creado directamente (sin prospect previo): ${lead.id} para ${clee}`);
+          logger.info(`[EnrichmentService] Lead creado directamente (sin prospect previo): ${lead.id} para ${estabId}`);
         } else {
-          logger.info(`[EnrichmentService] Prospect ya está CONVERTED, lead debería existir para ${clee}`);
+          logger.info(`[EnrichmentService] Prospect ya está CONVERTED, lead debería existir para ${estabId}`);
         }
       } catch (leadError) {
-        logger.error(`[EnrichmentService] Error creando lead automáticamente para ${clee}:`, leadError);
+        logger.error(`[EnrichmentService] Error creando lead automáticamente para ${estabId}:`, leadError);
         // No fallar el update del enrichment por esto
       }
     }
@@ -660,12 +672,12 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
       return [];
     }
 
-    // Obtener IDs de establecimientos (ahora son clees, no UUIDs)
+    // Obtener IDs de establecimientos (UUIDs)
     const establishmentIds = enrichments.map((e) => e.establishmentId);
 
-    // Obtener datos de establecimientos de Mapa DB (buscar por clee)
+    // Obtener datos de establecimientos de Mapa DB (buscar por UUID)
     const establishments = await prismaGeo.establishment.findMany({
-      where: { clee: { in: establishmentIds } },
+      where: { id: { in: establishmentIds } },
       select: {
         id: true,
         clee: true,
@@ -689,9 +701,9 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
       },
     });
 
-    // Crear mapas para lookup rapido (usar clee como key)
+    // Crear mapas para lookup rapido (usar UUID como key)
     const establishmentMap = establishments.reduce((acc, e) => {
-      acc[e.clee] = e;
+      acc[e.id] = e;
       return acc;
     }, {});
 

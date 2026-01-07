@@ -387,15 +387,15 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
     throw new Error("El prospect debe estar asignado a un partner");
   }
 
-  logger.info(`[ConvertProspectToLead] Buscando establishment con clee: ${prospect.establishmentId}`);
+  logger.info(`[ConvertProspectToLead] Buscando establishment con UUID: ${prospect.establishmentId}`);
 
-  // Obtener datos del establecimiento de Mapa DB (por clee)
-  const establishment = await prismaGeo.establishment.findFirst({
-    where: { clee: prospect.establishmentId },
+  // Obtener datos del establecimiento de Mapa DB (por UUID)
+  const establishment = await prismaGeo.establishment.findUnique({
+    where: { id: prospect.establishmentId },
   });
 
   if (!establishment) {
-    logger.error(`[ConvertProspectToLead] Establecimiento no encontrado. prospect.establishmentId (clee): ${prospect.establishmentId}`);
+    logger.error(`[ConvertProspectToLead] Establecimiento no encontrado. prospect.establishmentId (UUID): ${prospect.establishmentId}`);
     throw new Error("Establecimiento no encontrado");
   }
 
@@ -454,12 +454,12 @@ async function getPartnerProspects(partnerId, status = null) {
     return [];
   }
 
-  // Obtener IDs únicos de establecimientos (clees)
-  const establishmentClees = [...new Set(prospects.map(p => p.establishmentId))];
+  // Obtener IDs únicos de establecimientos (UUIDs)
+  const establishmentIds = [...new Set(prospects.map(p => p.establishmentId))];
 
-  // Obtener datos de establecimientos de Mapa DB (por clee)
+  // Obtener datos de establecimientos de Mapa DB (por UUID)
   const establishments = await prismaGeo.establishment.findMany({
-    where: { clee: { in: establishmentClees } },
+    where: { id: { in: establishmentIds } },
     select: {
       id: true,
       clee: true,
@@ -474,9 +474,9 @@ async function getPartnerProspects(partnerId, status = null) {
     },
   });
 
-  // Crear mapa para lookup rápido (por clee)
+  // Crear mapa para lookup rápido (por UUID)
   const establishmentMap = establishments.reduce((acc, e) => {
-    acc[e.clee] = e;
+    acc[e.id] = e;
     return acc;
   }, {});
 

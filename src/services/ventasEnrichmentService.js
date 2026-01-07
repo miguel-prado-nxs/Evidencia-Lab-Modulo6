@@ -52,15 +52,12 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
       throw new Error("Establecimiento no encontrado en la base de datos");
     }
 
-    // Usar clee (clave DENUE) como establishmentId, NO el UUID
-    const clee = establishment.clee;
-    if (!clee) {
-      throw new Error(`Establishment ${establishmentId} no tiene clee (clave DENUE)`);
-    }
+    // Usar UUID como establishmentId
+    const estabId = establishment.id;
 
-    // 2. Verificar si ya existe un enriquecimiento (buscar por clee)
+    // 2. Verificar si ya existe un enriquecimiento (buscar por UUID)
     const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId: clee },
+      where: { establishmentId: estabId },
     });
 
     if (existing) {
@@ -75,13 +72,14 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     // 3. Crear nuevo registro de enriquecimiento con nivel CONTACT
     const enrichment = await prisma.establishmentEnrichment.create({
       data: {
-        establishmentId: clee, // Usar clee, no UUID
+        establishmentId: estabId, // Usar UUID
         level: "CONTACT",
         enrichedBy: partnerId,
         enrichedAt: new Date(),
         lastUpdatedBy: partnerId,
         // Datos del establecimiento para Orchestrator (evita query a BD 801k)
         establishmentData: {
+          clee: establishment.clee || null, // IMPORTANTE: Incluir clee para Twenty sync
           name: establishment.name || null,
           phone: establishment.phone || null,
           email: establishment.email || null,
@@ -99,9 +97,9 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     logger.info(`[VentasEnrichment] Contacto agregado: ${establishment.name} por partner ${partnerId}`);
 
     // Encolar sincronizacion con Twenty CRM (non-blocking)
-    // IMPORTANTE: Usar clee, no el UUID
+    // IMPORTANTE: Usar UUID del establishment
     enqueueSync({
-      establishmentId: clee,
+      establishmentId: estabId,
       partnerId,
       reason: "ADD_TO_CONTACTS",
     }).catch((err) => {
@@ -130,9 +128,9 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
  */
 async function convertContactToProspect(establishmentId, contactData, partnerId) {
   try {
-    // 1. Obtener el establishment usando clee (establishmentId ahora es clee)
-    const establishment = await prismaGeo.establishment.findFirst({
-      where: { clee: establishmentId },
+    // 1. Obtener el establishment usando UUID
+    const establishment = await prismaGeo.establishment.findUnique({
+      where: { id: establishmentId },
       select: {
         id: true,
         clee: true,
@@ -146,15 +144,15 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
       },
     });
 
-    if (!establishment || !establishment.clee) {
-      throw new Error("Establecimiento no encontrado o sin clave DENUE");
+    if (!establishment) {
+      throw new Error("Establecimiento no encontrado");
     }
 
-    const clee = establishment.clee;
+    const estabId = establishment.id;
 
-    // 2. Verificar que existe el enriquecimiento (buscar por clee)
+    // 2. Verificar que existe el enriquecimiento (buscar por UUID)
     const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId: clee },
+      where: { establishmentId: estabId },
     });
 
     if (!existing) {
@@ -172,7 +170,7 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
 
     // 4. Actualizar a nivel PROSPECT en establishmentEnrichment
     const enrichment = await prisma.establishmentEnrichment.update({
-      where: { establishmentId: clee },
+      where: { establishmentId: estabId },
       data: {
         decisionMakerName: contactData.decisionMakerName,
         decisionMakerPosition: contactData.decisionMakerPosition || null,
@@ -185,9 +183,8 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     });
 
     // 4. Crear o actualizar registro en leadProspect para rastreo
-    // NOTA: leadProspect usa el clee (igual que establishment_enrichments)
     let prospect = await prisma.leadProspect.findFirst({
-      where: { establishmentId: clee },
+      where: { establishmentId: estabId },
     });
 
     if (prospect) {
@@ -205,7 +202,7 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
       // Crear si no existe
       prospect = await prisma.leadProspect.create({
         data: {
-          establishmentId: clee,
+          establishmentId: estabId,
           partnerId,
           status: "ASSIGNED",
           assignedAt: new Date(),
@@ -217,9 +214,8 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     logger.info(`[VentasEnrichment] Contacto convertido a prospecto: ${establishment.name} por partner ${partnerId}`);
 
     // Encolar sincronizacion con Twenty CRM (non-blocking)
-    // IMPORTANTE: Usar clee, no el UUID
     enqueueSync({
-      establishmentId: clee,
+      establishmentId: estabId,
       partnerId,
       reason: "CONTACT_TO_PROSPECT",
     }).catch((err) => {
@@ -257,12 +253,12 @@ async function getMyContacts(partnerId) {
       return [];
     }
 
-    // 2. Obtener IDs de establecimientos (ahora son clees, no UUIDs)
+    // 2. Obtener IDs de establecimientos (UUIDs)
     const establishmentIds = enrichments.map((e) => e.establishmentId);
 
-    // 3. Obtener datos de establecimientos de Mapa DB (buscar por clee)
+    // 3. Obtener datos de establecimientos de Mapa DB (buscar por UUID)
     const establishments = await prismaGeo.establishment.findMany({
-      where: { clee: { in: establishmentIds } },
+      where: { id: { in: establishmentIds } },
       select: {
         id: true,
         clee: true,
@@ -278,9 +274,9 @@ async function getMyContacts(partnerId) {
       },
     });
 
-    // 4. Crear mapa para lookup rapido (usar clee como key)
+    // 4. Crear mapa para lookup rapido (usar UUID como key)
     const establishmentMap = establishments.reduce((acc, e) => {
-      acc[e.clee] = e;
+      acc[e.id] = e;
       return acc;
     }, {});
 
