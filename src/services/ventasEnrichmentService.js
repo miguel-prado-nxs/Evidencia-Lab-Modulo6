@@ -335,7 +335,32 @@ async function getVentasStats(partnerId) {
  */
 async function updateProspect(establishmentId, data, partnerId) {
   try {
-    // Obtener establishment para convertir UUID a clee
+    const existing = await prisma.establishmentEnrichment.findUnique({
+      where: { establishmentId },
+    });
+
+    if (!existing) {
+      throw new Error("No se encontró el prospecto");
+    }
+
+    // Solo permitir actualizar si es PROSPECT o mayor
+    if (existing.level !== "PROSPECT" && existing.level !== "LEAD" && existing.level !== "CLIENT") {
+      throw new Error("El establecimiento debe ser al menos un prospecto para actualizar");
+    }
+
+    const enrichment = await prisma.establishmentEnrichment.update({
+      where: { establishmentId },
+      data: {
+        decisionMakerName: data.decisionMakerName !== undefined ? data.decisionMakerName : existing.decisionMakerName,
+        decisionMakerPosition: data.decisionMakerPosition !== undefined ? data.decisionMakerPosition : existing.decisionMakerPosition,
+        decisionMakerPhone: data.decisionMakerPhone !== undefined ? data.decisionMakerPhone : existing.decisionMakerPhone,
+        decisionMakerWhatsApp: data.decisionMakerWhatsApp !== undefined ? data.decisionMakerWhatsApp : existing.decisionMakerWhatsApp,
+        decisionMakerEmail: data.decisionMakerEmail !== undefined ? data.decisionMakerEmail : existing.decisionMakerEmail,
+        lastUpdatedBy: partnerId,
+      },
+    });
+
+    // Obtener establecimiento con clee para sincronización con Twenty
     const establishment = await prismaGeo.establishment.findUnique({
       where: { id: establishmentId },
       select: {
@@ -351,40 +376,10 @@ async function updateProspect(establishmentId, data, partnerId) {
       },
     });
 
-    if (!establishment || !establishment.clee) {
-      throw new Error("Establecimiento no encontrado o sin clave DENUE");
-    }
-
-    const clee = establishment.clee;
-
-    const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId: clee },
-    });
-
-    if (!existing) {
-      throw new Error("No se encontro el prospecto");
-    }
-
-    // Solo permitir actualizar si es PROSPECT o mayor
-    if (existing.level !== "PROSPECT" && existing.level !== "LEAD" && existing.level !== "CLIENT") {
-      throw new Error("El establecimiento debe ser al menos un prospecto para actualizar");
-    }
-
-    const enrichment = await prisma.establishmentEnrichment.update({
-      where: { establishmentId: clee },
-      data: {
-        decisionMakerName: data.decisionMakerName !== undefined ? data.decisionMakerName : existing.decisionMakerName,
-        decisionMakerPosition: data.decisionMakerPosition !== undefined ? data.decisionMakerPosition : existing.decisionMakerPosition,
-        decisionMakerPhone: data.decisionMakerPhone !== undefined ? data.decisionMakerPhone : existing.decisionMakerPhone,
-        decisionMakerWhatsApp: data.decisionMakerWhatsApp !== undefined ? data.decisionMakerWhatsApp : existing.decisionMakerWhatsApp,
-        decisionMakerEmail: data.decisionMakerEmail !== undefined ? data.decisionMakerEmail : existing.decisionMakerEmail,
-        lastUpdatedBy: partnerId,
-      },
-    });
-
-    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    // Encolar sincronizacion con Twenty CRM (usar clee si existe, sino UUID)
+    const syncEstablishmentId = establishment?.clee || establishmentId;
     enqueueSync({
-      establishmentId: clee,
+      establishmentId: syncEstablishmentId,
       partnerId,
       reason: "UPDATE_PROSPECT",
     }).catch((err) => {

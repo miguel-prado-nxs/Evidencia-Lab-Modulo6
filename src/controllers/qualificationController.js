@@ -236,6 +236,29 @@ async function handleCallResult(req, res, next) {
                     logger.info(`[Qualification] Promoviendo ${establishmentId} a LEAD`);
 
                     // =========================================
+                    // ACTUALIZAR LEAD_PROSPECTS A CONVERTED
+                    // =========================================
+                    try {
+                        const leadProspect = await prisma.leadProspect.findFirst({
+                            where: { establishmentId },
+                        });
+
+                        if (leadProspect && leadProspect.status === "ASSIGNED") {
+                            await prisma.leadProspect.update({
+                                where: { id: leadProspect.id },
+                                data: {
+                                    status: "CONVERTED",
+                                    convertedAt: new Date(),
+                                },
+                            });
+                            logger.info(`[Qualification] LeadProspect actualizado a CONVERTED: ${leadProspect.id}`);
+                        }
+                    } catch (prospectError) {
+                        logger.error(`[Qualification] Error actualizando leadProspect:`, prospectError.message);
+                        // No fallar el endpoint por error en leadProspect
+                    }
+
+                    // =========================================
                     // CREAR REGISTRO EN TABLA LEADS (global)
                     // =========================================
                     const leadPartnerId = userId || existingEnrichment.enrichedBy;
