@@ -520,7 +520,7 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
   }
 
   // Buscar mejor horario de contacto en sdr_interactions
-  const sdrInteraction = await prisma.sdrInteraction.findFirst({
+  /*const sdrInteraction = await prisma.sdrInteraction.findFirst({
     where: { 
       establishmentId,
       callSummary: { contains: 'Mejor horario', mode: 'insensitive' }
@@ -535,7 +535,7 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
     if (match && match[1]) {
       prospectoData.mejorHorarioContacto = match[1].trim();
     }
-  }
+  }*/
 
   // Buscar notas en lead_prospects
   const leadProspect = await prisma.leadProspect.findFirst({
