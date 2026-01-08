@@ -244,7 +244,8 @@ const autoEnrich = async (req, res, next) => {
     console.log("Rango de empleados:", employeeRange || "No especificado");
     console.log("Establishment ID:", establishmentId || "No especificado");
     console.log("Dirección:", address || "No especificada");
-    console.log("Usuario:", req.user?.id);
+    console.log("Usuario (JWT):", req.user?.id);
+    console.log("Sales Partner ID:", req.salesPartnerId);
     console.log("==================================================");
 
     // Verificar si AGENTS_SDK_URL está configurado
@@ -273,7 +274,8 @@ const autoEnrich = async (req, res, next) => {
       employee_range: employeeRange || "0 a 5 personas",
       address: address || "",
       // Pasar userId para asignación de prospecto
-      // Usar salesPartnerId si viene de Service Key, o user.id si viene de JWT
+      // Usar salesPartnerId (ya viene en formato correcto desde middleware)
+      // o user.id si viene de JWT, o null si no hay usuario
       user_id: req.salesPartnerId || req.user?.id || null,
     };
 
