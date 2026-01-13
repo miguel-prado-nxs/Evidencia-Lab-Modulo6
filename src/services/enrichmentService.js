@@ -14,6 +14,7 @@ const logger = require("../config/logger");
 const geoService = require("./geoService");
 const leadService = require("./leadService");
 const { emitLevelChanged, emitEnrichmentUpdated } = require("../config/sseEvents");
+const { enqueueSync } = require("./twenty/twentySyncService");
 
 /**
  * Calcular el nivel de un establecimiento basado en sus datos
@@ -101,11 +102,13 @@ async function getEnrichmentByEstablishment(establishmentId) {
  */
 async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
   try {
+    // El establishmentId que llega es el UUID del establishment
     // Obtener el establecimiento de Mapa DB para validar y calcular nivel
-    const establishment = await prismaGeo.establishment.findUnique({
+    const establishment = await prismaGeo.establishment.findFirst({
       where: { id: establishmentId },
       select: {
         id: true,
+        clee: true,
         name: true,
         phone: true,
         email: true,
@@ -124,9 +127,12 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       throw new Error("Establecimiento no encontrado");
     }
 
+    // Usar el UUID como establishmentId para la tabla establishmentEnrichment
+    const estabId = establishment.id;
+
     // Buscar si ya existe un enriquecimiento en Partners DB
     const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId },
+      where: { establishmentId: estabId },
     });
 
     // Preparar datos de enriquecimiento preservando los existentes
@@ -201,6 +207,7 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       lastUpdatedBy: partnerId,
       // Datos del establecimiento para Orchestrator (evita query a BD 801k)
       establishmentData: {
+        clee: establishment.clee || null, // IMPORTANTE: Incluir clee para Twenty sync
         name: establishment.name || null,
         phone: establishment.phone || null,
         email: establishment.email || null,
@@ -226,18 +233,18 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
     if (existing) {
       // Actualizar existente
       enrichment = await prisma.establishmentEnrichment.update({
-        where: { establishmentId },
+        where: { establishmentId: estabId },
         data: enrichmentData,
       });
       logger.info(
-        `Enriquecimiento actualizado para establecimiento ${establishmentId} - Nivel: ${level}`
+        `Enriquecimiento actualizado para establecimiento ${estabId} - Nivel: ${level}`
       );
 
       // Emitir evento SSE si el nivel cambió
       if (previousLevel && previousLevel !== level) {
         emitLevelChanged({
           partnerId: existing.enrichedBy || partnerId,
-          establishmentId,
+          establishmentId: estabId,
           previousLevel,
           newLevel: level,
           enrichment: {
@@ -251,7 +258,7 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
         // Emitir evento de actualización sin cambio de nivel
         emitEnrichmentUpdated({
           partnerId: existing.enrichedBy || partnerId,
-          establishmentId,
+          establishmentId: estabId,
           previousLevel,
           newLevel: level,
           enrichment: {
@@ -267,19 +274,19 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       enrichment = await prisma.establishmentEnrichment.create({
         data: {
           ...enrichmentData,
-          establishmentId,
+          establishmentId: estabId,
           enrichedBy: partnerId,
           enrichedAt: new Date(),
         },
       });
       logger.info(
-        `Enriquecimiento creado para establecimiento ${establishmentId} - Nivel: ${level}`
+        `Enriquecimiento creado para establecimiento ${estabId} - Nivel: ${level}`
       );
 
       // Emitir evento de nuevo enriquecimiento
       emitEnrichmentUpdated({
         partnerId,
-        establishmentId,
+        establishmentId: estabId,
         previousLevel: null,
         newLevel: level,
         enrichment: {
@@ -292,6 +299,9 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
     }
 
     // Auto-promoción según datos proporcionados (sin cambios de esquema)
+    // IMPORTANTE: Esta lógica se ejecuta ANTES del sync con Twenty para garantizar
+    // que los registros (leadProspect, lead) existan antes de sincronizar
+    
     // 1) Si hay datos de tomador de decisiones -> asegurar Prospect asignado al partner
     const hasDecisionMaker = (
       !!enrichmentData.decisionMakerName ||
@@ -322,15 +332,15 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       try {
         // Verificar prospect existente para este establecimiento
         ensuredProspect = await prisma.leadProspect.findFirst({
-          where: { establishmentId },
+          where: { establishmentId: estabId },
         });
         
         logger.info(`[Auto-Promoción] Prospect existente: ${ensuredProspect ? `id=${ensuredProspect.id}, status=${ensuredProspect.status}, partnerId=${ensuredProspect.partnerId}` : 'NO EXISTE'}`);
 
         if (!ensuredProspect || ensuredProspect.status === "AVAILABLE") {
           // Asignar prospect al partner
-          ensuredProspect = await geoService.assignProspect(establishmentId, partnerId, "Auto-asignado por enriquecimiento (Tomador)");
-          logger.info(`[Auto-Promoción] Prospect CREADO/ASIGNADO: id=${ensuredProspect.id}, status=${ensuredProspect.status} para est ${establishmentId} y partner ${partnerId}`);
+          ensuredProspect = await geoService.assignProspect(estabId, partnerId, "Auto-asignado por enriquecimiento (Tomador)");
+          logger.info(`[Auto-Promoción] Prospect CREADO/ASIGNADO: id=${ensuredProspect.id}, status=${ensuredProspect.status} para est ${estabId} y partner ${partnerId}`);
         } else {
           logger.info(`[Auto-Promoción] Prospect ya existe y no está AVAILABLE, no se reasigna`);
         }
@@ -343,9 +353,9 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       try {
         // Asegurar que exista un prospect asignado; si no, crear y asignar primero
         if (!ensuredProspect) {
-          ensuredProspect = await prisma.leadProspect.findFirst({ where: { establishmentId } });
+          ensuredProspect = await prisma.leadProspect.findFirst({ where: { establishmentId: estabId } });
           if (!ensuredProspect) {
-            ensuredProspect = await geoService.assignProspect(establishmentId, partnerId, "Auto-asignado por enriquecimiento (IFPD)");
+            ensuredProspect = await geoService.assignProspect(estabId, partnerId, "Auto-asignado por enriquecimiento (IFPD)");
           }
         }
 
@@ -357,10 +367,10 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
             phone: establishment.phone || enrichmentData.decisionMakerPhone || enrichmentData.decisionMakerWhatsApp || undefined,
             interests: ["POS"],
           });
-          logger.info(`Auto-promoción: Prospect ${ensuredProspect.id} convertido a Lead por cualificación`);
+          logger.info(`[Auto-Promoción] Prospect ${ensuredProspect.id} convertido a Lead por cualificación`);
         }
       } catch (promoErr) {
-        logger.warn("Auto-promoción (Lead) falló:", promoErr);
+        logger.warn("[Auto-Promoción] (Lead) falló:", promoErr);
       }
     }
 
@@ -373,11 +383,35 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
         });
         if (recentLead) {
           await leadService.updateLeadStatus(recentLead.id, "WON", "Marcado como cliente (WON) por enriquecimiento");
-          logger.info(`Auto-promoción: Lead ${recentLead.id} marcado como WON/cliente`);
+          logger.info(`[Auto-Promoción] Lead ${recentLead.id} marcado como WON/cliente`);
         }
       } catch (promoErr) {
-        logger.warn("Auto-promoción (Client) falló:", promoErr);
+        logger.warn("[Auto-Promoción] (Client) falló:", promoErr);
       }
+    }
+
+    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    // Se ejecuta DESPUÉS de la auto-promoción para garantizar que los registros existan
+    if (partnerId) {
+      let syncReason;
+      if (previousLevel && previousLevel !== level) {
+        // Cambio de nivel
+        syncReason = `${previousLevel}_TO_${level}`;
+      } else if (existing) {
+        // Actualización de datos sin cambio de nivel
+        syncReason = `UPDATE_${level}`;
+      } else {
+        // Nuevo enriquecimiento
+        syncReason = `NEW_${level}`;
+      }
+      
+      enqueueSync({
+        establishmentId: estabId,
+        partnerId,
+        reason: syncReason,
+      }).catch((err) => {
+        logger.warn("[EnrichmentService] Error encolando sync (no critico)", { error: err.message });
+      });
     }
 
     // Retornar con datos del establecimiento
@@ -668,32 +702,8 @@ async function getEnrichmentProspectsDirect(partnerId) {
 
 async function getEnrichmentsByPartner(partnerId, level = null) {
   try {
-    // Para PROSPECT: obtener de lead_prospects Y de establishmentEnrichment con level=PROSPECT
-    // El agente SDR guarda directamente en establishmentEnrichment con level=PROSPECT
-    if (level === "PROSPECT") {
-      // Obtener de lead_prospects (método tradicional)
-      const leadProspects = await getProspectsByPartner(partnerId);
-      logger.info(`[getEnrichmentsByPartner] leadProspects count: ${leadProspects.length}`);
-
-      // Obtener también de establishmentEnrichment donde level=PROSPECT
-      const enrichmentProspects = await getEnrichmentProspectsDirect(partnerId);
-      logger.info(`[getEnrichmentsByPartner] enrichmentProspects count: ${enrichmentProspects.length}`);
-
-      // Combinar ambas fuentes, evitando duplicados por establishmentId
-      const combined = [...leadProspects];
-      const existingIds = new Set(leadProspects.map(p => p.enrichment?.establishmentId || p.establishmentId));
-
-      for (const ep of enrichmentProspects) {
-        if (!existingIds.has(ep.enrichment?.establishmentId)) {
-          combined.push(ep);
-        }
-      }
-
-      logger.info(`[getEnrichmentsByPartner] combined PROSPECT count: ${combined.length}`);
-      return combined;
-    }
-
-    // Para CONTACT, LEAD y CLIENT: obtener directamente de EstablishmentEnrichment
+    // SIMPLIFICADO: Todos los niveles se obtienen directamente de EstablishmentEnrichment
+    // Ya no usamos lead_prospects para PROSPECT - todo en una sola tabla
     const where = { enrichedBy: partnerId };
     if (level) {
       where.level = level;
@@ -709,14 +719,15 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
       return [];
     }
 
-    // Obtener IDs de establecimientos
+    // Obtener IDs de establecimientos (UUIDs)
     const establishmentIds = enrichments.map((e) => e.establishmentId);
 
-    // Obtener datos de establecimientos de Mapa DB
+    // Obtener datos de establecimientos de Mapa DB (buscar por UUID)
     const establishments = await prismaGeo.establishment.findMany({
       where: { id: { in: establishmentIds } },
       select: {
         id: true,
+        clee: true,
         name: true,
         activityName: true,
         phone: true,
@@ -737,7 +748,7 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
       },
     });
 
-    // Crear mapas para lookup rápido
+    // Crear mapas para lookup rapido (usar UUID como key)
     const establishmentMap = establishments.reduce((acc, e) => {
       acc[e.id] = e;
       return acc;

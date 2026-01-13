@@ -1,4 +1,6 @@
 const prisma = require("../config/database");
+const logger = require("../config/logger");
+const { updateOpportunityStatus } = require("./twenty/twentySyncService");
 
 // Crear nuevo lead
 const createLead = async (data) => {
@@ -222,6 +224,20 @@ const updateLeadStatus = async (id, status, notes) => {
 
     return result;
   });
+
+  // Intentar actualizar estadoLead en Twenty CRM (non-blocking)
+  // Buscar establishmentId en las notas del lead
+  const establishmentIdMatch = lead.notes?.match(/ID Establecimiento: ([a-zA-Z0-9-]+)/);
+  if (establishmentIdMatch) {
+    const establishmentId = establishmentIdMatch[1];
+    updateOpportunityStatus(establishmentId, status).catch((err) => {
+      logger.warn("[LeadService] Error actualizando opportunity status en Twenty (no critico)", {
+        error: err.message,
+        leadId: id,
+        establishmentId,
+      });
+    });
+  }
 
   return updatedLead;
 };

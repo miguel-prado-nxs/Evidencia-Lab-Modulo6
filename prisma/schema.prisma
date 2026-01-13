@@ -616,11 +616,11 @@ model SdrInteraction {
 }
 
 // ========== PROSPECTS DESDE DENUE ==========
-// NOTA: establishmentId referencia a Mapa DB, NO hay FK constraint
+// NOTA: establishmentId referencia a Mapa DB usando clee (DENUE), NO hay FK constraint
 
 model LeadProspect {
   id              String @id @default(uuid())
-  establishmentId String @map("establishment_id") // Referencia a Mapa DB (sin FK)
+  establishmentId String @map("establishment_id") // Clee del establecimiento DENUE (sin FK)
   partnerId       String? @map("partner_id")
 
   status   ProspectStatus @default(AVAILABLE)
@@ -1054,4 +1054,69 @@ model CallLead {
   @@index([partnerId])
   @@index([createdAt(sort: Desc)])
   @@map("call_leads")
+}
+
+// ========== TWENTY CRM SYNC ==========
+
+// Estado de sincronizacion con Twenty CRM
+// Guarda el mapeo entre establishmentId (Partners) y los IDs creados en Twenty
+model TwentySyncState {
+  id              String   @id @default(uuid())
+  establishmentId String   @unique @map("establishment_id")
+
+  // IDs de registros en Twenty
+  twentyEstablecimientoId String? @map("twenty_establecimiento_id")
+  twentyContactoId        String? @map("twenty_contacto_id")
+  twentyProspectoId       String? @map("twenty_prospecto_id")
+  twentyOpportunityId     String? @map("twenty_opportunity_id")
+  twentyClienteId         String? @map("twenty_cliente_id")
+
+  // Auditoria
+  lastSyncedLevel String?   @map("last_synced_level") // ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
+  lastSyncedAt    DateTime? @map("last_synced_at")
+  lastError       String?   @map("last_error") @db.Text
+  lastErrorAt     DateTime? @map("last_error_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([twentyEstablecimientoId])
+  @@index([twentyOpportunityId])
+  @@index([lastSyncedLevel])
+  @@map("twenty_sync_states")
+}
+
+// Cola de trabajos de sincronizacion (outbox pattern)
+model TwentySyncJob {
+  id              String @id @default(uuid())
+  establishmentId String @map("establishment_id")
+
+  // Metadata
+  partnerId String? @map("partner_id")
+  reason    String  // ADD_TO_CONTACTS, CONTACT_TO_PROSPECT, QUALIFICATION_TO_LEAD, ENRICHMENT_TO_CLIENT, UPDATE_LEAD_STATUS
+
+  // Estado del job
+  status    TwentySyncJobStatus @default(PENDING)
+  attempts  Int                 @default(0)
+  nextRunAt DateTime            @default(now()) @map("next_run_at")
+
+  // Resultado
+  lastError   String?   @map("last_error") @db.Text
+  lastErrorAt DateTime? @map("last_error_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, nextRunAt])
+  @@index([establishmentId])
+  @@index([createdAt(sort: Desc)])
+  @@map("twenty_sync_jobs")
+}
+
+enum TwentySyncJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
 }

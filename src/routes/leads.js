@@ -53,8 +53,9 @@ const trackLeadSchema = z.object({
 // Ruta pública para tracking (con API Key)
 router.post("/track", authenticateApiKey, validate(trackLeadSchema), leadsController.track);
 
-// Rutas protegidas para agente de enriquecimiento (solo agente autorizado)
-router.post("/auto-enrich", validateEnrichmentAgent, leadsController.autoEnrich);
+// Rutas protegidas para agente de enriquecimiento
+// NOTA: Cambiar validateEnrichmentAgent por authenticateJWTOrServiceKey para que extraiga salesPartnerId
+router.post("/auto-enrich", authenticateJWTOrServiceKey, leadsController.autoEnrich);
 router.post("/auto-qualify", authenticateJWTOrServiceKey, leadsController.autoQualify);
 
 // Rutas protegidas

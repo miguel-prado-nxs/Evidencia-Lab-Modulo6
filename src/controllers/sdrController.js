@@ -11,6 +11,7 @@
 const { PrismaClient } = require("@prisma/client");
 const sdrService = require("../services/sdrService");
 const logger = require("../config/logger");
+const { enqueueSync } = require("../services/twenty/twentySyncService");
 
 const prisma = new PrismaClient();
 
@@ -223,12 +224,26 @@ async function handleCallResult(req, res, next) {
             logger.error(`[SDR] Error guardando interacción: ${interactionError.message}`);
         }
 
+        // ==================== TWENTY CRM SYNC (CONTACT LEVEL) ====================
+        // Si se promovió a CONTACT (callback_scheduled o contacted), sincronizar con Twenty
+        if (enrichmentData.level === "CONTACT" && userId) {
+            enqueueSync({
+                establishmentId: establishmentId,
+                partnerId: userId,
+                reason: "SDR_TO_CONTACT",
+            }).catch((err) => {
+                logger.warn("[SDR] Error encolando sync con Twenty para CONTACT (no critico)", { error: err.message });
+            });
+            logger.info(`[SDR] Sincronización con Twenty encolada para CONTACT ${establishmentId}`);
+        }
+
         // ==================== LEAD PROSPECT CREATION ====================
         // Cuando se identifica un tomador de decisiones (PROSPECT), también debemos
         // crear/actualizar el registro en lead_prospects para que aparezca en "Mis Prospectos"
+        // NOTA: establishmentId debe ser el clee (consistente con establishment_enrichments)
         if (enrichmentData.level === "PROSPECT" && userId) {
             try {
-                // Verificar si ya existe un lead_prospect para este establecimiento
+                // Verificar si ya existe un lead_prospect para este establecimiento (usa clee)
                 let leadProspect = await prisma.leadProspect.findFirst({
                     where: { establishmentId: establishmentId },
                 });
@@ -258,6 +273,18 @@ async function handleCallResult(req, res, next) {
                     });
                     logger.info(`[SDR] lead_prospect creado para ${establishmentId}, asignado a ${userId}`);
                 }
+
+                // ==================== TWENTY CRM SYNC ====================
+                // Encolar sincronización con Twenty CRM cuando se convierte a PROSPECT
+                // Esto es crítico para mantener Twenty actualizado con los prospectos
+                enqueueSync({
+                    establishmentId: establishmentId,
+                    partnerId: userId,
+                    reason: "SDR_CONTACT_TO_PROSPECT",
+                }).catch((err) => {
+                    logger.warn("[SDR] Error encolando sync con Twenty (no critico)", { error: err.message });
+                });
+                logger.info(`[SDR] Sincronización con Twenty encolada para ${establishmentId}`);
             } catch (prospectError) {
                 // No fallar todo el flujo si hay error creando lead_prospect
                 logger.error(`[SDR] Error creando/actualizando lead_prospect: ${prospectError.message}`);

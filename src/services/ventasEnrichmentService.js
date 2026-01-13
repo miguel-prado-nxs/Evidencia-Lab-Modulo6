@@ -16,6 +16,7 @@
 const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
+const { enqueueSync } = require("./twenty/twentySyncService");
 
 /**
  * Agregar un establecimiento a contactos del usuario de ventas
@@ -32,6 +33,7 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
       where: { id: establishmentId },
       select: {
         id: true,
+        clee: true, // IMPORTANTE: clave DENUE
         name: true,
         phone: true,
         email: true,
@@ -50,9 +52,12 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
       throw new Error("Establecimiento no encontrado en la base de datos");
     }
 
-    // 2. Verificar si ya existe un enriquecimiento
+    // Usar UUID como establishmentId
+    const estabId = establishment.id;
+
+    // 2. Verificar si ya existe un enriquecimiento (buscar por UUID)
     const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId },
+      where: { establishmentId: estabId },
     });
 
     if (existing) {
@@ -67,13 +72,14 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     // 3. Crear nuevo registro de enriquecimiento con nivel CONTACT
     const enrichment = await prisma.establishmentEnrichment.create({
       data: {
-        establishmentId,
+        establishmentId: estabId, // Usar UUID
         level: "CONTACT",
         enrichedBy: partnerId,
         enrichedAt: new Date(),
         lastUpdatedBy: partnerId,
         // Datos del establecimiento para Orchestrator (evita query a BD 801k)
         establishmentData: {
+          clee: establishment.clee || null, // IMPORTANTE: Incluir clee para Twenty sync
           name: establishment.name || null,
           phone: establishment.phone || null,
           email: establishment.email || null,
@@ -89,6 +95,16 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     });
 
     logger.info(`[VentasEnrichment] Contacto agregado: ${establishment.name} por partner ${partnerId}`);
+
+    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    // IMPORTANTE: Usar UUID del establishment
+    enqueueSync({
+      establishmentId: estabId,
+      partnerId,
+      reason: "ADD_TO_CONTACTS",
+    }).catch((err) => {
+      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
+    });
 
     return {
       ...enrichment,
@@ -112,16 +128,38 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
  */
 async function convertContactToProspect(establishmentId, contactData, partnerId) {
   try {
-    // 1. Verificar que existe el enriquecimiento
+    // 1. Obtener el establishment usando UUID
+    const establishment = await prismaGeo.establishment.findUnique({
+      where: { id: establishmentId },
+      select: {
+        id: true,
+        clee: true,
+        name: true,
+        phone: true,
+        email: true,
+        website: true,
+        activityName: true,
+        municipalityName: true,
+        stateName: true,
+      },
+    });
+
+    if (!establishment) {
+      throw new Error("Establecimiento no encontrado");
+    }
+
+    const estabId = establishment.id;
+
+    // 2. Verificar que existe el enriquecimiento (buscar por UUID)
     const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId },
+      where: { establishmentId: estabId },
     });
 
     if (!existing) {
       throw new Error("No se encontró el contacto. Primero agrégalo a tus contactos.");
     }
 
-    // 2. Validar que tiene datos mínimos requeridos
+    // 3. Validar que tiene datos mínimos requeridos
     if (!contactData.decisionMakerName) {
       throw new Error("El nombre del tomador de decisiones es requerido");
     }
@@ -130,9 +168,9 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
       throw new Error("Se requiere al menos un teléfono o WhatsApp");
     }
 
-    // 3. Actualizar a nivel PROSPECT en establishmentEnrichment
+    // 4. Actualizar a nivel PROSPECT en establishmentEnrichment
     const enrichment = await prisma.establishmentEnrichment.update({
-      where: { establishmentId },
+      where: { establishmentId: estabId },
       data: {
         decisionMakerName: contactData.decisionMakerName,
         decisionMakerPosition: contactData.decisionMakerPosition || null,
@@ -146,7 +184,7 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
 
     // 4. Crear o actualizar registro en leadProspect para rastreo
     let prospect = await prisma.leadProspect.findFirst({
-      where: { establishmentId },
+      where: { establishmentId: estabId },
     });
 
     if (prospect) {
@@ -157,36 +195,32 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
           partnerId,
           status: "ASSIGNED",
           assignedAt: new Date(),
+          notes: `Actualizado a Prospecto el ${new Date().toLocaleDateString('es-MX')}. Partner: ${partnerId}`,
         },
       });
     } else {
       // Crear si no existe
       prospect = await prisma.leadProspect.create({
         data: {
-          establishmentId,
+          establishmentId: estabId,
           partnerId,
           status: "ASSIGNED",
           assignedAt: new Date(),
+          notes: `Creado como Prospecto el ${new Date().toLocaleDateString('es-MX')}. Tomador de decisiones: ${contactData.decisionMakerName}`,
         },
       });
     }
 
-    // 5. Obtener datos del establecimiento
-    const establishment = await prismaGeo.establishment.findUnique({
-      where: { id: establishmentId },
-      select: {
-        id: true,
-        name: true,
-        phone: true,
-        email: true,
-        website: true,
-        activityName: true,
-        municipalityName: true,
-        stateName: true,
-      },
-    });
+    logger.info(`[VentasEnrichment] Contacto convertido a prospecto: ${establishment.name} por partner ${partnerId}`);
 
-    logger.info(`[VentasEnrichment] Contacto convertido a prospecto: ${establishment?.name} por partner ${partnerId}`);
+    // Encolar sincronizacion con Twenty CRM (non-blocking)
+    enqueueSync({
+      establishmentId: estabId,
+      partnerId,
+      reason: "CONTACT_TO_PROSPECT",
+    }).catch((err) => {
+      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
+    });
 
     return {
       ...enrichment,
@@ -219,14 +253,15 @@ async function getMyContacts(partnerId) {
       return [];
     }
 
-    // 2. Obtener IDs de establecimientos
+    // 2. Obtener IDs de establecimientos (UUIDs)
     const establishmentIds = enrichments.map((e) => e.establishmentId);
 
-    // 3. Obtener datos de establecimientos de Mapa DB
+    // 3. Obtener datos de establecimientos de Mapa DB (buscar por UUID)
     const establishments = await prismaGeo.establishment.findMany({
       where: { id: { in: establishmentIds } },
       select: {
         id: true,
+        clee: true,
         name: true,
         phone: true,
         email: true,
@@ -239,7 +274,7 @@ async function getMyContacts(partnerId) {
       },
     });
 
-    // 4. Crear mapa para lookup rápido
+    // 4. Crear mapa para lookup rapido (usar UUID como key)
     const establishmentMap = establishments.reduce((acc, e) => {
       acc[e.id] = e;
       return acc;
@@ -325,11 +360,12 @@ async function updateProspect(establishmentId, data, partnerId) {
       },
     });
 
-    // Obtener establecimiento
+    // Obtener establecimiento con clee para sincronización con Twenty
     const establishment = await prismaGeo.establishment.findUnique({
       where: { id: establishmentId },
       select: {
         id: true,
+        clee: true,
         name: true,
         phone: true,
         email: true,
@@ -338,6 +374,16 @@ async function updateProspect(establishmentId, data, partnerId) {
         municipalityName: true,
         stateName: true,
       },
+    });
+
+    // Encolar sincronizacion con Twenty CRM (usar clee si existe, sino UUID)
+    const syncEstablishmentId = establishment?.clee || establishmentId;
+    enqueueSync({
+      establishmentId: syncEstablishmentId,
+      partnerId,
+      reason: "UPDATE_PROSPECT",
+    }).catch((err) => {
+      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
     });
 
     return {
@@ -357,12 +403,24 @@ async function updateProspect(establishmentId, data, partnerId) {
  */
 async function removeFromMyList(establishmentId, partnerId) {
   try {
+    // Obtener establishment para convertir UUID a clee
+    const establishment = await prismaGeo.establishment.findUnique({
+      where: { id: establishmentId },
+      select: { clee: true },
+    });
+
+    if (!establishment || !establishment.clee) {
+      throw new Error("Establecimiento no encontrado o sin clave DENUE");
+    }
+
+    const clee = establishment.clee;
+
     const existing = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId },
+      where: { establishmentId: clee },
     });
 
     if (!existing) {
-      throw new Error("No se encontró el registro");
+      throw new Error("No se encontro el registro");
     }
 
     // Verificar que pertenece al partner
@@ -371,10 +429,10 @@ async function removeFromMyList(establishmentId, partnerId) {
     }
 
     await prisma.establishmentEnrichment.delete({
-      where: { establishmentId },
+      where: { establishmentId: clee },
     });
 
-    logger.info(`[VentasEnrichment] Registro eliminado: ${establishmentId} por partner ${partnerId}`);
+    logger.info(`[VentasEnrichment] Registro eliminado: ${clee} por partner ${partnerId}`);
 
     return { success: true };
   } catch (error) {
