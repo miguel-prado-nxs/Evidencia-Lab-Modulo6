@@ -1159,3 +1159,18 @@ enum TwentySyncJobStatus {
   DONE
   FAILED
 }
+
+// Metadata del sistema de sincronización con Twenty
+model TwentySyncMetadata {
+  id                         String    @id @default("singleton")
+  initialMigrationCompleted  Boolean   @default(false) @map("initial_migration_completed")
+  initialMigrationStartedAt  DateTime? @map("initial_migration_started_at")
+  initialMigrationCompletedAt DateTime? @map("initial_migration_completed_at")
+  totalRecordsMigrated       Int       @default(0) @map("total_records_migrated")
+  lastMigrationError         String?   @map("last_migration_error") @db.Text
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("twenty_sync_metadata")
+}

@@ -78,22 +78,28 @@ TWENTY_MAX_RETRIES=5
 La sincronizacion usa las siguientes estrategias para evitar duplicados:
 
 ### Company (Establecimiento)
-**IMPORTANTE**: Los establecimientos ya existen en Twenty (importados previamente desde DENUE). **NO se crean nuevos establecimientos**.
 
 1. Buscar por `claveDenue` (= `Establishment.clee` de la BD DENUE)
-2. Si existe → **SOLO actualizar `nivelPipeline`** (no otros campos)
-3. Si NO existe → **ERROR**: El establecimiento debe existir en Twenty
+2. Si existe → Actualizar `nivelPipeline` y otros campos según el nivel
+3. Si NO existe → Crear establecimiento en Twenty usando datos de la BD geo (DENUE)
 
-**Campos que se actualizan:**
-- `nivelPipeline` únicamente
+**Campos que se sincronizan en la creación:**
+- Datos básicos: nombre, claveDenue, nivelPipeline
+- Dirección completa: calle, ciudad, estado, código postal
+- Ubicación: latitud, longitud, estado, municipio
+- Actividad económica: giro (activityName)
+- Contacto (si existe): teléfono, email, website
+- Metadata: fechaAltaDenue, dominio (para deduplicación)
 
-**Campos que NO se modifican:**
-- Nombre, teléfono, email, dirección, giro, estado, municipio, etc. (vienen de importación DENUE)
+**Campos que se actualizan en sync incremental:**
+- `nivelPipeline` (siempre)
+- Otros campos según el nivel de pipeline
 
 ### Mapeo de IDs
-- `EstablishmentEnrichment.establishmentId` = `Establishment.clee` (clave DENUE)
-- `claveDenue` (Twenty) = `Establishment.clee` (DENUE)
-- El UUID de `Establishment.id` solo se usa para búsquedas en la BD geo, luego se convierte a `clee`
+- `EstablishmentEnrichment.establishmentId` = UUID en BD local
+- `Establishment.clee` = Clave DENUE única del establecimiento
+- `claveDenue` (Twenty) = `Establishment.clee` (DENUE) - usado para búsqueda y deduplicación
+- El UUID solo se usa para búsquedas en la BD geo, luego se convierte a `clee`
 
 ### Contacto
 1. Buscar por `establecimientoId` (ID del Company en Twenty)
@@ -171,13 +177,62 @@ model TwentySyncJob {
 }
 ```
 
+### Tabla TwentySyncMetadata (Control de Migración)
+
+Metadata del sistema de sincronización (registro único - singleton):
+
+```prisma
+model TwentySyncMetadata {
+  id                          String   @id @default("singleton")
+  initialMigrationCompleted   Boolean  @default(false)
+  initialMigrationStartedAt   DateTime?
+  initialMigrationCompletedAt DateTime?
+  totalRecordsMigrated        Int      @default(0)
+  lastMigrationError          String?
+}
+```
+
+Este modelo asegura que la migración inicial solo se ejecute una vez, incluso si el servidor se reinicia.
+
 ## Worker de Sincronizacion
 
-- Se inicia automaticamente al arrancar la aplicacion si `TWENTY_API_KEY` esta configurada
+El worker se inicia automáticamente al arrancar la aplicación si `TWENTY_API_KEY` está configurada.
+
+### Migración Inicial (Primera Ejecución)
+
+Cuando el servidor arranca por primera vez:
+
+1. **Verifica** si ya se ejecutó la migración inicial consultando `TwentySyncMetadata`
+2. **Si NO se ha ejecutado**: Encola todos los registros existentes en `establishment_enrichments` que tengan nivel distinto de `ESTABLISHMENT`
+3. **Procesa en lotes**: 10 registros cada 2 segundos para no saturar Twenty API
+4. **Crea establecimientos faltantes**: Si un establecimiento no existe en Twenty, lo crea usando datos de la BD geo (DENUE)
+5. **Marca como completada**: Actualiza `TwentySyncMetadata.initialMigrationCompleted = true`
+6. **No bloquea el inicio**: Se ejecuta en background de forma asíncrona
+
+La migración se ejecuta **UNA SOLA VEZ**. En arranques subsecuentes solo procesa nuevos jobs incrementales.
+
+### Procesamiento Continuo
+
+Después de la migración inicial (o si ya se completó previamente):
+
 - Hace polling cada `TWENTY_SYNC_INTERVAL_MS` milisegundos (default: 10s)
 - Procesa hasta 5 jobs por ciclo en serie
 - Implementa backoff exponencial: `min(60s * 2^attempts, 1h)`
 - Maximo 5 reintentos antes de marcar como FAILED
+
+### Monitoreo de Migración
+
+Consultar estado via endpoint (si está implementado) o revisar tabla `TwentySyncMetadata`:
+
+```sql
+SELECT * FROM twenty_sync_metadata WHERE id = 'singleton';
+```
+
+Campos importantes:
+- `initial_migration_completed`: Indica si ya se ejecutó
+- `initial_migration_completed_at`: Timestamp de finalización
+- `total_records_migrated`: Cantidad de registros encolados
+- `last_migration_error`: Último error si falló
 
 ## Manejo de Errores
 
@@ -289,8 +344,8 @@ Repetir cada paso anterior y verificar:
 | `src/config/env.js` | Variables de entorno de Twenty |
 | `src/services/twenty/twentyService.js` | Cliente HTTP para Twenty API |
 | `src/services/twenty/twentySyncService.js` | Orquestador de sincronizacion |
-| `src/workers/twentySyncWorker.js` | Worker de procesamiento |
-| `prisma/schema.prisma` | Modelos TwentySyncState y TwentySyncJob |
+| `src/workers/twentySyncWorker.js` | Worker de procesamiento y migración inicial automática |
+| `prisma/schema.prisma` | Modelos TwentySyncState, TwentySyncJob y TwentySyncMetadata |
 | `src/services/ventasEnrichmentService.js` | Integracion ADD_TO_CONTACTS, CONTACT_TO_PROSPECT |
 | `src/controllers/qualificationController.js` | Integracion QUALIFICATION_TO_LEAD |
 | `src/services/enrichmentService.js` | Integracion ENRICHMENT_TO_CLIENT |

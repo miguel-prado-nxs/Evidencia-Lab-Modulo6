@@ -2,7 +2,7 @@
 // Esta es una base de datos de SOLO LECTURA con 800k+ establecimientos
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client-geo"
+  output   = "../node_modules/@prisma/client-geo"
 }
 
 datasource db {
