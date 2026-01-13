@@ -7,7 +7,7 @@
  */
 
 // Importar el cliente generado desde la ubicación del esquema geo
-const { PrismaClient } = require("../../node_modules/.prisma/client-geo");
+const { PrismaClient } = require("@prisma/client-geo");
 
 const prismaGeo = new PrismaClient({
   log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
