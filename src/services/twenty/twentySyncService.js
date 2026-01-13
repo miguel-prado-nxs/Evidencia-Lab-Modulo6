@@ -477,7 +477,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
       // Contacto (si existe)
       telefonoDenue: establishment.phone ? {
         primaryPhoneNumber: establishment.phone,
-        primaryPhoneCountryCode: '+52'
+        primaryPhoneCountryCode: 'MX'
       } : undefined,
       
       emailDenue: establishment.email ? {
