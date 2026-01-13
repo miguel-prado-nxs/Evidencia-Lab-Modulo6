@@ -490,12 +490,22 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
       } : undefined,
       
       // Metadata
-      fechaAltaDenue: establishment.addedDate || new Date().toISOString(),
+      fechaAltaDenue: establishment.addedDate 
+        ? (establishment.addedDate.length === 7 ? `${establishment.addedDate}-01T00:00:00.000Z` : establishment.addedDate)
+        : new Date().toISOString(),
       
       // Dominio para deduplicación
-      dominio: establishment.website 
-        ? new URL(establishment.website).hostname.replace('www.', '')
-        : establishment.name.toLowerCase().replace(/\s+/g, '-').substring(0, 50)
+      dominio: (() => {
+        if (establishment.website) {
+          try {
+            const url = new URL(establishment.website.startsWith('http') ? establishment.website : `https://${establishment.website}`);
+            return url.hostname.replace('www.', '');
+          } catch (e) {
+            return establishment.name.toLowerCase().replace(/\s+/g, '-').substring(0, 50);
+          }
+        }
+        return establishment.name.toLowerCase().replace(/\s+/g, '-').substring(0, 50);
+      })()
     };
 
     const response = await twentyService.client.post('/companies?upsert=true', companyData);
