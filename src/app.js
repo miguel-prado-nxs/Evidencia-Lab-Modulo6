@@ -25,6 +25,7 @@ const settingsRoutes = require("./routes/settings");
 const sdrRoutes = require("./routes/sdr");
 const qualificationRoutes = require("./routes/qualification");
 const eventsRoutes = require("./routes/events");
+const easyorderRoutes = require("./routes/easyorder");
 
 // Crear aplicación Express
 const app = express();
@@ -133,6 +134,7 @@ app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/sdr", sdrRoutes);
 app.use("/api/v1/qualification", qualificationRoutes);
 app.use("/api/v1/events", eventsRoutes);
+app.use("/api/v1/easyorder", easyorderRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES

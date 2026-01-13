@@ -569,6 +569,45 @@ model EstablishmentEnrichment {
   @@map("establishment_enrichments")
 }
 
+// ========== PERFILES DE RESTAURANTE (captura inicial) ==========
+// Almacena los datos base capturados por Ventas antes de provisionar el POS
+// leadId referencia al enriquecimiento/lead en este sistema (no FK estricta)
+model RestaurantProfile {
+  id               String  @id @default(uuid())
+  establishmentId  String  @unique @map("establishment_id")
+  leadId           String? @map("lead_id")
+  restaurantId     Int?    @map("restaurant_id") // ID del restaurante en easyorder-backend
+  direccionId      Int?    @map("direccion_id")  // ID de la dirección en easyorder-backend
+
+  businessName     String   @map("business_name")
+  cuisineType      String?  @map("cuisine_type")
+  contactPhone     String?  @map("contact_phone")
+  contactEmail     String?  @map("contact_email")
+  contactWhatsapp  String?  @map("contact_whatsapp")
+  timezone         String?
+  address          Json?    // snapshot de la dirección enviada al POS
+  logoUrl          String?  @map("logo_url")
+  
+  // Pasos completados del proceso de provisionamiento
+  step1Completed   Boolean  @default(false) @map("step1_completed") // Perfil básico + Logo
+  step2Completed   Boolean  @default(false) @map("step2_completed") // Sucursales
+  step3Completed   Boolean  @default(false) @map("step3_completed") // Menú
+  
+  // Estado de provisionamiento
+  provisionStatus  String   @default("pending") @map("provision_status")
+  // 'pending', 'provisioned', 'failed', 'active'
+  
+  provisionedAt    DateTime? @map("provisioned_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([leadId])
+  @@index([restaurantId])
+  @@index([provisionStatus])
+  @@map("restaurant_profiles")
+}
+
 // ========== INTERACCIONES SDR ==========
 // Registro de todas las llamadas del agente SDR (exitosas y fallidas)
 model SdrInteraction {
