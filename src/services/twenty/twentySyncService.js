@@ -12,8 +12,11 @@
  */
 
 const prisma = require("../../config/database");
+const { PrismaClient: PrismaClientGeo } = require('@prisma/client-geo');
 const logger = require("../../config/logger");
 const twentyService = require("./twentyService");
+
+const prismaGeo = new PrismaClientGeo();
 
 /**
  * Mapeo de LeadStatus de Partners a estadoLead de Twenty
@@ -273,12 +276,14 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
     const clee = establishmentData.clee || establishmentId;
     
     // 4. SIEMPRE: Upsert Establecimiento (Company) usando clee
+    // Pasar también el establishmentId (UUID) como fallback para buscar en BD geo
     twentyIds.establecimientoId = await upsertEstablecimiento(
       clee,
       establishmentData,
       enrichment,
       currentLevel,
-      twentyIds.establecimientoId
+      twentyIds.establecimientoId,
+      establishmentId // UUID para buscar en BD geo si no se encuentra por clee
     );
 
     // 5. Procesar SOLO el nivel actual (no todos los anteriores)
@@ -373,12 +378,14 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
 
 /**
  * Upsert de Establecimiento (Company) en Twenty
- * IMPORTANTE: Los establecimientos ya existen en Twenty (importados de DENUE)
- * Solo actualizamos nivelPipeline, NO creamos nuevos ni modificamos otros campos
+ * 
+ * Si el establecimiento no existe en Twenty, lo crea usando datos de la BD geo (DENUE).
+ * Si existe, solo actualiza nivelPipeline.
  * 
  * @param {string} clee - Clave DENUE del establecimiento (para buscar en Twenty)
+ * @param {string} establishmentIdUuid - UUID del establecimiento en BD local
  */
-async function upsertEstablecimiento(clee, establishmentData, enrichment, currentLevel, existingId) {
+async function upsertEstablecimiento(clee, establishmentData, enrichment, currentLevel, existingId, establishmentIdUuid) {
   // Solo actualizar nivelPipeline
   const updateData = {
     nivelPipeline: currentLevel,
@@ -394,7 +401,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
     return existingId;
   }
 
-  // Buscar por claveDenue (establecimiento debe existir en Twenty)
+  // Buscar por claveDenue
   let existing = null;
   if (clee) {
     existing = await twentyService.findEstablecimientoByClaveDenue(clee);
@@ -410,14 +417,107 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
     return existing.id;
   }
 
-  // ERROR: El establecimiento NO existe en Twenty
-  // Esto NO debería ocurrir si todos los establecimientos fueron importados de DENUE
-  logger.error("[TwentySyncService] Establecimiento NO encontrado en Twenty", {
+  // El establecimiento NO existe en Twenty - crearlo usando datos de BD geo
+  logger.warn("[TwentySyncService] Establecimiento NO encontrado en Twenty, creándolo desde BD geo", {
     claveDenue: clee,
-    message: "Este establecimiento no existe en Twenty. Verifica que fue importado correctamente desde DENUE.",
+    establishmentId: establishmentIdUuid,
   });
   
-  throw new Error(`Establecimiento ${clee} no existe en Twenty CRM. Debe ser importado desde DENUE primero.`);
+  try {
+    // Obtener datos completos del establecimiento de la BD geo
+    const establishment = await prismaGeo.establishment.findFirst({
+      where: {
+        OR: [
+          { clee: clee },
+          { id: establishmentIdUuid }
+        ]
+      }
+    });
+    
+    if (!establishment) {
+      throw new Error(`Establecimiento no encontrado en BD geo: clee=${clee}, id=${establishmentIdUuid}`);
+    }
+    
+    // Preparar dirección
+    const addressParts = [
+      establishment.streetType,
+      establishment.streetName,
+      establishment.exteriorNum,
+      establishment.interiorNum
+    ].filter(Boolean);
+    
+    const addressStreet = addressParts.join(' ') || 'Sin dirección';
+    const addressCity = establishment.municipalityName || establishment.stateName || 'Sin ciudad';
+
+    // Preparar datos para Twenty (usando upsert=true)
+    const companyData = {
+      name: establishment.name || 'Sin nombre',
+      claveDenue: establishment.clee,
+      nivelPipeline: currentLevel,
+      
+      // Dirección
+      address: {
+        addressStreet1: addressStreet,
+        addressCity: addressCity,
+        addressState: establishment.stateName || '',
+        addressPostcode: establishment.postalCode || '',
+        addressCountry: 'México'
+      },
+      
+      // Ubicación
+      estado: establishment.stateName,
+      municipio: establishment.municipalityName,
+      codigoPostal: establishment.postalCode || '',
+      latitud: establishment.latitude,
+      longitud: establishment.longitude,
+      
+      // Actividad económica
+      giro: establishment.activityName || establishment.activityCode || '',
+      
+      // Contacto (si existe)
+      telefonoDenue: establishment.phone ? {
+        primaryPhoneNumber: establishment.phone,
+        primaryPhoneCountryCode: '+52'
+      } : undefined,
+      
+      emailDenue: establishment.email ? {
+        primaryEmail: establishment.email
+      } : undefined,
+      
+      websiteDenue: establishment.website ? {
+        primaryLinkUrl: establishment.website,
+        primaryLinkLabel: establishment.website
+      } : undefined,
+      
+      // Metadata
+      fechaAltaDenue: establishment.addedDate || new Date().toISOString(),
+      
+      // Dominio para deduplicación
+      dominio: establishment.website 
+        ? new URL(establishment.website).hostname.replace('www.', '')
+        : establishment.name.toLowerCase().replace(/\s+/g, '-').substring(0, 50)
+    };
+
+    const response = await twentyService.client.post('/companies?upsert=true', companyData);
+    const created = response.data.data?.createCompany || response.data;
+    
+    logger.info("[TwentySyncService] Establecimiento creado en Twenty desde BD geo", {
+      twentyId: created.id,
+      claveDenue: establishment.clee,
+      name: establishment.name,
+      nivelPipeline: currentLevel
+    });
+    
+    return created.id;
+    
+  } catch (error) {
+    logger.error("[TwentySyncService] Error creando establecimiento en Twenty desde BD geo", {
+      error: error.response?.data || error.message,
+      claveDenue: clee,
+      establishmentId: establishmentIdUuid,
+    });
+    throw error;
+  }
 }
 
 /**
