@@ -36,6 +36,7 @@ async function handleCallResult(req, res, next) {
             callDurationSeconds,
             bestCallTime,
             userId,  // ID del usuario que inició la llamada (para asignación de prospecto)
+            agentConfigId,  // ID de la configuración del agente usada (Agent Builder)
         } = req.body;
 
         // Validación básica.
@@ -218,6 +219,7 @@ async function handleCallResult(req, res, next) {
                 strategy,
                 gatekeeperInfo,
                 twilioCallSid: null, // TODO: agregar si viene del agente
+                agentConfigId,  // Referencia a la configuración del agente usada
             });
         } catch (interactionError) {
             // No bloquear el flujo principal si falla el guardado de interacción
@@ -438,37 +440,37 @@ async function getInteractions(req, res, next) {
  * Obtener información de llamadas SDR para un establecimiento
  */
 async function getSDRCallInfo(req, res) {
-  try {
-    const { establishmentId } = req.params;
+    try {
+        const { establishmentId } = req.params;
 
-    if (!establishmentId) {
-      return res.status(400).json({
-        success: false,
-        error: "establishmentId es requerido",
-      });
+        if (!establishmentId) {
+            return res.status(400).json({
+                success: false,
+                error: "establishmentId es requerido",
+            });
+        }
+
+        const callInfo = await sdrService.getSDRCallInfo(establishmentId);
+
+        if (!callInfo) {
+            return res.json({
+                success: true,
+                data: null,
+                message: "Sin llamadas registradas para este contacto",
+            });
+        }
+
+        res.json({
+            success: true,
+            data: callInfo,
+        });
+    } catch (error) {
+        logger.error("[VentasController] Error en getSDRCallInfo:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message || "Error obteniendo información de llamadas",
+        });
     }
-
-    const callInfo = await sdrService.getSDRCallInfo(establishmentId);
-
-    if (!callInfo) {
-      return res.json({
-        success: true,
-        data: null,
-        message: "Sin llamadas registradas para este contacto",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: callInfo,
-    });
-  } catch (error) {
-    logger.error("[VentasController] Error en getSDRCallInfo:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message || "Error obteniendo información de llamadas",
-    });
-  }
 }
 
 
@@ -477,37 +479,37 @@ async function getSDRCallInfo(req, res) {
  * Obtener información de llamadas de calificación (call_leads) para un prospecto
  */
 async function getLeadCallInfo(req, res) {
-  try {
-    const { establishmentId } = req.params;
+    try {
+        const { establishmentId } = req.params;
 
-    if (!establishmentId) {
-      return res.status(400).json({
-        success: false,
-        error: "establishmentId es requerido",
-      });
+        if (!establishmentId) {
+            return res.status(400).json({
+                success: false,
+                error: "establishmentId es requerido",
+            });
+        }
+
+        const callInfo = await sdrService.getLeadCallInfo(establishmentId);
+
+        if (!callInfo) {
+            return res.json({
+                success: true,
+                data: null,
+                message: "Sin llamadas registradas para este prospecto",
+            });
+        }
+
+        res.json({
+            success: true,
+            data: callInfo,
+        });
+    } catch (error) {
+        logger.error("[VentasController] Error en getLeadCallInfo:", error);
+        res.status(500).json({
+            success: false,
+            error: "Error obteniendo información de llamadas",
+        });
     }
-
-    const callInfo = await sdrService.getLeadCallInfo(establishmentId);
-
-    if (!callInfo) {
-      return res.json({
-        success: true,
-        data: null,
-        message: "Sin llamadas registradas para este prospecto",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: callInfo,
-    });
-  } catch (error) {
-    logger.error("[VentasController] Error en getLeadCallInfo:", error);
-    res.status(500).json({
-      success: false,
-      error: "Error obteniendo información de llamadas",
-    });
-  }
 }
 module.exports = {
     handleCallResult,

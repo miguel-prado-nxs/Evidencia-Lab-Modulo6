@@ -31,6 +31,7 @@ async function createInteraction(data) {
             strategy,
             gatekeeperInfo,
             twilioCallSid,
+            agentConfigId,  // ID de la configuración del agente usada
         } = data;
 
         const interaction = await prisma.sdrInteraction.create({
@@ -47,6 +48,7 @@ async function createInteraction(data) {
                 strategy,
                 gatekeeperInfo,
                 twilioCallSid,
+                agentConfigId,  // Guardar referencia a la config usada
             },
         });
 
