@@ -641,6 +641,9 @@ model SdrInteraction {
   // Twilio
   twilioCallSid       String?  @map("twilio_call_sid") @db.VarChar(50)
   
+  // Agent Config (from demo-form-service agent_configs table)
+  agentConfigId       String?  @map("agent_config_id") @db.Uuid
+  
   // Timestamps
   createdAt           DateTime @default(now()) @map("created_at")
   
@@ -651,6 +654,7 @@ model SdrInteraction {
   @@index([strategy])
   @@index([decisionMakerFound])
   @@index([createdAt])
+  @@index([agentConfigId])
   @@map("sdr_interactions")
 }
 
@@ -1077,6 +1081,9 @@ model CallLead {
   source         String  @default("sales_qualification")
   utmData        Json?   @map("utm_data")
   twilioCallSid  String? @map("twilio_call_sid")
+  
+  // Agent Config (from demo-form-service agent_configs table)
+  agentConfigId  String? @map("agent_config_id") @db.Uuid
 
   // Timestamps
   calledAt  DateTime? @map("called_at")
@@ -1092,6 +1099,7 @@ model CallLead {
   @@index([establishmentId])
   @@index([partnerId])
   @@index([createdAt(sort: Desc)])
+  @@index([agentConfigId])
   @@map("call_leads")
 }
 
