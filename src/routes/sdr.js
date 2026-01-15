@@ -26,6 +26,20 @@ router.get("/establishment/sdr-calls/:establishmentId", authenticateJWTOrService
  */
 router.get("/establishment/lead-calls/:establishmentId", authenticateJWTOrServiceKey, sdrController.getLeadCallInfo);
 
+/**
+ * GET /api/v1/sdr/stats/agents
+ * Obtener estadísticas de TODAS las configuraciones agrupadas
+ * Utilizado por Demo Form Service
+ */
+router.get("/stats/agents", optionalAuth, sdrController.getAllAgentConfigStats);
+
+/**
+ * GET /api/v1/sdr/stats/agent/:agentConfigId
+ * Obtener estadísticas filtradas por configuración de agente
+ * Utilizado por Demo Form Service
+ */
+router.get("/stats/agent/:agentConfigId", optionalAuth, sdrController.getAgentConfigStats);
+
 // ============================================
 // Todas las rutas siguientes requieren Enrichment Agent Key
 // ============================================

@@ -511,6 +511,38 @@ async function getLeadCallInfo(req, res) {
         });
     }
 }
+
+
+/**
+ * GET /api/v1/sdr/stats/agent/:agentConfigId
+ * Obtiene estadísticas específicas para una configuración de agente (para Demo Form Service)
+ */
+async function getAgentConfigStats(req, res, next) {
+    const sdrInteractionsService = require("../services/sdrInteractionsService");
+    try {
+        const { agentConfigId } = req.params;
+        const stats = await sdrInteractionsService.getAgentConfigStats(agentConfigId);
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        logger.error("[SDR Controller] Error getting agent config stats:", error);
+        next(error);
+    }
+}
+
+/**
+ * GET /api/v1/sdr/stats/agents
+ * Obtiene estadísticas de TODAS las configuraciones agrupadas (para Demo Form Service)
+ */
+async function getAllAgentConfigStats(req, res, next) {
+    const sdrInteractionsService = require("../services/sdrInteractionsService");
+    try {
+        const stats = await sdrInteractionsService.getAllAgentConfigStats();
+        res.json({ success: true, data: stats });
+    } catch (error) {
+        logger.error("[SDR Controller] Error getting all agent config stats:", error);
+        next(error);
+    }
+}
 module.exports = {
     handleCallResult,
     getEstablishmentForCall,
@@ -518,4 +550,6 @@ module.exports = {
     getInteractions,
     getSDRCallInfo,
     getLeadCallInfo,
+    getAgentConfigStats,
+    getAllAgentConfigStats,
 };

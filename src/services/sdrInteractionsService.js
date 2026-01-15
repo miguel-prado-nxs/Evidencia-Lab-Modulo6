@@ -170,4 +170,100 @@ module.exports = {
     getByEstablishment,
     countAttempts,
     getStats,
+    getAgentConfigStats,
+};
+
+/**
+ * Obtener estadísticas filtradas por agentConfigId
+ * (Reemplaza la lógica anterior en demo-form-service usando call_leads)
+ */
+async function getAgentConfigStats(agentConfigId) {
+    try {
+        // Métricas generales
+        const totalCalls = await prisma.sdrInteraction.count({
+            where: { agentConfigId },
+        });
+
+        const successfulCalls = await prisma.sdrInteraction.count({
+            where: {
+                agentConfigId,
+                callStatus: 'completed'
+            },
+        });
+
+        const conversions = await prisma.sdrInteraction.count({
+            where: {
+                agentConfigId,
+                decisionMakerFound: true
+            },
+        });
+
+        const durationAgg = await prisma.sdrInteraction.aggregate({
+            where: { agentConfigId },
+            _avg: { callDurationSeconds: true },
+        });
+
+        // Timeline (Agrupado por día por defecto)
+        // Prisma no soporta groupBy por fecha formateada directamente en todos los providers, 
+        // pero podemos obtener los datos y agrupar en código o usar raw query si es PostgreSQL.
+        // Asumiendo PostgreSQL por el código anterior (to_char).
+
+        const timeline = await prisma.$queryRaw`
+            SELECT 
+                to_char("created_at", 'YYYY-MM-DD') as period,
+                COUNT(*)::int as calls,
+                SUM(CASE WHEN "decision_maker_found" = true THEN 1 ELSE 0 END)::int as conversions
+            FROM "sdr_interactions"
+            WHERE "agent_config_id"::text = ${agentConfigId}
+            GROUP BY to_char("created_at", 'YYYY-MM-DD')
+            ORDER BY period ASC
+        `;
+
+        return {
+            general: {
+                total_calls: totalCalls,
+                successful_calls: successfulCalls,
+                conversions: conversions,
+                success_rate: totalCalls > 0 ? ((successfulCalls / totalCalls) * 100).toFixed(1) : 0,
+                conversion_rate: totalCalls > 0 ? ((conversions / totalCalls) * 100).toFixed(1) : 0,
+                avg_duration_seconds: durationAgg._avg.callDurationSeconds ? durationAgg._avg.callDurationSeconds.toFixed(1) : 0,
+            },
+            timeline,
+        };
+    } catch (error) {
+        logger.error("Error getting SDR agent config stats:", error);
+        throw error;
+    }
+}
+
+/**
+ * Obtener estadísticas de TODAS las configuraciones agrupadas
+ */
+async function getAllAgentConfigStats() {
+    try {
+        const stats = await prisma.$queryRaw`
+            SELECT 
+                "agent_config_id" as "agentConfigId",
+                COUNT(*)::int as total_calls,
+                SUM(CASE WHEN "call_status" = 'completed' THEN 1 ELSE 0 END)::int as successful_calls,
+                SUM(CASE WHEN "decision_maker_found" = true THEN 1 ELSE 0 END)::int as conversions,
+                AVG("call_duration_seconds") as avg_duration
+            FROM "sdr_interactions"
+            WHERE "agent_config_id" IS NOT NULL
+            GROUP BY "agent_config_id"
+        `;
+        return stats;
+    } catch (error) {
+        logger.error("Error getting all agent config stats:", error);
+        throw error;
+    }
+}
+
+module.exports = {
+    createInteraction,
+    getByEstablishment,
+    countAttempts,
+    getStats,
+    getAgentConfigStats,
+    getAllAgentConfigStats,
 };
