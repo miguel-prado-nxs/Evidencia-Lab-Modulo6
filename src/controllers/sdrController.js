@@ -536,7 +536,8 @@ async function getAgentConfigStats(req, res, next) {
 async function getAllAgentConfigStats(req, res, next) {
     const sdrInteractionsService = require("../services/sdrInteractionsService");
     try {
-        const stats = await sdrInteractionsService.getAllAgentConfigStats();
+        const { dateFrom, dateTo } = req.query;
+        const stats = await sdrInteractionsService.getAllAgentConfigStats({ dateFrom, dateTo });
         res.json({ success: true, data: stats });
     } catch (error) {
         logger.error("[SDR Controller] Error getting all agent config stats:", error);

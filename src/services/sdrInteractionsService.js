@@ -239,9 +239,25 @@ async function getAgentConfigStats(agentConfigId) {
 /**
  * Obtener estadísticas de TODAS las configuraciones agrupadas
  */
-async function getAllAgentConfigStats() {
+async function getAllAgentConfigStats(params = {}) {
     try {
-        const stats = await prisma.$queryRaw`
+        const { dateFrom, dateTo } = params;
+
+        // Construir cláusula WHERE dinámica
+        let whereClause = `WHERE "agent_config_id" IS NOT NULL`;
+        const queryParams = [];
+
+        if (dateFrom) {
+            whereClause += ` AND "created_at" >= $${queryParams.length + 1}::timestamp`;
+            queryParams.push(`${dateFrom} 00:00:00`);
+        }
+
+        if (dateTo) {
+            whereClause += ` AND "created_at" <= $${queryParams.length + 1}::timestamp`;
+            queryParams.push(`${dateTo} 23:59:59`);
+        }
+
+        const query = `
             SELECT 
                 "agent_config_id" as "agentConfigId",
                 COUNT(*)::int as total_calls,
@@ -249,9 +265,11 @@ async function getAllAgentConfigStats() {
                 SUM(CASE WHEN "decision_maker_found" = true THEN 1 ELSE 0 END)::int as conversions,
                 AVG("call_duration_seconds") as avg_duration
             FROM "sdr_interactions"
-            WHERE "agent_config_id" IS NOT NULL
+            ${whereClause}
             GROUP BY "agent_config_id"
         `;
+
+        const stats = await prisma.$queryRawUnsafe(query, ...queryParams);
         return stats;
     } catch (error) {
         logger.error("Error getting all agent config stats:", error);
