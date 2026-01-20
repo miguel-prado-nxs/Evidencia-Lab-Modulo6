@@ -369,7 +369,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
  */
 async function convertProspectToLead(prospectId, additionalData = {}) {
   logger.info(`[ConvertProspectToLead] Iniciando conversión de prospect ${prospectId}`);
-  
+
   // Obtener prospect de Partners DB
   const prospect = await prisma.leadProspect.findUnique({
     where: { id: prospectId },
@@ -432,7 +432,7 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
 
   logger.info(`[ConvertProspectToLead] Prospect actualizado a status: ${updatedProspect.status}`);
   logger.info(`[ConvertProspectToLead] Conversión completada exitosamente. Prospect ${prospectId} -> Lead ${lead.id}`);
-  
+
   return lead;
 }
 
@@ -850,7 +850,10 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     ];
   }
 
-  return prismaGeo.establishment.findMany({
+  /* 
+   * Ejecutar consulta a Mapa DB
+   */
+  const establishments = await prismaGeo.establishment.findMany({
     where,
     take: limit,
     skip: offset,
@@ -873,6 +876,40 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
       website: true,
     },
   });
+
+  // Si hay partnerId, enriquecer los resultados con datos de Partners DB
+  if (partnerId && establishments.length > 0) {
+    const ids = establishments.map(e => e.id);
+
+    // Buscar enriquecimientos de este partner para los establecimientos encontrados
+    const enrichments = await prisma.establishmentEnrichment.findMany({
+      where: {
+        establishmentId: { in: ids },
+        enrichedBy: partnerId,
+      },
+      select: {
+        establishmentId: true,
+        id: true,
+        level: true,
+        enrichedBy: true,
+        // Traer algunos datos extra útiles para display
+        intent: true,
+        clientStatus: true,
+      },
+    });
+
+    const enrichmentMap = enrichments.reduce((acc, e) => {
+      acc[e.establishmentId] = e;
+      return acc;
+    }, {});
+
+    return establishments.map(est => ({
+      ...est,
+      enrichment: enrichmentMap[est.id] || null,
+    }));
+  }
+
+  return establishments;
 }
 
 module.exports = {

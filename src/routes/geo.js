@@ -261,6 +261,13 @@ router.get("/admin/sales-stats", authenticateJWTOrServiceKey, requireVentasAdmin
 router.post("/ventas/contacts", authenticateJWTOrServiceKey, ventasEnrichmentController.addToContacts);
 
 /**
+ * POST /api/v1/geo/ventas/contacts/bulk
+ * Agregar múltiples establecimientos a los contactos (bulk)
+ * Body: { establishmentIds: [] }
+ */
+router.post("/ventas/contacts/bulk", authenticateJWTOrServiceKey, ventasEnrichmentController.bulkAddToContacts);
+
+/**
  * GET /api/v1/geo/ventas/contacts
  * Obtener todos los contactos del usuario de ventas (nivel CONTACT)
  */

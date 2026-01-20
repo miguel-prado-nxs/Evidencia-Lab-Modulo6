@@ -41,8 +41,8 @@ async function addToContacts(req, res) {
     res.status(result.isNew ? 201 : 200).json({
       success: true,
       data: result,
-      message: result.isNew 
-        ? "Establecimiento agregado a tus contactos" 
+      message: result.isNew
+        ? "Establecimiento agregado a tus contactos"
         : "Este establecimiento ya está en tus contactos",
     });
   } catch (error) {
@@ -50,6 +50,48 @@ async function addToContacts(req, res) {
     res.status(error.message.includes("no encontrado") ? 404 : 500).json({
       success: false,
       error: error.message || "Error agregando contacto",
+    });
+  }
+}
+
+/**
+ * POST /geo/ventas/contacts/bulk
+ * Agregar múltiples establecimientos a los contactos
+ */
+async function bulkAddToContacts(req, res) {
+  try {
+    const { establishmentIds } = req.body;
+    const partnerId = req.salesPartnerId;
+
+    if (!Array.isArray(establishmentIds) || establishmentIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "establishmentIds se requiere y debe ser un array no vacío",
+      });
+    }
+
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        error: "Partner de ventas no identificado",
+      });
+    }
+
+    const result = await ventasEnrichmentService.bulkAddToContacts(
+      establishmentIds,
+      partnerId
+    );
+
+    res.status(200).json({
+      success: true,
+      data: result,
+      message: `${result.success} contactos agregados, ${result.failed} fallidos`,
+    });
+  } catch (error) {
+    logger.error("[VentasController] Error en bulkAddToContacts:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message || "Error agregando contactos masivamente",
     });
   }
 }
@@ -222,6 +264,7 @@ async function removeFromMyList(req, res) {
 
 module.exports = {
   addToContacts,
+  bulkAddToContacts,
   convertContactToProspect,
   getMyContacts,
   getVentasStats,

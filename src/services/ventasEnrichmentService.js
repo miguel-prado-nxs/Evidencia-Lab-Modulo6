@@ -118,6 +118,51 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
 }
 
 /**
+ * Agregar múltiples establecimientos a contactos
+ * @param {Array<string>} establishmentIds - IDs de establecimientos
+ * @param {string} partnerId - ID del partner de ventas
+ * @returns {Object} - Resumen de la operación
+ */
+async function bulkAddToContacts(establishmentIds, partnerId) {
+  try {
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [],
+      data: []
+    };
+
+    // Procesar en promesas paralelas pero limitadas si fueran demasiadas, 
+    // pero usualmente serán < 50, así que Promise.all está bien
+    const promises = establishmentIds.map(async (id) => {
+      try {
+        const result = await addToContacts(id, partnerId, "Agregado masivamente desde mapa");
+        return { success: true, id, result };
+      } catch (error) {
+        return { success: false, id, error: error.message };
+      }
+    });
+
+    const outcomes = await Promise.all(promises);
+
+    outcomes.forEach(outcome => {
+      if (outcome.success) {
+        results.success++;
+        results.data.push(outcome.result);
+      } else {
+        results.failed++;
+        results.errors.push({ id: outcome.id, error: outcome.error });
+      }
+    });
+
+    return results;
+  } catch (error) {
+    logger.error("[VentasEnrichment] Error en bulkAddToContacts:", error);
+    throw error;
+  }
+}
+
+/**
  * Convertir un contacto a prospecto
  * Actualiza el nivel de CONTACT a PROSPECT agregando datos del tomador de decisiones
  * Y crea un registro en la tabla lead_prospects para rastreo
@@ -443,6 +488,7 @@ async function removeFromMyList(establishmentId, partnerId) {
 
 module.exports = {
   addToContacts,
+  bulkAddToContacts,
   convertContactToProspect,
   getMyContacts,
   getVentasStats,
