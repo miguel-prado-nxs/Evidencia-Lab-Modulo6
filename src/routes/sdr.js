@@ -20,6 +20,13 @@ const { validateEnrichmentAgent } = require("../middleware/enrichmentAgent");
 router.get("/establishment/sdr-calls/:establishmentId", authenticateJWTOrServiceKey, sdrController.getSDRCallInfo);
 
 /**
+ * POST /api/v1/sdr/establishment/sdr-calls/bulk
+ * Obtener información de llamadas SDR para múltiples establecimientos (para ventas)
+ * Body: { establishmentIds: string[] }
+ */
+router.post("/establishment/sdr-calls/bulk", authenticateJWTOrServiceKey, sdrController.getSDRCallInfoBulk);
+
+/**
  * GET /api/v1/geo/ventas/lead-calls/:establishmentId
  * Obtener información de llamadas de calificación para un prospecto
  * Muestra el historial de llamadas y calificación BANT del prospecto

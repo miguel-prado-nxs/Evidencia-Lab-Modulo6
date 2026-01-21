@@ -475,6 +475,37 @@ async function getSDRCallInfo(req, res) {
 
 
 /**
+ * POST /geo/ventas/sdr-calls/bulk
+ * Obtener información de llamadas SDR para múltiples establecimientos
+ */
+async function getSDRCallInfoBulk(req, res) {
+    try {
+        const { establishmentIds } = req.body;
+
+        if (!establishmentIds || !Array.isArray(establishmentIds)) {
+            return res.status(400).json({
+                success: false,
+                data: {},
+                error: "establishmentIds array es requerido",
+            });
+        }
+
+        const callInfoMap = await sdrService.getSDRCallInfoBulk(establishmentIds);
+
+        res.json({
+            success: true,
+            data: callInfoMap,
+        });
+    } catch (error) {
+        logger.error("[VentasController] Error en getSDRCallInfoBulk:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message || "Error obteniendo información de llamadas bulk",
+        });
+    }
+}
+
+/**
  * GET /geo/ventas/lead-calls/:establishmentId
  * Obtener información de llamadas de calificación (call_leads) para un prospecto
  */
@@ -550,6 +581,7 @@ module.exports = {
     getStats,
     getInteractions,
     getSDRCallInfo,
+    getSDRCallInfoBulk,
     getLeadCallInfo,
     getAgentConfigStats,
     getAllAgentConfigStats,
