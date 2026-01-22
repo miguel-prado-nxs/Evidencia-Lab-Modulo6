@@ -1182,3 +1182,72 @@ model TwentySyncMetadata {
 
   @@map("twenty_sync_metadata")
 }
+
+// ========== A/B TESTING ==========
+
+model AbTest {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  agentType   String   @map("agent_type") // SDR, QUALIFICATION
+  status      String   @default("DRAFT") // DRAFT, RUNNING, COMPLETED, CANCELLED
+  
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  variants    AbTestVariant[]
+  
+  @@map("ab_tests")
+}
+
+model AbTestVariant {
+  id          String   @id @default(uuid())
+  abTestId    String   @map("ab_test_id")
+  
+  agentConfigId   String @map("agent_config_id") // ID from demo-form-service
+  agentConfigName String @map("agent_config_name") // Snapshot name
+  voiceId         String @map("voice_id") // Snapshot voice/personality
+  
+  percentage  Int      // 0-100
+  
+  // Metrics snapshot
+  totalCalls      Int @default(0) @map("total_calls")
+  totalConnected  Int @default(0) @map("total_connected")
+  totalConverted  Int @default(0) @map("total_converted")
+  
+  abTest      AbTest   @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+  contacts    AbTestContact[]
+  
+  @@map("ab_test_variants")
+}
+
+model AbTestContact {
+  id              String   @id @default(uuid())
+  abTestVariantId String   @map("ab_test_variant_id")
+  
+  contactId       String   @map("contact_id") // establishmentId or leadId
+  contactType     String   @default("ESTABLISHMENT") // ESTABLISHMENT, LEAD
+  
+  status          String   @default("PENDING") // PENDING, CALLED, COMPLETED, FAILED
+  result          String?  // JSON or string result
+  
+  calledAt        DateTime? @map("called_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  variant         AbTestVariant @relation(fields: [abTestVariantId], references: [id], onDelete: Cascade)
+  
+  @@map("ab_test_contacts")
+}
+
+model AbTestCandidate {
+  id              String   @id @default(uuid())
+  establishmentId String   @unique @map("establishment_id") // ID del contacto/negocio
+  userId          String?  @map("user_id") // Para saber qui茅n lo seleccion贸 (opcional por ahora, asumiendo un solo user global o usando service key)
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("ab_test_candidates")
+}
