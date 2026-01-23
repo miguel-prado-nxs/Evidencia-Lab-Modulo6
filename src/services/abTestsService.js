@@ -19,6 +19,11 @@ async function createTest(data) {
         throw new Error("No contacts provided for A/B Test");
     }
 
+    // Validar que el número de variantes no exceda el número de contactos
+    if (variants.length > establishmentIds.length) {
+        throw new Error(`Cannot create test with ${variants.length} variants and only ${establishmentIds.length} contacts. You need at least 1 contact per variant.`);
+    }
+
     // Validate percentages sum to 100
     const totalPercentage = variants.reduce((sum, v) => sum + v.percentage, 0);
     if (totalPercentage !== 100) {
