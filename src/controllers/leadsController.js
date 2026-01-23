@@ -264,6 +264,34 @@ const autoEnrich = async (req, res, next) => {
       });
     }
 
+    // Obtener configuración de agente default para SDR desde demo-form-service
+    let agentConfig = null;
+    try {
+      const demoFormUrl = process.env.DEMO_FORM_URL || "http://localhost:3001";
+      const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
+
+      const configResponse = await axios.get(
+        `${demoFormUrl}/api/agent-configs/default/SDR`,
+        {
+          headers: {
+            "X-API-Key": agentsConfigKey || "",
+          },
+          timeout: 5000,
+        }
+      );
+
+      if (configResponse.data?.success && configResponse.data?.data) {
+        agentConfig = {
+          id: configResponse.data.data.id,
+          name: configResponse.data.data.name,
+        };
+        console.log("[AUTO-ENRICH] Usando agent_config:", agentConfig);
+      }
+    } catch (configError) {
+      logger.warn("[AUTO-ENRICH] No se pudo obtener agent_config, usando default:", configError.message);
+      // Continuar sin agent_config, el SDR usará su default
+    }
+
     // Llamar al agente SDR en agentes-crm-sdk
     const axios = require("axios");
 
@@ -277,6 +305,8 @@ const autoEnrich = async (req, res, next) => {
       // Usar salesPartnerId (ya viene en formato correcto desde middleware)
       // o user.id si viene de JWT, o null si no hay usuario
       user_id: req.salesPartnerId || req.user?.id || null,
+      // Agregar agent_config si se obtuvo
+      ...(agentConfig && { agent_config: agentConfig }),
     };
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", agentsSdkUrl + "/api/sdr/initiate-call");
