@@ -289,9 +289,15 @@ const autoEnrich = async (req, res, next) => {
       console.log("[AUTO-ENRICH] 📦 Response data:", JSON.stringify(configResponse.data, null, 2));
 
       if (configResponse.data?.success && configResponse.data?.data) {
+        const data = configResponse.data.data;
         agentConfig = {
-          id: configResponse.data.data.id,
-          name: configResponse.data.data.name,
+          id: data.id,
+          name: data.name,
+          openai_voice: data.openai_voice || data.voice || "echo",
+          voice_speed: data.voice_speed || 1.0,
+          voice_temperature: data.voice_temperature || 1.0,
+          voice_intensity: data.voice_intensity || 1,
+          voice_style: data.voice_style || "professional",
         };
         console.log("[AUTO-ENRICH] ✅ Usando agent_config:", agentConfig);
       } else {
