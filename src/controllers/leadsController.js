@@ -270,8 +270,12 @@ const autoEnrich = async (req, res, next) => {
       const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
       const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
 
+      const configUrl = `${demoFormUrl}/agent-configs/default/SDR`;
+      console.log("[AUTO-ENRICH] 🔍 Fetching agent_config from:", configUrl);
+      console.log("[AUTO-ENRICH] 🔑 API Key:", agentsConfigKey ? `${agentsConfigKey.substring(0, 10)}...` : "MISSING");
+
       const configResponse = await axios.get(
-        `${demoFormUrl}/agent-configs/default/SDR`,
+        configUrl,
         {
           headers: {
             "X-API-Key": agentsConfigKey || "",
@@ -280,14 +284,25 @@ const autoEnrich = async (req, res, next) => {
         }
       );
 
+      console.log("[AUTO-ENRICH] ✅ Response status:", configResponse.status);
+      console.log("[AUTO-ENRICH] 📦 Response data:", JSON.stringify(configResponse.data, null, 2));
+
       if (configResponse.data?.success && configResponse.data?.data) {
         agentConfig = {
           id: configResponse.data.data.id,
           name: configResponse.data.data.name,
         };
-        console.log("[AUTO-ENRICH] Usando agent_config:", agentConfig);
+        console.log("[AUTO-ENRICH] ✅ Usando agent_config:", agentConfig);
+      } else {
+        console.log("[AUTO-ENRICH] ⚠️ Response no tiene data válida");
       }
     } catch (configError) {
+      console.error("[AUTO-ENRICH] ❌ Error completo:", {
+        message: configError.message,
+        response: configError.response?.data,
+        status: configError.response?.status,
+        code: configError.code,
+      });
       logger.warn("[AUTO-ENRICH] No se pudo obtener agent_config, usando default:", configError.message);
       // Continuar sin agent_config, el SDR usará su default
     }
