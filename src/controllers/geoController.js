@@ -59,12 +59,17 @@ async function getEstablishments(req, res, next) {
 /**
  * GET /api/v1/geo/establishments/:id
  * Obtener detalle de un establecimiento
+ * 
+ * Si el usuario está autenticado, filtra enriquecimientos por partnerId
  */
 async function getEstablishmentById(req, res, next) {
   try {
     const { id } = req.params;
 
-    const establishment = await geoService.getEstablishmentById(id);
+    // Obtener partnerId si el usuario está autenticado
+    const partnerId = req.user?.partner?.id || null;
+
+    const establishment = await geoService.getEstablishmentById(id, partnerId);
 
     if (!establishment) {
       return res.status(404).json({
@@ -79,6 +84,26 @@ async function getEstablishmentById(req, res, next) {
     });
   } catch (error) {
     logger.error("Error en getEstablishmentById:", error);
+    next(error);
+  }
+}
+
+/**
+ * GET /api/v1/geo/establishments/:id/is-taken
+ * Verificar si un establecimiento ya fue agregado por algún usuario
+ */
+async function checkIfTaken(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const isTaken = await geoService.checkIfEstablishmentTaken(id);
+
+    res.json({
+      success: true,
+      isTaken,
+    });
+  } catch (error) {
+    logger.error("Error en checkIfTaken:", error);
     next(error);
   }
 }
@@ -508,6 +533,7 @@ async function getEstablishmentsByLevel(req, res, next) {
 module.exports = {
   getEstablishments,
   getEstablishmentById,
+  checkIfTaken,
   getClusters,
   getHeatmap,
   getZones,

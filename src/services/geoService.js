@@ -93,8 +93,12 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
 /**
  * Obtener un establecimiento por ID con todos los detalles
  * Combina datos de Mapa DB (establecimiento) con Partners DB (enriquecimiento/prospectos)
+ * 
+ * @param {string} id - UUID del establecimiento
+ * @param {string|null} partnerId - ID del partner para filtrar enriquecimientos (opcional)
+ * @returns {Object|null} Establecimiento con enriquecimiento filtrado por partner
  */
-async function getEstablishmentById(id) {
+async function getEstablishmentById(id, partnerId = null) {
   // Obtener establecimiento base de Mapa DB
   const establishment = await prismaGeo.establishment.findUnique({
     where: { id },
@@ -104,11 +108,24 @@ async function getEstablishmentById(id) {
     return null;
   }
 
+  // Construir query para enriquecimiento
+  // Si partnerId está presente, solo devolver enriquecimiento si fue creado por ese partner
+  let enrichmentPromise;
+  if (partnerId) {
+    enrichmentPromise = prisma.establishmentEnrichment.findFirst({
+      where: {
+        establishmentId: id,
+        enrichedBy: partnerId,
+      },
+    });
+  } else {
+    // Sin partnerId, no devolver enriquecimiento (solo datos públicos)
+    enrichmentPromise = Promise.resolve(null);
+  }
+
   // Obtener enriquecimiento y prospectos de Partners DB
   const [enrichment, prospects] = await Promise.all([
-    prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId: id },
-    }),
+    enrichmentPromise,
     prisma.leadProspect.findMany({
       where: { establishmentId: id },
       include: {
@@ -128,6 +145,21 @@ async function getEstablishmentById(id) {
     enrichment,
     prospects,
   };
+}
+
+/**
+ * Verificar si un establecimiento ya fue agregado por algún usuario
+ * Retorna true si existe al menos un enriquecimiento, false si no
+ * @param {string} id - UUID del establecimiento
+ * @returns {Promise<boolean>} true si está tomado, false si no
+ */
+async function checkIfEstablishmentTaken(id) {
+  const enrichment = await prisma.establishmentEnrichment.findFirst({
+    where: { establishmentId: id },
+    select: { id: true },
+  });
+
+  return !!enrichment;
 }
 
 /**
@@ -804,16 +836,32 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
       },
     });
 
-    // Crear mapa de enriquecimientos
+    // Crear mapa de enriquecimientos del usuario actual
     const enrichmentMap = enrichments.reduce((acc, e) => {
       acc[e.establishmentId] = e;
       return acc;
     }, {});
 
+    // Para CONTACT y niveles superiores, verificar si están tomados por CUALQUIER usuario
+    // Obtener todos los IDs de establecimientos que tienen ALGÚN enriquecimiento
+    const establishmentIds = establishments.map(est => est.id);
+    const allEnrichments = await prisma.establishmentEnrichment.findMany({
+      where: {
+        establishmentId: { in: establishmentIds },
+      },
+      select: {
+        establishmentId: true,
+      },
+    });
+
+    // Crear set de IDs tomados por cualquier usuario
+    const takenByAnyUserSet = new Set(allEnrichments.map(e => e.establishmentId));
+
     // Combinar datos
     return establishments.map(est => ({
       ...est,
       enrichment: enrichmentMap[est.id] || null,
+      isTakenByAnyUser: takenByAnyUserSet.has(est.id), // Flag para saber si alguien ya lo tiene
     }));
   }
 
@@ -877,39 +925,36 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     },
   });
 
-  // Si hay partnerId, enriquecer los resultados con datos de Partners DB
-  if (partnerId && establishments.length > 0) {
-    const ids = establishments.map(e => e.id);
+  // Verificar cuáles están tomados por algún usuario
+  const establishmentIds = establishments.map(est => est.id);
+  const allEnrichments = await prisma.establishmentEnrichment.findMany({
+    where: {
+      establishmentId: { in: establishmentIds },
+    },
+    select: {
+      establishmentId: true,
+      enrichedBy: true,
+    },
+  });
 
-    // Buscar enriquecimientos de este partner para los establecimientos encontrados
-    const enrichments = await prisma.establishmentEnrichment.findMany({
-      where: {
-        establishmentId: { in: ids },
-        enrichedBy: partnerId,
-      },
-      select: {
-        establishmentId: true,
-        id: true,
-        level: true,
-        enrichedBy: true,
-        // Traer algunos datos extra útiles para display
-        intent: true,
-        clientStatus: true,
-      },
-    });
+  // Crear mapas
+  const takenByAnyUserSet = new Set(allEnrichments.map(e => e.establishmentId));
+  const enrichmentByUserMap = {};
 
-    const enrichmentMap = enrichments.reduce((acc, e) => {
-      acc[e.establishmentId] = e;
-      return acc;
-    }, {});
-
-    return establishments.map(est => ({
-      ...est,
-      enrichment: enrichmentMap[est.id] || null,
-    }));
+  if (partnerId) {
+    allEnrichments
+      .filter(e => e.enrichedBy === partnerId)
+      .forEach(e => {
+        enrichmentByUserMap[e.establishmentId] = { level: "CONTACT" };
+      });
   }
 
-  return establishments;
+  // Retornar con flags
+  return establishments.map(est => ({
+    ...est,
+    enrichment: enrichmentByUserMap[est.id] || null,
+    isTakenByAnyUser: takenByAnyUserSet.has(est.id),
+  }));
 }
 
 module.exports = {
@@ -928,4 +973,5 @@ module.exports = {
   getStatesWithCount,
   getMunicipalitiesByState,
   getEstablishmentsByLevel,
+  checkIfEstablishmentTaken,
 };

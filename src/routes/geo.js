@@ -31,6 +31,12 @@ router.get("/establishments", geoController.getEstablishments);
 router.get("/establishments/:id", geoController.getEstablishmentById);
 
 /**
+ * GET /api/v1/geo/establishments/:id/is-taken
+ * Verificar si un establecimiento ya fue agregado por algún usuario
+ */
+router.get("/establishments/:id/is-taken", geoController.checkIfTaken);
+
+/**
  * GET /api/v1/geo/clusters
  * Obtener datos clusterizados para el mapa
  * Query params: north, south, east, west, zoom
