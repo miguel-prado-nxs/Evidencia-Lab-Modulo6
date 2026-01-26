@@ -1,5 +1,6 @@
 const leadService = require("../services/leadService");
 const logger = require("../config/logger");
+const axios = require("axios");
 
 // Listar leads
 const list = async (req, res, next) => {
@@ -308,7 +309,6 @@ const autoEnrich = async (req, res, next) => {
     }
 
     // Llamar al agente SDR en agentes-crm-sdk
-    const axios = require("axios");
 
     const sdrPayload = {
       establishment_id: establishmentId || `auto-${Date.now()}`,
