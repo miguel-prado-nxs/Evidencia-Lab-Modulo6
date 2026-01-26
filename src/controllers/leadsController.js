@@ -267,11 +267,11 @@ const autoEnrich = async (req, res, next) => {
     // Obtener configuración de agente default para SDR desde demo-form-service
     let agentConfig = null;
     try {
-      const demoFormUrl = process.env.DEMO_FORM_URL || "http://localhost:3001";
+      const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
       const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
 
       const configResponse = await axios.get(
-        `${demoFormUrl}/api/agent-configs/default/SDR`,
+        `${demoFormUrl}/agent-configs/default/SDR`,
         {
           headers: {
             "X-API-Key": agentsConfigKey || "",
