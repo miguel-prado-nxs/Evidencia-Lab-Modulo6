@@ -69,8 +69,8 @@ exports.addCandidate = async (req, res) => {
 
 exports.addCandidatesBulk = async (req, res) => {
     try {
-        const { establishmentIds } = req.body;
-        const result = await abTestsService.addCandidatesBulk(establishmentIds);
+        const { establishmentIds, userId } = req.body;
+        const result = await abTestsService.addCandidatesBulk(establishmentIds, userId);
         res.json({ success: true, message: "Candidates added", count: result.count });
     } catch (error) {
         logger.error("Error adding candidates bulk:", error);
@@ -96,6 +96,27 @@ exports.getCandidates = async (req, res) => {
         res.json({ success: true, data: candidates.map(c => c.establishmentId) });
     } catch (error) {
         logger.error("Error getting candidates:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+exports.getCandidatesByUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const candidates = await abTestsService.getCandidatesByUser(userId);
+        res.json({ success: true, data: candidates });
+    } catch (error) {
+        logger.error("Error getting candidates by user:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.clearCandidatesByUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        await abTestsService.clearCandidatesByUser(userId);
+        res.json({ success: true, message: "Candidates cleared by user" });
+    } catch (error) {
+        logger.error("Error clearing candidates by user:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 };

@@ -357,6 +357,19 @@ async function getCandidates() {
     });
 }
 
+async function getCandidatesByUser(userId) {
+    return await prisma.abTestCandidate.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' }
+    });
+}
+
+async function clearCandidatesByUser(userId) {
+    return await prisma.abTestCandidate.deleteMany({
+        where: { userId }
+    });
+}
+
 async function clearCandidates() {
     return await prisma.abTestCandidate.deleteMany({});
 }
@@ -381,6 +394,8 @@ module.exports = {
     removeCandidate,
     addCandidatesBulk,
     getCandidates,
+    getCandidatesByUser,
     clearCandidates,
+    clearCandidatesByUser,
     stopTest
 };

@@ -22,8 +22,10 @@ router.post('/agents-status/bulk', abTestsController.getAgentsBulkRunningStatus)
 // Candidates
 router.post('/candidates', abTestsController.addCandidate);
 router.get('/candidates', abTestsController.getCandidates);
+router.get('/candidates/:userId', abTestsController.getCandidatesByUser);
 router.post('/candidates/bulk', abTestsController.addCandidatesBulk);
 router.delete('/candidates', abTestsController.clearCandidates);
+router.delete('/candidates/:userId', abTestsController.clearCandidatesByUser);
 router.delete('/candidates/:establishmentId', abTestsController.removeCandidate);
 
 module.exports = router;
