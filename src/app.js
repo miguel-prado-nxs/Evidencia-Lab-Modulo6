@@ -29,6 +29,7 @@ const eventsRoutes = require("./routes/events");
 const easyorderRoutes = require("./routes/easyorder");
 const agentMetricsRoutes = require("./routes/agentMetrics");
 const abTestsRoutes = require("./routes/abTestsRoutes");
+const testCallRoutes = require("./routes/testCall");
 
 // Crear aplicación Express
 const app = express();
@@ -140,6 +141,7 @@ app.use("/api/v1/events", eventsRoutes);
 app.use("/api/v1/easyorder", easyorderRoutes);
 app.use("/api/v1/agent-metrics", agentMetricsRoutes);
 app.use("/api/v1/ab-tests", abTestsRoutes);
+app.use("/api/v1/test-call", testCallRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
