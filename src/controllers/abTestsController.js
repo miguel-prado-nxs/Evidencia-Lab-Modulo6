@@ -103,7 +103,7 @@ exports.getCandidatesByUser = async (req, res) => {
     try {
         const { userId } = req.params;
         const candidates = await abTestsService.getCandidatesByUser(userId);
-        res.json({ success: true, data: candidates });
+        res.json({ success: true, data: candidates.map(c => c.establishmentId) });
     } catch (error) {
         logger.error("Error getting candidates by user:", error);
         res.status(500).json({ success: false, error: error.message });
