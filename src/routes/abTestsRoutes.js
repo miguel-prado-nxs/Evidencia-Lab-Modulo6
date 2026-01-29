@@ -27,5 +27,9 @@ router.post('/candidates/bulk', abTestsController.addCandidatesBulk);
 router.delete('/candidates', abTestsController.clearCandidates);
 router.delete('/candidates/:userId', abTestsController.clearCandidatesByUser);
 router.delete('/candidates/:establishmentId', abTestsController.removeCandidate);
+//endpoints de candidatos
+router.delete('/candidates/candidate/:id', abTestsController.eliminateCandidateById);
+router.get('/candidates/:userId/details', abTestsController.getCandidatesWithDetails);
+router.get('/candidates/:userId/snapshot', abTestsController.getCandidatesWithSnapshot);
 
 module.exports = router;

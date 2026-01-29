@@ -11,9 +11,10 @@ const logger = require("../config/logger");
  * @param {string} data.agentType
  * @param {string[]} data.establishmentIds - IDs of contacts to test
  * @param {Object[]} data.variants - [{ agentConfigId, agentConfigName, voiceId, percentage }]
+ * @param {string} [data.createdBy] - User ID quien creo el test
  */
 async function createTest(data) {
-    const { name, description, agentType, establishmentIds, variants } = data;
+    const { name, description, agentType, establishmentIds, variants, createdBy } = data;
 
     if (!establishmentIds || establishmentIds.length === 0) {
         throw new Error("No contacts provided for A/B Test");
@@ -37,7 +38,8 @@ async function createTest(data) {
                 name,
                 description,
                 agentType,
-                status: "DRAFT", // Created but not running yet
+                status: "DRAFT",
+                createdBy: createdBy || null,
             }
         });
 
@@ -288,7 +290,6 @@ async function triggerTestCalls(test) {
                     headers: { "X-API-Key": API_KEY }
                 });
 
-                // Update status to PROCESSED/CALLED. Actual result comes via callback.
                 await updateCallResult(contact.contactId, variant.id, { status: "CALLED" });
 
             } catch (e) {
@@ -299,8 +300,11 @@ async function triggerTestCalls(test) {
     }
 }
 
-async function listTests() {
+async function listTests(userId = null) {
+    const whereClause = userId ? { createdBy: userId } : {};
+    
     return await prisma.abTest.findMany({
+        where: whereClause,
         include: {
             variants: true,
             _count: {
@@ -312,7 +316,7 @@ async function listTests() {
 }
 
 // Candidates Management
-async function addCandidate(establishmentId, userId = null) {
+async function addCandidate(establishmentId, userId = null, snapshot = null) {
     // Check if exists
     const existing = await prisma.abTestCandidate.findUnique({
         where: { establishmentId }
@@ -323,18 +327,25 @@ async function addCandidate(establishmentId, userId = null) {
     return await prisma.abTestCandidate.create({
         data: {
             establishmentId,
+            userId,
+            snapshotName: snapshot?.name || null,
+            snapshotPhone: snapshot?.phone || null,
+            snapshotUbicacion: snapshot?.ubicacion || null,
         }
     });
 }
 
-async function addCandidatesBulk(establishmentIds, userId = null) {
-    if (!establishmentIds || establishmentIds.length === 0) return { count: 0 };
+async function addCandidatesBulk(candidates, userId = null) {
+    if (!candidates || candidates.length === 0) return { count: 0 };
 
-    // createMany skipDuplicates is supported in Postgres
+    // candidates = [{ establishmentId, name?, phone?, ubicacion? }]
     return await prisma.abTestCandidate.createMany({
-        data: establishmentIds.map(id => ({
-            establishmentId: id,
-            userId
+        data: candidates.map(c => ({
+            establishmentId: c.establishmentId,
+            userId,
+            snapshotName: c.name || null,
+            snapshotPhone: c.phone || null,
+            snapshotUbicacion: c.ubicacion || null,
         })),
         skipDuplicates: true
     });
@@ -346,7 +357,7 @@ async function removeCandidate(establishmentId) {
             where: { establishmentId }
         });
     } catch (e) {
-        if (e.code === 'P2025') return null; // Record not found
+        if (e.code === 'P2025') return null; 
         throw e;
     }
 }
@@ -370,8 +381,83 @@ async function clearCandidatesByUser(userId) {
     });
 }
 
+async function getCandidatesWithSnapshot(userId) {
+    return await prisma.abTestCandidate.findMany({
+        where: userId ? { userId } : {},
+        select: {
+            id: true,
+            establishmentId: true,
+            userId: true,
+            snapshotName: true,
+            snapshotPhone: true,
+            snapshotUbicacion: true,
+            createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' }
+    });
+}
+
 async function clearCandidates() {
     return await prisma.abTestCandidate.deleteMany({});
+}
+
+/**
+ * eliminateCandidateById
+ * Elimina un candidato específico por su ID
+ */
+async function eliminateCandidateById(id) {
+    try {
+        return await prisma.abTestCandidate.delete({
+            where: { id }
+        });
+    } catch (e) {
+        if (e.code === 'P2025') {
+            throw new Error('Candidate not found');
+        }
+        throw e;
+    }
+}
+
+/**
+ * getCandidatesWithDetails
+ * Obtiene candidatos con detalles del establishment desde geo DB
+ */
+async function getCandidatesWithDetails(userId) {
+    const candidates = await prisma.abTestCandidate.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' }
+    });
+
+    // Fetch establishment details from geo DB
+    const enrichedCandidates = [];
+    for (const candidate of candidates) {
+        try {
+            const establishment = await prismaGeo.establishment.findUnique({
+                where: { id: candidate.establishmentId },
+                select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                    city: true,
+                    state: true
+                }
+            });
+
+            enrichedCandidates.push({
+                ...candidate,
+                establishment: establishment || null
+            });
+        } catch (e) {
+            logger.error(`Error fetching establishment ${candidate.establishmentId}:`, e);
+            enrichedCandidates.push({
+                ...candidate,
+                establishment: null
+            });
+        }
+    }
+
+    return enrichedCandidates;
 }
 
 async function stopTest(id) {
@@ -397,5 +483,8 @@ module.exports = {
     getCandidatesByUser,
     clearCandidates,
     clearCandidatesByUser,
+    eliminateCandidateById,
+    getCandidatesWithDetails,
+    getCandidatesWithSnapshot,
     stopTest
 };

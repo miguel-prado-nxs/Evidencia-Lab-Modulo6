@@ -4,7 +4,14 @@ const logger = require("../config/logger");
 
 exports.create = async (req, res) => {
     try {
-        const test = await abTestsService.createTest(req.body);
+        const userId = req.headers['x-sales-user-id'];
+        
+        const testData = {
+            ...req.body,
+            createdBy: userId || null
+        };
+        
+        const test = await abTestsService.createTest(testData);
         res.status(201).json({ success: true, data: test });
     } catch (error) {
         logger.error("Error creating A/B Test:", error);
@@ -14,7 +21,9 @@ exports.create = async (req, res) => {
 
 exports.getAll = async (req, res) => {
     try {
-        const tests = await abTestsService.listTests();
+        const userId = req.query.userId || req.headers['x-sales-user-id'] || null;
+        
+        const tests = await abTestsService.listTests(userId);
         res.json({ success: true, data: tests });
     } catch (error) {
         logger.error("Error listing A/B Tests:", error);
@@ -69,8 +78,8 @@ exports.addCandidate = async (req, res) => {
 
 exports.addCandidatesBulk = async (req, res) => {
     try {
-        const { establishmentIds, userId } = req.body;
-        const result = await abTestsService.addCandidatesBulk(establishmentIds, userId);
+        const { candidates, userId } = req.body;
+        const result = await abTestsService.addCandidatesBulk(candidates, userId);
         res.json({ success: true, message: "Candidates added", count: result.count });
     } catch (error) {
         logger.error("Error adding candidates bulk:", error);
@@ -321,4 +330,50 @@ exports.getAgentsBulkRunningStatus = async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 };
+
+/**
+ * DELETE /api/v1/ab-tests/candidates/candidate/:id
+ * Elimina un candidato específico por su ID
+ */
+exports.eliminateCandidateById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await abTestsService.eliminateCandidateById(id);
+        res.json({ success: true, message: "Candidate eliminated successfully" });
+    } catch (error) {
+        logger.error("Error eliminating candidate by ID:", error);
+        if (error.message === 'Candidate not found') {
+            res.status(404).json({ success: false, error: error.message });
+        } else {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+};
+
+/**
+ * GET /api/v1/ab-tests/candidates/:userId/details
+ * Obtiene candidatos con detalles del establishment
+ */
+exports.getCandidatesWithDetails = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const candidates = await abTestsService.getCandidatesWithDetails(userId);
+        res.json({ success: true, data: candidates });
+    } catch (error) {
+        logger.error("Error getting candidates with details:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.getCandidatesWithSnapshot = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const candidates = await abTestsService.getCandidatesWithSnapshot(userId);
+        res.json({ success: true, data: candidates });
+    } catch (error) {
+        logger.error("Error getting candidates with snapshot:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 

@@ -1191,6 +1191,7 @@ model AbTest {
   description String?
   agentType   String   @map("agent_type") // SDR, QUALIFICATION
   status      String   @default("DRAFT") // DRAFT, RUNNING, COMPLETED, CANCELLED
+  createdBy   String?  @map("created_by") // User ID quien creo el test
   
   startDate   DateTime? @map("start_date")
   endDate     DateTime? @map("end_date")
@@ -1200,6 +1201,7 @@ model AbTest {
   
   variants    AbTestVariant[]
   
+  @@index([createdBy])
   @@map("ab_tests")
 }
 
@@ -1245,7 +1247,12 @@ model AbTestContact {
 model AbTestCandidate {
   id              String   @id @default(uuid())
   establishmentId String   @unique @map("establishment_id") // ID del contacto/negocio
-  userId          String?  @map("user_id") // Para saber qui茅n lo seleccion贸 (opcional por ahora, asumiendo un solo user global o usando service key)
+  userId          String?  @map("user_id") // Para saber quién lo seleccionó
+  
+  // Snapshot mínimo para preview rápido y fallback
+  snapshotName      String?  @map("snapshot_name")
+  snapshotPhone     String?  @map("snapshot_phone")
+  snapshotUbicacion String?  @map("snapshot_ubicacion") // Estado, Municipio
   
   createdAt       DateTime @default(now()) @map("created_at")
 
