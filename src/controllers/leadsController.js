@@ -227,7 +227,8 @@ const autoEnrich = async (req, res, next) => {
       businessContact,
       employeeRange,
       establishmentId,
-      address
+      address,
+      agentConfig: requestAgentConfig  // agentConfig enviado desde el frontend
     } = req.body;
 
     // Validar datos requeridos
@@ -265,53 +266,69 @@ const autoEnrich = async (req, res, next) => {
       });
     }
 
-    // Obtener configuración de agente default para SDR desde demo-form-service
+    // Usar agentConfig del request si está presente, sino obtener default
     let agentConfig = null;
-    try {
-      const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
-      const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
+    
+    if (requestAgentConfig && requestAgentConfig.id) {
+      // Usar agentConfig enviado desde el frontend
+      agentConfig = {
+        id: requestAgentConfig.id,
+        name: requestAgentConfig.name || requestAgentConfig.personality_name,
+        openai_voice: requestAgentConfig.openai_voice || "echo",
+        voice_speed: parseFloat(requestAgentConfig.voice_speed) || 1.0,
+        voice_temperature: parseFloat(requestAgentConfig.voice_temperature) || 1.0,
+        voice_intensity: parseInt(requestAgentConfig.voice_intensity) || 1,
+        voice_style: requestAgentConfig.voice_style || "professional",
+      };
+      console.log("[AUTO-ENRICH] ✅ Usando agentConfig del frontend:", agentConfig);
+    } else {
+      // Obtener configuración de agente default para SDR desde demo-form-service
+      try {
+        const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
+        const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
 
-      const configUrl = `${demoFormUrl}/agent-configs/default/SDR`;
-      console.log("[AUTO-ENRICH] 🔍 Fetching agent_config from:", configUrl);
-      console.log("[AUTO-ENRICH] 🔑 API Key:", agentsConfigKey ? `${agentsConfigKey.substring(0, 10)}...` : "MISSING");
+        const configUrl = `${demoFormUrl}/agent-configs/default/SDR`;
+        console.log("[AUTO-ENRICH] 🔍 Fetching agent_config from:", configUrl);
+        console.log("[AUTO-ENRICH] 🔑 API Key:", agentsConfigKey ? `${agentsConfigKey.substring(0, 10)}...` : "MISSING");
 
-      const configResponse = await axios.get(
-        configUrl,
-        {
-          headers: {
-            "X-API-Key": agentsConfigKey || "",
-          },
-          timeout: 5000,
+        const configResponse = await axios.get(
+          configUrl,
+          {
+            headers: {
+              "X-API-Key": agentsConfigKey || "",
+            },
+            timeout: 5000,
+          }
+        );
+
+        console.log("[AUTO-ENRICH] ✅ Response status:", configResponse.status);
+        console.log("[AUTO-ENRICH] 📦 Response data:", JSON.stringify(configResponse.data, null, 2));
+
+        if (configResponse.data?.success && configResponse.data?.data) {
+          const data = configResponse.data.data;
+          agentConfig = {
+            id: data.id,
+            name: data.name,
+            openai_voice: data.openai_voice || data.voice || "echo",
+            voice_speed: data.voice_speed || 1.0,
+            voice_temperature: data.voice_temperature || 1.0,
+            voice_intensity: data.voice_intensity || 1,
+            voice_style: data.voice_style || "professional",
+          };
+          console.log("[AUTO-ENRICH] ✅ Usando agent_config default:", agentConfig);
+        } else {
+          console.log("[AUTO-ENRICH] ⚠️ Response no tiene data válida");
         }
-      );
-
-      console.log("[AUTO-ENRICH] ✅ Response status:", configResponse.status);
-      console.log("[AUTO-ENRICH] 📦 Response data:", JSON.stringify(configResponse.data, null, 2));
-
-      if (configResponse.data?.success && configResponse.data?.data) {
-        const data = configResponse.data.data;
-        agentConfig = {
-          id: data.id,
-          name: data.name,
-          openai_voice: data.openai_voice || data.voice || "echo",
-          voice_speed: data.voice_speed || 1.0,
-          voice_temperature: data.voice_temperature || 1.0,
-          voice_intensity: data.voice_intensity || 1,
-          voice_style: data.voice_style || "professional",
-        };
-        console.log("[AUTO-ENRICH] ✅ Usando agent_config:", agentConfig);
-      } else {
-        console.log("[AUTO-ENRICH] ⚠️ Response no tiene data válida");
+      } catch (configError) {
+        console.error("[AUTO-ENRICH] ❌ Error completo:", {
+          message: configError.message,
+          response: configError.response?.data,
+          status: configError.response?.status,
+          code: configError.code,
+        });
+        logger.warn("[AUTO-ENRICH] No se pudo obtener agent_config, usando default:", configError.message);
+        // Continuar sin agent_config, el SDR usará su default
       }
-    } catch (configError) {
-      console.error("[AUTO-ENRICH] ❌ Error completo:", {
-        message: configError.message,
-        response: configError.response?.data,
-        status: configError.response?.status,
-        code: configError.code,
-      });
-      logger.warn("[AUTO-ENRICH] No se pudo obtener agent_config, usando default:", configError.message);
-      // Continuar sin agent_config, el SDR usará su default
     }
 
     // Llamar al agente SDR en agentes-crm-sdk
