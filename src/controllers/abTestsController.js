@@ -64,6 +64,30 @@ exports.stop = async (req, res) => {
     }
 };
 
+exports.updateResult = async (req, res) => {
+    try {
+        const { contactId, variantId, status, result } = req.body;
+        
+        if (!contactId || !variantId || !status) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'contactId, variantId, and status are required' 
+            });
+        }
+        
+        await abTestsService.updateCallResult(contactId, variantId, {
+            status,
+            result
+        });
+        
+        logger.info(`[A/B Test] Updated result for contact ${contactId}: ${status}`);
+        res.json({ success: true });
+    } catch (error) {
+        logger.error(`Error updating A/B test result:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 exports.addCandidate = async (req, res) => {
     try {
         const { establishmentId } = req.body;
