@@ -104,30 +104,6 @@ async function countAttempts(establishmentId) {
 }
 
 /**
- * Eliminar todas las interacciones de un establecimiento
- * Se usa cuando el tomador de decisiones es identificado para limpiar historial
- * ya que los datos quedan conservados en establishment_enrichments
- * @param {string} establishmentId - ID del establecimiento
- * @returns {number} - Número de registros eliminados
- */
-async function deleteByEstablishment(establishmentId) {
-    try {
-        const result = await prisma.sdrInteraction.deleteMany({
-            where: { establishmentId },
-        });
-        
-        logger.info(`SDR Interactions deleted for ${establishmentId}`, {
-            deletedCount: result.count,
-        });
-        
-        return result.count;
-    } catch (error) {
-        logger.error("Error deleting SDR interactions:", error);
-        throw error;
-    }
-}
-
-/**
  * Obtener estadísticas generales del SDR
  * Para dashboard y métricas A/B
  */
@@ -188,6 +164,14 @@ async function getStats() {
         throw error;
     }
 }
+
+module.exports = {
+    createInteraction,
+    getByEstablishment,
+    countAttempts,
+    getStats,
+    getAgentConfigStats,
+};
 
 /**
  * Obtener estadísticas filtradas por agentConfigId
@@ -297,7 +281,6 @@ module.exports = {
     createInteraction,
     getByEstablishment,
     countAttempts,
-    deleteByEstablishment,
     getStats,
     getAgentConfigStats,
     getAllAgentConfigStats,

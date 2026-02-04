@@ -205,43 +205,25 @@ async function handleCallResult(req, res, next) {
 
         // ==================== GUARDAR EN SDR_INTERACTIONS ====================
         // Guardar historial de la llamada para métricas A/B
-        // NOTA: Si el tomador de decisiones fue identificado, NO crear registro en sdr_interactions
-        // ya que los datos quedan conservados en establishment_enrichments
-        if (enrichmentStatus !== "identified") {
-            try {
-                await sdrInteractionsService.createInteraction({
-                    establishmentId,
-                    callStatus,
-                    enrichmentStatus,
-                    decisionMakerFound: !!decisionMaker?.name,
-                    decisionMakerName: decisionMaker?.name || null,
-                    decisionMakerRole: decisionMaker?.position || null,
-                    callSummary,
-                    callDurationSeconds,
-                    attemptNumber,  // Usar el valor calculado arriba
-                    strategy,
-                    gatekeeperInfo,
-                    twilioCallSid: null, // TODO: agregar si viene del agente
-                    agentConfigId,  // Referencia a la configuración del agente usada
-                });
-            } catch (interactionError) {
-                // No bloquear el flujo principal si falla el guardado de interacción
-                logger.error(`[SDR] Error guardando interacción: ${interactionError.message}`);
-            }
-        } else {
-            // Tomador de decisiones identificado: eliminar registros previos de sdr_interactions
-            // Los datos quedan conservados únicamente en establishment_enrichments
-            try {
-                const deletedCount = await sdrInteractionsService.deleteByEstablishment(establishmentId);
-                if (deletedCount > 0) {
-                    logger.info(`[SDR] Tomador de decisiones identificado para ${establishmentId} - eliminados ${deletedCount} registros previos de sdr_interactions`);
-                } else {
-                    logger.info(`[SDR] Tomador de decisiones identificado para ${establishmentId} - datos conservados solo en establishment_enrichments`);
-                }
-            } catch (deleteError) {
-                // No bloquear el flujo principal si falla la eliminación
-                logger.error(`[SDR] Error eliminando interacciones previas: ${deleteError.message}`);
-            }
+        try {
+            await sdrInteractionsService.createInteraction({
+                establishmentId,
+                callStatus,
+                enrichmentStatus,
+                decisionMakerFound: !!decisionMaker?.name,
+                decisionMakerName: decisionMaker?.name || null,
+                decisionMakerRole: decisionMaker?.position || null,
+                callSummary,
+                callDurationSeconds,
+                attemptNumber,  // Usar el valor calculado arriba
+                strategy,
+                gatekeeperInfo,
+                twilioCallSid: null, // TODO: agregar si viene del agente
+                agentConfigId,  // Referencia a la configuración del agente usada
+            });
+        } catch (interactionError) {
+            // No bloquear el flujo principal si falla el guardado de interacción
+            logger.error(`[SDR] Error guardando interacción: ${interactionError.message}`);
         }
 
         // ==================== TWENTY CRM SYNC (CONTACT LEVEL) ====================
