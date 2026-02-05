@@ -58,6 +58,9 @@ router.post("/track", authenticateApiKey, validate(trackLeadSchema), leadsContro
 router.post("/auto-enrich", authenticateJWTOrServiceKey, leadsController.autoEnrich);
 router.post("/auto-qualify", authenticateJWTOrServiceKey, leadsController.autoQualify);
 
+// Ruta para que agentes actualicen email (con autenticación por API key)
+router.patch("/:id/email", validateEnrichmentAgent, leadsController.updateEmail);
+
 // Rutas protegidas
 router.use(authenticateJWT);
 

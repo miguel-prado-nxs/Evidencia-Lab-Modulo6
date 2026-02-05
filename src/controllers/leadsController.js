@@ -250,13 +250,13 @@ const autoEnrich = async (req, res, next) => {
     console.log("Sales Partner ID:", req.salesPartnerId);
     console.log("==================================================");
 
-    // Verificar si AGENTS_SDK_URL está configurado
-    const agentsSdkUrl = process.env.AGENTS_SDK_URL;
-    if (!agentsSdkUrl) {
-      logger.warn("AGENTS_SDK_URL no configurado - solo logging datos");
+    // Verificar si SDR_AGENT_URL está configurado
+    const sdrAgentUrl = process.env.SDR_AGENT_URL || process.env.AGENTS_SDK_URL;
+    if (!sdrAgentUrl) {
+      logger.warn("SDR_AGENT_URL no configurado - solo logging datos");
       return res.json({
         success: true,
-        message: "Datos recibidos (AGENTS_SDK_URL no configurado)",
+        message: "Datos recibidos (SDR_AGENT_URL no configurado)",
         receivedData: {
           businessName,
           businessContact,
@@ -347,7 +347,7 @@ const autoEnrich = async (req, res, next) => {
       ...(agentConfig && { agent_config: agentConfig }),
     };
 
-    console.log("[AUTO-ENRICH] Llamando al agente SDR:", agentsSdkUrl + "/api/sdr/initiate-call");
+    console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
     console.log("[AUTO-ENRICH] Payload:", JSON.stringify(sdrPayload, null, 2));
 
     // Obtener API Key para autenticación con agentes-crm-sdk
@@ -357,7 +357,7 @@ const autoEnrich = async (req, res, next) => {
     }
 
     const sdrResponse = await axios.post(
-      agentsSdkUrl + "/api/sdr/initiate-call",
+      sdrAgentUrl + "/api/sdr/initiate-call",
       sdrPayload,
       {
         headers: {
@@ -434,10 +434,23 @@ const autoQualify = async (req, res, next) => {
       });
     }
 
+    // Formatear teléfono a E.164 si no tiene el prefijo +
+    let formattedPhone = decisionMakerPhone.trim();
+    if (!formattedPhone.startsWith('+')) {
+      // Si el número empieza con 52, agregar solo el +
+      if (formattedPhone.startsWith('52')) {
+        formattedPhone = '+' + formattedPhone;
+      } else {
+        // Si no tiene 52, agregar +52
+        formattedPhone = '+52' + formattedPhone;
+      }
+    }
+
     console.log("=== AUTO-QUALIFY DATOS RECIBIDOS (PARTNERS API) ===");
     console.log("Nombre del negocio:", establishmentName);
     console.log("Tomador de decisiones:", decisionMakerName);
-    console.log("Teléfono:", decisionMakerPhone);
+    console.log("Teléfono original:", decisionMakerPhone);
+    console.log("Teléfono formateado:", formattedPhone);
     console.log("Posición:", decisionMakerPosition || "No especificado");
     console.log("Email:", decisionMakerEmail || "No especificado");
     console.log("Establishment ID:", establishmentId);
@@ -445,12 +458,12 @@ const autoQualify = async (req, res, next) => {
     console.log("===================================================");
 
     // URL del agente de qualification
-    const agentsSdkUrl = process.env.AGENTS_SDK_URL;
-    if (!agentsSdkUrl) {
-      logger.error("[AUTO-QUALIFY] AGENTS_SDK_URL no configurada");
+    const qualificationAgentUrl = process.env.QUALIFICATION_AGENT_URL || process.env.AGENTS_SDK_URL;
+    if (!qualificationAgentUrl) {
+      logger.error("[AUTO-QUALIFY] QUALIFICATION_AGENT_URL no configurada");
       return res.status(500).json({
         success: false,
-        error: "Servicio de agentes no configurado",
+        error: "Servicio de agentes de calificación no configurado",
         details: {
           establishmentName,
           decisionMakerName,
@@ -458,21 +471,50 @@ const autoQualify = async (req, res, next) => {
       });
     }
 
-    // Llamar al agente de Qualification en agentes-crm-sdk
-    const axios = require("axios");
+    // Obtener configuración de agente default para QUALIFICATION desde demo-form-service
+    let agentConfigId = null;
+    try {
+      const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
+      const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
 
+      const configUrl = `${demoFormUrl}/agent-configs/default/QUALIFICATION`;
+      console.log("[AUTO-QUALIFY] 🔍 Fetching agent_config from:", configUrl);
+
+      const configResponse = await axios.get(
+        configUrl,
+        {
+          headers: {
+            "X-API-Key": agentsConfigKey || "",
+          },
+          timeout: 5000,
+        }
+      );
+
+      if (configResponse.data?.success && configResponse.data?.data) {
+        agentConfigId = configResponse.data.data.id;
+        console.log("[AUTO-QUALIFY] ✅ Using agent_config_id:", agentConfigId);
+      } else {
+        console.log("[AUTO-QUALIFY] ⚠️ No default QUALIFICATION config found");
+      }
+    } catch (configError) {
+      console.error("[AUTO-QUALIFY] ❌ Error fetching agent_config:", configError.message);
+      logger.warn("[AUTO-QUALIFY] No se pudo obtener agent_config, continuando sin él");
+    }
+
+    // Llamar al agente de Qualification en agentes-crm-sdk
     const qualificationPayload = {
       establishment_id: establishmentId,
-      establishment_name: establishmentName,
-      phone: decisionMakerPhone,
-      decision_maker_name: decisionMakerName,
-      decision_maker_position: decisionMakerPosition || null,
-      decision_maker_email: decisionMakerEmail || null,
+      business_name: establishmentName,
+      phone: formattedPhone,
+      prospect_name: decisionMakerName,
+      email: decisionMakerEmail || null,
       // Pasar userId para asignación
       user_id: req.salesPartnerId || req.user?.id || null,
+      // Agregar agent_config_id si se obtuvo
+      ...(agentConfigId && { agent_config_id: agentConfigId }),
     };
 
-    console.log("[AUTO-QUALIFY] Llamando al agente de Qualification:", agentsSdkUrl + "/api/qualification/initiate-call");
+    console.log("[AUTO-QUALIFY] Llamando al agente de Qualification:", qualificationAgentUrl + "/api/qualification/initiate-call");
     console.log("[AUTO-QUALIFY] Payload:", JSON.stringify(qualificationPayload, null, 2));
 
     // Obtener API Key para autenticación con agentes-crm-sdk
@@ -482,7 +524,7 @@ const autoQualify = async (req, res, next) => {
     }
 
     const qualificationResponse = await axios.post(
-      agentsSdkUrl + "/api/qualification/initiate-call",
+      qualificationAgentUrl + "/api/qualification/initiate-call",
       qualificationPayload,
       {
         headers: {
@@ -524,6 +566,51 @@ const autoQualify = async (req, res, next) => {
 };
 
 
+/**
+ * PATCH /leads/:id/email
+ * Actualiza el email de un establishment enrichment (para uso de agentes con API key)
+ */
+const updateEmail = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "Email es requerido",
+      });
+    }
+
+    console.log(`[UPDATE EMAIL] Updating email for establishment ${id} to: ${email}`);
+
+    // Actualizar en establishment_enrichments usando establishmentId
+    const prisma = require("../config/database");
+    const updated = await prisma.establishmentEnrichment.updateMany({
+      where: { establishmentId: id },
+      data: { decisionMakerEmail: email },
+    });
+
+    if (updated.count === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Registro no encontrado",
+      });
+    }
+
+    console.log(`[UPDATE EMAIL] Updated ${updated.count} record(s)`);
+
+    res.json({
+      success: true,
+      message: "Email actualizado exitosamente",
+      data: { establishmentId: id, email, updatedCount: updated.count },
+    });
+  } catch (error) {
+    logger.error("Error updating email:", error.message);
+    next(error);
+  }
+};
+
 module.exports = {
   list,
   getById,
@@ -533,5 +620,6 @@ module.exports = {
   track,
   autoEnrich,
   autoQualify,
+  updateEmail,
 };
 
