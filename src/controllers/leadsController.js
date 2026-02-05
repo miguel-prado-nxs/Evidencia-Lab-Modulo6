@@ -566,6 +566,51 @@ const autoQualify = async (req, res, next) => {
 };
 
 
+/**
+ * PATCH /leads/:id/email
+ * Actualiza el email de un establishment enrichment (para uso de agentes con API key)
+ */
+const updateEmail = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "Email es requerido",
+      });
+    }
+
+    console.log(`[UPDATE EMAIL] Updating email for establishment ${id} to: ${email}`);
+
+    // Actualizar en establishment_enrichments usando establishmentId
+    const prisma = require("../config/database");
+    const updated = await prisma.establishmentEnrichment.updateMany({
+      where: { establishmentId: id },
+      data: { decisionMakerEmail: email },
+    });
+
+    if (updated.count === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Registro no encontrado",
+      });
+    }
+
+    console.log(`[UPDATE EMAIL] Updated ${updated.count} record(s)`);
+
+    res.json({
+      success: true,
+      message: "Email actualizado exitosamente",
+      data: { establishmentId: id, email, updatedCount: updated.count },
+    });
+  } catch (error) {
+    logger.error("Error updating email:", error.message);
+    next(error);
+  }
+};
+
 module.exports = {
   list,
   getById,
@@ -575,5 +620,6 @@ module.exports = {
   track,
   autoEnrich,
   autoQualify,
+  updateEmail,
 };
 

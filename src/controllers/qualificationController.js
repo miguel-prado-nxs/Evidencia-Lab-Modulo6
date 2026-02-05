@@ -63,11 +63,12 @@ async function handleCallResult(req, res, next) {
 
         // Demo
         const demoScheduled = body.demoScheduled || body.demo_scheduled || false;
-        const demoDate = body.demoDate || body.demo_date;
+        const demoDate = body.demoDate || body.demo_date || body.demo_datetime;
         const scheduledAt = body.scheduledAt || body.scheduled_at || demoDate; // Fecha de demo agendada
-        const bookingMethod = body.bookingMethod || body.booking_method;
+        const bookingMethod = body.bookingMethod || body.booking_method || "calendly";
         const meetingLink = body.meetingLink || body.meeting_link; // URL de Zoom
         const calendlyEventId = body.calendlyEventId || body.calendly_event_id;
+        const calendlyEventUri = body.calendlyEventUri || body.calendly_event_uri;
 
         // Nombre del negocio (para referencia)
         const businessName = body.businessName || body.business_name;
@@ -379,11 +380,21 @@ async function handleCallResult(req, res, next) {
             console.log("User ID (from payload):", userId);
             console.log("Meeting User ID (with fallback):", meetingUserId);
             console.log("Meeting Link:", meetingLink);
+            console.log("Calendly Event URI:", calendlyEventUri);
             console.log("Calendly Event ID:", calendlyEventId);
             console.log("====================");
 
             if (demoScheduled && demoDate && meetingUserId) {
                 try {
+                    const meetingData = {
+                        meetingScheduled: true,
+                        meetingDate: new Date(demoDate),
+                        meetingLink: meetingLink || null,
+                        calendlyEventUri: calendlyEventUri || (calendlyEventId ? `https://api.calendly.com/scheduled_events/${calendlyEventId}` : null),
+                        notes: `Demo agendada por agente de calificación (${bookingMethod})`,
+                        updatedAt: new Date(),
+                    };
+
                     await prisma.establishmentMeeting.upsert({
                         where: {
                             establishmentId_partnerId: {
@@ -391,28 +402,20 @@ async function handleCallResult(req, res, next) {
                                 partnerId: meetingUserId,
                             }
                         },
-                        update: {
-                            meetingScheduled: true,
-                            meetingDate: new Date(demoDate),
-                            meetingLink: meetingLink || null,
-                            calendlyEventUri: calendlyEventId ? `https://api.calendly.com/scheduled_events/${calendlyEventId}` : null,
-                            notes: `Demo agendada por agente de calificación (${bookingMethod || "verbal"})`,
-                            updatedAt: new Date(),
-                        },
+                        update: meetingData,
                         create: {
                             establishmentId,
                             partnerId: meetingUserId,
-                            meetingScheduled: true,
-                            meetingDate: new Date(demoDate),
-                            meetingLink: meetingLink || null,
-                            calendlyEventUri: calendlyEventId ? `https://api.calendly.com/scheduled_events/${calendlyEventId}` : null,
-                            notes: `Demo agendada por agente de calificación (${bookingMethod || "verbal"})`,
+                            ...meetingData,
                         },
                     });
-                    logger.info(`[Qualification] Demo agendada para ${establishmentId}: ${demoDate}`);
+                    logger.info(`[Qualification] ✅ Demo guardada en establishment_meetings para ${establishmentId}: ${demoDate}`);
                 } catch (meetingError) {
-                    logger.error(`[Qualification] Error guardando meeting:`, meetingError.message);
+                    logger.error(`[Qualification] ❌ Error guardando meeting:`, meetingError.message);
+                    console.error(meetingError);
                 }
+            } else {
+                console.log(`[Qualification] ⚠️ No se guardó meeting - demoScheduled: ${demoScheduled}, demoDate: ${demoDate}, userId: ${meetingUserId}`);
             }
         }
 
