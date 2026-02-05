@@ -246,13 +246,13 @@ async function fetchContactDetails(contactId, type) {
  * Trigger calls for a running test
  */
 async function triggerTestCalls(test) {
-    const SDR_URL = process.env.SDR_AGENT_URL || "http://localhost:8000";
+    const SDR_URL = process.env.SDR_AGENT_URL || process.env.AGENTS_SDK_URL || "http://localhost:8000";
     const QUAL_URL = process.env.QUALIFICATION_AGENT_URL || "http://localhost:8001";
     const API_KEY = process.env.SDR_API_KEY;
 
     const isSDR = test.agentType === "SDR";
     const baseUrl = isSDR ? SDR_URL : QUAL_URL;
-    const endpoint = isSDR ? "/api/sdr/initiate-call" : "/api/qualification/call";
+    const endpoint = isSDR ? "/api/sdr/initiate-call" : "/api/qualification/initiate-call";
 
     logger.info(`Starting A/B Test ${test.id} - Triggering calls to ${baseUrl}${endpoint}`);
 
