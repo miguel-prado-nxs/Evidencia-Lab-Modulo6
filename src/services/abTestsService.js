@@ -252,16 +252,46 @@ async function startTest(id) {
 }
 
 /**
- * Helper to fetch contact details (phone)
+ * Helper to fetch contact details (phone, name, address, email)
  */
 async function fetchContactDetails(contactId, type) {
     if (type === "ESTABLISHMENT") {
-        // Fetch from Geo DB
+        // Fetch from Geo DB - use 'name' field (same as frontend)
         const establishment = await prismaGeo.establishment.findUnique({
-            where: { id: contactId },
-            select: { phone: true }
+            where: { id: String(contactId) },
+            select: { 
+                phone: true, 
+                name: true,  // This is what frontend uses: item.establishment?.name
+                streetType: true,
+                exteriorNum: true,
+                municipalityName: true,
+                stateName: true
+            }
         });
-        return establishment;
+        
+        if (!establishment) return null;
+        
+        // Try to get enrichment data for email and decision maker name
+        const enrichment = await prisma.establishmentEnrichment.findFirst({
+            where: { establishmentId: contactId },
+            select: { 
+                decisionMakerEmail: true,
+                decisionMakerName: true
+            }
+        });
+        
+        return {
+            phone: establishment.phone,
+            name: establishment.name || 'el establecimiento',
+            decisionMakerName: enrichment?.decisionMakerName || null,
+            email: enrichment?.decisionMakerEmail || null,
+            address: [
+                establishment.streetType,
+                establishment.exteriorNum,
+                establishment.municipalityName,
+                establishment.stateName
+            ].filter(Boolean).join(', ')
+        };
     }
     // Handle 'LEAD' type if needed
     return null;
@@ -311,8 +341,9 @@ async function triggerTestCalls(test) {
                     continue;
                 }
 
-                // Add delay to avoid aggressive rate limiting
-                await new Promise(r => setTimeout(r, 1000));
+                // Add delay to avoid aggressive rate limiting and context loss
+                // 3 seconds between calls to ensure each agent maintains context
+                await new Promise(r => setTimeout(r, 3000));
 
                 logger.info(`[A/B Test] Calling ${contact.contactId} with ${fullAgentConfig.name}`);
 
@@ -336,18 +367,45 @@ async function triggerTestCalls(test) {
                     transparency_response: fullAgentConfig.transparency_response
                 };
 
-                await axios.post(`${baseUrl}${endpoint}`, {
-                    establishmentId: contact.contactId,
-                    businessContact: contactDetails.phone,
-                    businessName: contactDetails.name || "Establecimiento",
-                    address: contactDetails.address || "",
-                    agentConfig: agentConfigPayload,
-                    ab_test_context: {
-                        test_id: test.id,
-                        variant_id: variant.id,
-                        contact_record_id: contact.id
-                    }
-                }, {
+                // Build payload based on agent type
+                let payload;
+                if (isSDR) {
+                    // SDR payload format
+                    // Use a more generic phrase if name is missing to avoid confusion
+                    const businessName = contactDetails.name && contactDetails.name !== 'el establecimiento' 
+                        ? contactDetails.name 
+                        : 'su negocio';
+                    
+                    payload = {
+                        establishmentId: contact.contactId,
+                        businessContact: contactDetails.phone,
+                        businessName: businessName,
+                        address: contactDetails.address || "",
+                        agentConfig: agentConfigPayload,
+                        ab_test_context: {
+                            test_id: test.id,
+                            variant_id: variant.id,
+                            contact_record_id: contact.id
+                        }
+                    };
+                } else {
+                    // QUALIFICATION payload format (matches "Mis Negocios" payload)
+                    payload = {
+                        establishment_id: contact.contactId,
+                        business_name: contactDetails.name || "Establecimiento",
+                        prospect_name: contactDetails.decisionMakerName || "Contacto",
+                        phone: contactDetails.phone,
+                        email: contactDetails.email || null,
+                        agent_config_id: fullAgentConfig.id,
+                        ab_test_context: {
+                            test_id: test.id,
+                            variant_id: variant.id,
+                            contact_record_id: contact.id
+                        }
+                    };
+                }
+
+                await axios.post(`${baseUrl}${endpoint}`, payload, {
                     headers: { "X-API-Key": API_KEY }
                 });
 
