@@ -1,5 +1,7 @@
 const prisma = require("../config/database");
+const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
+const axios = require("axios");
 
 /**
  * createTest
@@ -94,6 +96,37 @@ async function createTest(data) {
 
         return abTest;
     });
+}
+
+/**
+ * fetchAgentConfig
+ * Fetch full agent configuration from demo-form-service
+ */
+async function fetchAgentConfig(agentConfigId) {
+    const DEMO_FORM_URL = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
+    const AGENTS_CONFIG_KEY = process.env.AGENTS_CONFIG_KEY;
+
+    try {
+        const response = await axios.get(
+            `${DEMO_FORM_URL}/agent-configs/${agentConfigId}`,
+            {
+                headers: {
+                    "X-API-Key": AGENTS_CONFIG_KEY || ""
+                },
+                timeout: 5000
+            }
+        );
+
+        if (response.data?.success && response.data?.data) {
+            return response.data.data;
+        }
+        
+        logger.warn(`[A/B Test] Agent config ${agentConfigId} not found or invalid response`);
+        return null;
+    } catch (error) {
+        logger.error(`[A/B Test] Error fetching agent config ${agentConfigId}:`, error.message);
+        return null;
+    }
 }
 
 /**
@@ -192,14 +225,6 @@ async function updateCallResult(contactId, abTestVariantId, resultData) {
 
 /**
  * startTest
- * Updates status to RUNNING. 
- * (Actual call triggering will be handled by a separate job or trigger)
- */
-const axios = require("axios");
-const prismaGeo = require("../config/database-geo");
-
-/**
- * startTest
  * Updates status to RUNNING and triggers calls asynchronously.
  */
 async function startTest(id) {
@@ -227,16 +252,46 @@ async function startTest(id) {
 }
 
 /**
- * Helper to fetch contact details (phone)
+ * Helper to fetch contact details (phone, name, address, email)
  */
 async function fetchContactDetails(contactId, type) {
     if (type === "ESTABLISHMENT") {
-        // Fetch from Geo DB
+        // Fetch from Geo DB - use 'name' field (same as frontend)
         const establishment = await prismaGeo.establishment.findUnique({
-            where: { id: contactId },
-            select: { phone: true }
+            where: { id: String(contactId) },
+            select: { 
+                phone: true, 
+                name: true,  // This is what frontend uses: item.establishment?.name
+                streetType: true,
+                exteriorNum: true,
+                municipalityName: true,
+                stateName: true
+            }
         });
-        return establishment;
+        
+        if (!establishment) return null;
+        
+        // Try to get enrichment data for email and decision maker name
+        const enrichment = await prisma.establishmentEnrichment.findFirst({
+            where: { establishmentId: contactId },
+            select: { 
+                decisionMakerEmail: true,
+                decisionMakerName: true
+            }
+        });
+        
+        return {
+            phone: establishment.phone,
+            name: establishment.name || 'el establecimiento',
+            decisionMakerName: enrichment?.decisionMakerName || null,
+            email: enrichment?.decisionMakerEmail || null,
+            address: [
+                establishment.streetType,
+                establishment.exteriorNum,
+                establishment.municipalityName,
+                establishment.stateName
+            ].filter(Boolean).join(', ')
+        };
     }
     // Handle 'LEAD' type if needed
     return null;
@@ -254,9 +309,27 @@ async function triggerTestCalls(test) {
     const baseUrl = isSDR ? SDR_URL : QUAL_URL;
     const endpoint = isSDR ? "/api/sdr/initiate-call" : "/api/qualification/initiate-call";
 
-    logger.info(`Starting A/B Test ${test.id} - Triggering calls to ${baseUrl}${endpoint}`);
+    logger.info(`[A/B Test] Starting test ${test.id} - ${test.variants.length} variants`);
+
+    // Fetch all agent configs upfront to avoid repeated calls
+    const agentConfigsMap = new Map();
+    for (const variant of test.variants) {
+        if (!agentConfigsMap.has(variant.agentConfigId)) {
+            const config = await fetchAgentConfig(variant.agentConfigId);
+            if (config) {
+                agentConfigsMap.set(variant.agentConfigId, config);
+                logger.info(`[A/B Test] Loaded config for variant: ${config.name}`);
+            }
+        }
+    }
 
     for (const variant of test.variants) {
+        const fullAgentConfig = agentConfigsMap.get(variant.agentConfigId);
+        
+        if (!fullAgentConfig) {
+            logger.error(`[A/B Test] Skipping variant ${variant.id} - agent config ${variant.agentConfigId} not found`);
+            continue;
+        }
         for (const contact of variant.contacts) {
             if (contact.status !== "PENDING") continue;
 
@@ -268,25 +341,71 @@ async function triggerTestCalls(test) {
                     continue;
                 }
 
-                // Add delay to avoid aggressive rate limiting
-                await new Promise(r => setTimeout(r, 1000));
+                // Add delay to avoid aggressive rate limiting and context loss
+                // 3 seconds between calls to ensure each agent maintains context
+                await new Promise(r => setTimeout(r, 3000));
 
-                logger.info(`Triggering call for contact ${contact.contactId} (Variant: ${variant.agentConfigName})`);
+                logger.info(`[A/B Test] Calling ${contact.contactId} with ${fullAgentConfig.name}`);
 
-                await axios.post(`${baseUrl}${endpoint}`, {
-                    establishment_id: contact.contactId,
-                    phone: contactDetails.phone,
-                    agent_config: {
-                        id: variant.agentConfigId,
-                        voice_id: variant.voiceId,
-                        name: variant.agentConfigName
-                    },
-                    ab_test_context: {
-                        test_id: test.id,
-                        variant_id: variant.id,
-                        contact_record_id: contact.id
-                    }
-                }, {
+                // Build complete agent config payload
+                const agentConfigPayload = {
+                    id: fullAgentConfig.id,
+                    name: fullAgentConfig.name,
+                    openai_voice: fullAgentConfig.openai_voice,
+                    voice_speed: fullAgentConfig.voice_speed,
+                    voice_temperature: fullAgentConfig.voice_temperature,
+                    voice_intensity: fullAgentConfig.voice_intensity,
+                    voice_style: fullAgentConfig.voice_style,
+                    age: fullAgentConfig.age,
+                    origin: fullAgentConfig.origin,
+                    personality_name: fullAgentConfig.personality_name,
+                    personality_description: fullAgentConfig.personality_description,
+                    tone_description: fullAgentConfig.tone_description,
+                    inner_voice: fullAgentConfig.inner_voice,
+                    expressions: fullAgentConfig.expressions,
+                    imperfections: fullAgentConfig.imperfections,
+                    transparency_response: fullAgentConfig.transparency_response
+                };
+
+                // Build payload based on agent type
+                let payload;
+                if (isSDR) {
+                    // SDR payload format
+                    // Use a more generic phrase if name is missing to avoid confusion
+                    const businessName = contactDetails.name && contactDetails.name !== 'el establecimiento' 
+                        ? contactDetails.name 
+                        : 'su negocio';
+                    
+                    payload = {
+                        establishmentId: contact.contactId,
+                        businessContact: contactDetails.phone,
+                        businessName: businessName,
+                        address: contactDetails.address || "",
+                        agentConfig: agentConfigPayload,
+                        ab_test_context: {
+                            test_id: test.id,
+                            variant_id: variant.id,
+                            contact_record_id: contact.id
+                        }
+                    };
+                } else {
+                    // QUALIFICATION payload format (matches "Mis Negocios" payload)
+                    payload = {
+                        establishment_id: contact.contactId,
+                        business_name: contactDetails.name || "Establecimiento",
+                        prospect_name: contactDetails.decisionMakerName || "Contacto",
+                        phone: contactDetails.phone,
+                        email: contactDetails.email || null,
+                        agent_config_id: fullAgentConfig.id,
+                        ab_test_context: {
+                            test_id: test.id,
+                            variant_id: variant.id,
+                            contact_record_id: contact.id
+                        }
+                    };
+                }
+
+                await axios.post(`${baseUrl}${endpoint}`, payload, {
                     headers: { "X-API-Key": API_KEY }
                 });
 
