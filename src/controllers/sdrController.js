@@ -37,6 +37,7 @@ async function handleCallResult(req, res, next) {
             bestCallTime,
             userId,  // ID del usuario que inició la llamada (para asignación de prospecto)
             agentConfigId,  // ID de la configuración del agente usada (Agent Builder)
+            twilioCallSid,  // SID de la llamada Twilio para trazabilidad
         } = req.body;
 
         // Validación básica.
@@ -64,7 +65,25 @@ async function handleCallResult(req, res, next) {
         }
 
         // Validar callStatus.
-        const validCallStatuses = ["completed", "no_answer", "voicemail", "failed"];
+        // Estados expandidos para reflejar todos los escenarios de llamada:
+        // - completed: llamada terminó normalmente con datos capturados
+        // - no_answer: no contestaron
+        // - voicemail: buzón de voz
+        // - failed: error técnico
+        // - timeout: timeout por inactividad del usuario
+        // - user_ended: usuario colgó antes de completar
+        // - agent_ended: agente terminó la llamada (manual_end)
+        // - answered: llamada contestada pero sin datos completos
+        const validCallStatuses = [
+            "completed", 
+            "no_answer", 
+            "voicemail", 
+            "failed",
+            "timeout",
+            "user_ended",
+            "agent_ended",
+            "answered"
+        ];
         if (callStatus && !validCallStatuses.includes(callStatus)) {
             return res.status(400).json({
                 success: false,
@@ -218,7 +237,7 @@ async function handleCallResult(req, res, next) {
                 attemptNumber,  // Usar el valor calculado arriba
                 strategy,
                 gatekeeperInfo,
-                twilioCallSid: null, // TODO: agregar si viene del agente
+                twilioCallSid: twilioCallSid || null,
                 agentConfigId,  // Referencia a la configuración del agente usada
             });
         } catch (interactionError) {
