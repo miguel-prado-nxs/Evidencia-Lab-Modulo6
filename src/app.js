@@ -8,6 +8,8 @@ const logger = require("./config/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const { initSocket } = require("./config/socket");
 const twentySyncWorker = require("./workers/twentySyncWorker");
+const { setupBullBoard } = require("./queues/dashboard");
+const { getHealthClient } = require("./queues/config");
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
@@ -83,16 +85,33 @@ app.use((req, res, next) => {
 });
 
 // ===========================================
+// BULL BOARD (Dashboard de colas)
+// ===========================================
+setupBullBoard(app);
+
+// ===========================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ===========================================
 
 // Health check
-app.get("/health", (req, res) => {
+app.get("/health", async (req, res) => {
+  let redisStatus = "disconnected";
+  try {
+    const redisClient = getHealthClient();
+    const pong = await redisClient.ping();
+    if (pong === "PONG") {
+      redisStatus = "connected";
+    }
+  } catch {
+    redisStatus = "disconnected";
+  }
+
   res.json({
     success: true,
     message: "EasyOrder Partners API está funcionando correctamente",
     timestamp: new Date().toISOString(),
     environment: config.server.nodeEnv,
+    redis: redisStatus,
   });
 });
 

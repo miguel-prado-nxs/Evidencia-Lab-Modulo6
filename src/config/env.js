@@ -32,6 +32,13 @@ const config = {
     syncIntervalMs: parseInt(process.env.TWENTY_SYNC_INTERVAL_MS || "10000", 10),
     maxRetries: parseInt(process.env.TWENTY_MAX_RETRIES || "5", 10),
   },
+  // Redis y Bull Queue
+  redis: {
+    url: process.env.REDIS_URL || "redis://localhost:6381",
+    host: process.env.REDIS_HOST || "localhost",
+    port: parseInt(process.env.REDIS_PORT || "6381", 10),
+    password: process.env.REDIS_PASSWORD || null,
+  },
 };
 
 module.exports = config;
