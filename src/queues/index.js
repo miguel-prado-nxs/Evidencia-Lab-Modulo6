@@ -5,9 +5,14 @@
  * Redis y el setup del dashboard de Bull Board.
  */
 
-const { sdrCallQueue, getSDRQueueStats } = require("./sdrCallQueue");
+const {
+  sdrCallQueue,
+  enqueueSDRCall,
+  getSDRQueueStats,
+} = require("./sdrCallQueue");
 const {
   qualificationCallQueue,
+  enqueueQualificationCall,
   getQualificationQueueStats,
 } = require("./qualificationCallQueue");
 const {
@@ -21,6 +26,10 @@ module.exports = {
   // Colas
   sdrCallQueue,
   qualificationCallQueue,
+
+  // Funciones de encolamiento
+  enqueueSDRCall,
+  enqueueQualificationCall,
 
   // Estadísticas
   getSDRQueueStats,

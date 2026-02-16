@@ -15,7 +15,8 @@
     "db:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
     "seed:emails": "node prisma/seed-email-templates.js",
-    "redis:check": "node -e \"const Redis = require('ioredis'); const r = new Redis(process.env.REDIS_URL || 'redis://localhost:6381'); r.ping().then(p => { console.log('Redis:', p); process.exit(0); }).catch(e => { console.error('Error:', e.message); process.exit(1); })\""
+    "redis:check": "node scripts/checkRedis.js",
+    "test:enqueue": "node src/queues/testEnqueue.js"
   },
   "keywords": [
     "partners",
@@ -27,8 +28,8 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.943.0",
     "@aws-sdk/lib-storage": "^3.943.0",
-    "@bull-board/api": "^6.18.0",
-    "@bull-board/express": "^6.18.0",
+    "@bull-board/api": "^6.18.2",
+    "@bull-board/express": "^6.18.2",
     "@prisma/client": "^5.22.0",
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",

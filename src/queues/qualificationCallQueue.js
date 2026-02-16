@@ -3,7 +3,7 @@
  *
  * Gestiona el encolamiento y seguimiento de llamadas realizadas por agentes
  * de calificación dentro del sistema de A/B testing. La concurrencia de
- * procesamiento se define en el worker correspondiente (Sprint 2).
+ * procesamiento se define en el worker correspondiente, no en la cola misma.
  *
  * Nombre de la cola en Redis: "qualification-calls"
  */
@@ -53,6 +53,61 @@ qualificationCallQueue.on("stalled", (jobId) => {
 });
 
 /**
+ * Encola una llamada de Calificación para procesamiento asíncrono.
+ *
+ * @param {object} jobData - Datos del trabajo a encolar.
+ * @param {string} jobData.contactId - ID del contacto (establishment enrichment).
+ * @param {string} jobData.abTestContactId - ID del registro en abTestContact.
+ * @param {string} jobData.agentConfigId - ID de la configuración del agente.
+ * @param {object} jobData.establishmentData - Datos del establecimiento para la llamada.
+ * @param {object} [jobData.decisionMakerData] - Datos del tomador de decisiones (si aplica).
+ * @param {object} [options={}] - Opciones adicionales para el job.
+ * @param {number} [options.priority] - Prioridad del job (menor = mayor prioridad).
+ * @param {number} [options.delay] - Retraso en ms antes de procesar.
+ * @returns {Promise<object>} Job encolado con id y metadata.
+ */
+async function enqueueQualificationCall(jobData, options = {}) {
+  const {
+    contactId,
+    abTestContactId,
+    agentConfigId,
+    establishmentData,
+    decisionMakerData,
+  } = jobData;
+
+  if (!contactId || !abTestContactId || !agentConfigId) {
+    throw new Error(
+      "Faltan datos requeridos: contactId, abTestContactId, agentConfigId"
+    );
+  }
+
+  const job = await qualificationCallQueue.add(
+    "qualification-call",
+    {
+      contactId,
+      abTestContactId,
+      agentConfigId,
+      establishmentData,
+      decisionMakerData,
+      enqueuedAt: new Date().toISOString(),
+    },
+    {
+      priority: options.priority,
+      delay: options.delay,
+      jobId: `qualification-${abTestContactId}-${Date.now()}`,
+    }
+  );
+
+  logger.info("[Qualification Queue] Job encolado", {
+    jobId: job.id,
+    contactId,
+    abTestContactId,
+  });
+
+  return job;
+}
+
+/**
  * Obtiene estadísticas actuales de la cola de Calificación.
  *
  * @returns {Promise<object>} Conteos de jobs por estado:
@@ -80,5 +135,6 @@ async function getQualificationQueueStats() {
 
 module.exports = {
   qualificationCallQueue,
+  enqueueQualificationCall,
   getQualificationQueueStats,
 };
