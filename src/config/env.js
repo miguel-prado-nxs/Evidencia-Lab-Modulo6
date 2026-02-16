@@ -39,6 +39,17 @@ const config = {
     port: parseInt(process.env.REDIS_PORT || "6381", 10),
     password: process.env.REDIS_PASSWORD || null,
   },
+  // Agentes de Voz
+  agents: {
+    sdr: {
+      url: process.env.SDR_AGENT_URL || "http://localhost:8080",
+      apiKey: process.env.SDR_API_KEY || "",
+    },
+    qualification: {
+      url: process.env.QUALIFICATION_AGENT_URL || "http://localhost:8081",
+      apiKey: process.env.QUALIFICATION_API_KEY || "",
+    },
+  },
 };
 
 module.exports = config;

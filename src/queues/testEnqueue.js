@@ -1,8 +1,11 @@
 /**
  * Script de prueba para validar el encolamiento de trabajos.
  * 
- * Este script es temporal y se usa para verificar que las funciones
- * de encolamiento funcionan correctamente con Redis.
+ * Este script crea registros temporales en la BD para simular un test A/B real,
+ * luego encola los trabajos para que los workers los procesen.
+ * 
+ * IMPORTANTE: Solo encola jobs, no los procesa. Para procesarlos ejecuta:
+ * npm run start:workers (en otro terminal)
  * 
  * Uso: node src/queues/testEnqueue.js
  */
@@ -13,19 +16,70 @@ const {
   getSDRQueueStats,
   getQualificationQueueStats,
 } = require("./index");
+const { PrismaClient } = require("@prisma/client");
+
+const prisma = new PrismaClient();
 
 async function testQueues() {
   console.log("[Test] Iniciando prueba de encolamiento...\n");
 
   try {
+    // Crear un test A/B temporal
+    console.log("[Test] Creando datos de prueba en BD...");
+    
+    const abTest = await prisma.abTest.create({
+      data: {
+        name: "Test de Encolamiento",
+        description: "Test automatico para validar sistema de colas",
+        agentType: "SDR",
+        status: "RUNNING",
+      },
+    });
+    console.log("[Test] Test A/B creado:", abTest.id);
+
+    // Crear variante
+    const variant = await prisma.abTestVariant.create({
+      data: {
+        abTestId: abTest.id,
+        agentConfigId: "test-agent-config-789",
+        agentConfigName: "Agente de Prueba",
+        voiceId: "test-voice",
+        percentage: 100,
+      },
+    });
+    console.log("[Test] Variante creada:", variant.id);
+
+    // Crear contactos en BD
+    const sdrContact = await prisma.abTestContact.create({
+      data: {
+        abTestVariantId: variant.id,
+        contactId: "test-contact-123",
+        contactType: "ESTABLISHMENT",
+        status: "PENDING",
+      },
+    });
+    console.log("[Test] Contacto SDR creado:", sdrContact.id);
+
+    const qualContact = await prisma.abTestContact.create({
+      data: {
+        abTestVariantId: variant.id,
+        contactId: "test-contact-456",
+        contactType: "ESTABLISHMENT",
+        status: "PENDING",
+      },
+    });
+    console.log("[Test] Contacto Qualification creado:", qualContact.id);
+
+    console.log("\n[Test] Encolando jobs...\n");
+
     // Datos de prueba para SDR
     const sdrJobData = {
-      contactId: "test-contact-123",
-      abTestContactId: "test-ab-contact-456",
-      agentConfigId: "test-agent-config-789",
+      contactId: sdrContact.contactId,
+      abTestContactId: sdrContact.id,
+      agentConfigId: variant.agentConfigId,
       establishmentData: {
         name: "Restaurante de Prueba",
-        phone: "5551234567",
+        phone: "6672398415",
         address: "Calle Falsa 123",
       },
     };
@@ -39,12 +93,12 @@ async function testQueues() {
 
     // Datos de prueba para Qualification
     const qualificationJobData = {
-      contactId: "test-contact-456",
-      abTestContactId: "test-ab-contact-789",
-      agentConfigId: "test-agent-config-012",
+      contactId: qualContact.contactId,
+      abTestContactId: qualContact.id,
+      agentConfigId: variant.agentConfigId,
       establishmentData: {
         name: "Restaurante de Prueba 2",
-        phone: "5559876543",
+        phone: "6674044517",
         address: "Avenida Siempre Viva 742",
       },
       decisionMakerData: {
@@ -70,11 +124,15 @@ async function testQueues() {
 
     console.log("\n[Test] Prueba completada exitosamente");
     console.log("[Test] Verifica el dashboard en: http://localhost:3004/admin/queues");
+    console.log("\n[Test] NOTA: Para que los workers procesen estos jobs, ejecuta:");
+    console.log("[Test]   npm run start:workers\n");
 
+    await prisma.$disconnect();
     process.exit(0);
   } catch (error) {
     console.error("\n[Test] Error durante la prueba:", error.message);
     console.error(error.stack);
+    await prisma.$disconnect();
     process.exit(1);
   }
 }

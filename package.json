@@ -7,6 +7,7 @@
     "build": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "postinstall": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "start": "node src/app.js",
+    "start:workers": "node src/startWorkers.js",
     "dev": "nodemon src/app.js",
     "db:generate": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "db:push": "prisma db push",
@@ -16,7 +17,8 @@
     "db:seed": "node prisma/seed.js",
     "seed:emails": "node prisma/seed-email-templates.js",
     "redis:check": "node scripts/checkRedis.js",
-    "test:enqueue": "node src/queues/testEnqueue.js"
+    "test:enqueue": "node src/queues/testEnqueue.js",
+    "test:workers": "node src/queues/testWorkers.js"
   },
   "keywords": [
     "partners",

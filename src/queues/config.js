@@ -76,6 +76,19 @@ function getBullOptions() {
   return {
     redis: config.redis.url || redisConfig,
     defaultJobOptions,
+    settings: {
+      // Tiempo máximo que un job puede estar bloqueado antes de considerarse estancado (ms)
+      // Por defecto es 30000 (30s), aumentamos a 5 minutos para llamadas largas
+      lockDuration: 300000, // 5 minutos
+      
+      // Intervalo de verificación de jobs estancados (ms)
+      // Por defecto es 5000 (5s), aumentamos a 30s para reducir falsos positivos
+      stalledInterval: 30000, // 30 segundos
+      
+      // Número máximo de veces que se verifica si un job está estancado
+      // El job solo se marca como estancado después de maxStalledCount comprobaciones
+      maxStalledCount: 2, // 2 comprobaciones antes de marcar como estancado
+    },
   };
 }
 
