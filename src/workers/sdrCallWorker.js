@@ -107,12 +107,15 @@ async function executeSDRCall(jobData) {
       address: establishmentData?.address || "",
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
-      // Agent config
-      agent_config: {
+    };
+
+    // Incluir agent_config solo si el agentConfigId no es de prueba
+    if (agentConfigId && !agentConfigId.startsWith('test-')) {
+      payload.agent_config = {
         id: agentConfigId,
         name: establishmentData?.agentConfigName || "Agente SDR",
-      },
-    };
+      };
+    }
 
     // Ejecutar llamada al agente SDR
     const response = await axios.post(

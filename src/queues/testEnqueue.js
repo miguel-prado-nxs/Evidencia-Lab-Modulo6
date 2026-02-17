@@ -41,9 +41,9 @@ async function testQueues() {
     const variant = await prisma.abTestVariant.create({
       data: {
         abTestId: abTest.id,
-        agentConfigId: "test-agent-config-789",
-        agentConfigName: "Agente de Prueba",
-        voiceId: "test-voice",
+        agentConfigId: "fefc1f67-e602-40d6-ab42-56cb2604e563", // Personalidad Camila (SDR)
+        agentConfigName: "Personalidad Camila",
+        voiceId: "shimmer",
         percentage: 100,
       },
     });
@@ -97,7 +97,7 @@ async function testQueues() {
     const qualificationJobData = {
       contactId: qualContact.contactId,
       abTestContactId: qualContact.id,
-      agentConfigId: variant.agentConfigId,
+      agentConfigId: "3aac8702-daba-4acb-a9fb-d4ff42b5d752", // Qualification Personalidad Gabriela
       establishmentData: {
         name: "Restaurante de Prueba 2",
         phone: "6674044517",

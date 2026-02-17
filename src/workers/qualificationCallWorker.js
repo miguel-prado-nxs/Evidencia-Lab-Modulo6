@@ -114,9 +114,12 @@ async function executeQualificationCall(jobData) {
       email: decisionMakerData?.email || null,
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
-      // Agent config
-      agent_config_id: agentConfigId,
     };
+
+    // Incluir agent_config_id solo si el agentConfigId no es de prueba
+    if (agentConfigId && !agentConfigId.startsWith('test-')) {
+      payload.agent_config_id = agentConfigId;
+    }
 
     // Ejecutar llamada al agente de Calificación
     const response = await axios.post(
