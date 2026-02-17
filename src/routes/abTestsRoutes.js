@@ -8,7 +8,12 @@ router.get('/', abTestsController.getAll);
 router.get('/:id/progress', abTestsController.getProgress);
 router.patch('/:id/start', abTestsController.start);
 router.patch('/:id/stop', abTestsController.stop);
+router.post('/:id/pause', abTestsController.pauseTest);
+router.post('/:id/resume', abTestsController.resumeTest);
 router.post('/update-result', abTestsController.updateResult);
+
+// Queue monitoring
+router.get('/queue-stats', abTestsController.getQueueStats);
 
 // Extended metrics endpoints
 router.get('/:id/metrics', abTestsController.getMetrics);

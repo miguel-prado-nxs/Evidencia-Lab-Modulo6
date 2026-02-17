@@ -2,6 +2,7 @@ const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 const axios = require("axios");
+const { enqueueSDRCall, enqueueQualificationCall } = require("../queues");
 
 /**
  * createTest
@@ -298,18 +299,13 @@ async function fetchContactDetails(contactId, type) {
 }
 
 /**
- * Trigger calls for a running test
+ * Trigger calls for a running test (usando sistema de colas)
  */
 async function triggerTestCalls(test) {
-    const SDR_URL = process.env.SDR_AGENT_URL || process.env.AGENTS_SDK_URL || "http://localhost:8000";
-    const QUAL_URL = process.env.QUALIFICATION_AGENT_URL || "http://localhost:8001";
-    const API_KEY = process.env.SDR_API_KEY;
-
     const isSDR = test.agentType === "SDR";
-    const baseUrl = isSDR ? SDR_URL : QUAL_URL;
-    const endpoint = isSDR ? "/api/sdr/initiate-call" : "/api/qualification/initiate-call";
 
     logger.info(`[A/B Test] Starting test ${test.id} - ${test.variants.length} variants`);
+    logger.info(`[A/B Test] Encolando llamadas ${isSDR ? 'SDR' : 'QUALIFICATION'}...`);
 
     // Fetch all agent configs upfront to avoid repeated calls
     const agentConfigsMap = new Map();
@@ -323,6 +319,9 @@ async function triggerTestCalls(test) {
         }
     }
 
+    let jobsEnqueued = 0;
+    let jobsFailed = 0;
+
     for (const variant of test.variants) {
         const fullAgentConfig = agentConfigsMap.get(variant.agentConfigId);
         
@@ -330,6 +329,7 @@ async function triggerTestCalls(test) {
             logger.error(`[A/B Test] Skipping variant ${variant.id} - agent config ${variant.agentConfigId} not found`);
             continue;
         }
+        
         for (const contact of variant.contacts) {
             if (contact.status !== "PENDING") continue;
 
@@ -338,85 +338,57 @@ async function triggerTestCalls(test) {
 
                 if (!contactDetails || !contactDetails.phone) {
                     await updateCallResult(contact.contactId, variant.id, { status: "FAILED", result: "No phone number" });
+                    jobsFailed++;
                     continue;
                 }
 
-                // Add delay to avoid aggressive rate limiting and context loss
-                // 3 seconds between calls to ensure each agent maintains context
-                await new Promise(r => setTimeout(r, 3000));
-
-                logger.info(`[A/B Test] Calling ${contact.contactId} with ${fullAgentConfig.name}`);
-
-                // Build complete agent config payload
-                const agentConfigPayload = {
-                    id: fullAgentConfig.id,
-                    name: fullAgentConfig.name,
-                    openai_voice: fullAgentConfig.openai_voice,
-                    voice_speed: fullAgentConfig.voice_speed,
-                    voice_temperature: fullAgentConfig.voice_temperature,
-                    voice_intensity: fullAgentConfig.voice_intensity,
-                    voice_style: fullAgentConfig.voice_style,
-                    age: fullAgentConfig.age,
-                    origin: fullAgentConfig.origin,
-                    personality_name: fullAgentConfig.personality_name,
-                    personality_description: fullAgentConfig.personality_description,
-                    tone_description: fullAgentConfig.tone_description,
-                    inner_voice: fullAgentConfig.inner_voice,
-                    expressions: fullAgentConfig.expressions,
-                    imperfections: fullAgentConfig.imperfections,
-                    transparency_response: fullAgentConfig.transparency_response
+                // Preparar datos para encolar
+                const establishmentData = {
+                    name: contactDetails.name && contactDetails.name !== 'el establecimiento' 
+                        ? contactDetails.name 
+                        : 'su negocio',
+                    phone: contactDetails.phone,
+                    address: contactDetails.address || "",
+                    employeeRange: "6 a 10 personas", // Default, podría venir de contactDetails si lo agregas
+                    agentConfigName: fullAgentConfig.name
                 };
 
-                // Build payload based on agent type
-                let payload;
-                if (isSDR) {
-                    // SDR payload format
-                    // Use a more generic phrase if name is missing to avoid confusion
-                    const businessName = contactDetails.name && contactDetails.name !== 'el establecimiento' 
-                        ? contactDetails.name 
-                        : 'su negocio';
-                    
-                    payload = {
-                        establishmentId: contact.contactId,
-                        businessContact: contactDetails.phone,
-                        businessName: businessName,
-                        address: contactDetails.address || "",
-                        agentConfig: agentConfigPayload,
-                        ab_test_context: {
-                            test_id: test.id,
-                            variant_id: variant.id,
-                            contact_record_id: contact.id
-                        }
-                    };
-                } else {
-                    // QUALIFICATION payload format (matches "Mis Negocios" payload)
-                    payload = {
-                        establishment_id: contact.contactId,
-                        business_name: contactDetails.name || "Establecimiento",
-                        prospect_name: contactDetails.decisionMakerName || "Contacto",
-                        phone: contactDetails.phone,
-                        email: contactDetails.email || null,
-                        agent_config_id: fullAgentConfig.id,
-                        ab_test_context: {
-                            test_id: test.id,
-                            variant_id: variant.id,
-                            contact_record_id: contact.id
-                        }
+                const jobData = {
+                    contactId: contact.contactId,
+                    abTestContactId: contact.id,
+                    agentConfigId: fullAgentConfig.id,
+                    establishmentData
+                };
+
+                // Si es QUALIFICATION, agregar datos del tomador de decisiones
+                if (!isSDR && (contactDetails.decisionMakerName || contactDetails.email)) {
+                    jobData.decisionMakerData = {
+                        name: contactDetails.decisionMakerName || "Contacto",
+                        email: contactDetails.email || null
                     };
                 }
 
-                await axios.post(`${baseUrl}${endpoint}`, payload, {
-                    headers: { "X-API-Key": API_KEY }
-                });
+                // Encolar job en lugar de llamar directamente
+                if (isSDR) {
+                    await enqueueSDRCall(jobData);
+                    logger.info(`[A/B Test] Job SDR encolado para ${contact.contactId}`);
+                } else {
+                    await enqueueQualificationCall(jobData);
+                    logger.info(`[A/B Test] Job QUALIFICATION encolado para ${contact.contactId}`);
+                }
 
-                await updateCallResult(contact.contactId, variant.id, { status: "CALLED" });
+                jobsEnqueued++;
 
             } catch (e) {
-                logger.error(`Failed to trigger call for ${contact.contactId}`, e.message);
+                logger.error(`[A/B Test] Error encolando job para ${contact.contactId}:`, e.message);
                 await updateCallResult(contact.contactId, variant.id, { status: "FAILED", result: e.message });
+                jobsFailed++;
             }
         }
     }
+
+    logger.info(`[A/B Test] Encolamiento completado: ${jobsEnqueued} jobs encolados, ${jobsFailed} fallidos`);
+    logger.info(`[A/B Test] Los workers procesarán las llamadas asíncronamente`);
 }
 
 async function listTests(userId = null) {
@@ -589,6 +561,38 @@ async function stopTest(id) {
     });
 }
 
+async function pauseTest(id) {
+    return await prisma.abTest.update({
+        where: { id },
+        data: {
+            status: "PAUSED"
+        }
+    });
+}
+
+async function resumeTest(id) {
+    const test = await prisma.abTest.update({
+        where: { id },
+        data: {
+            status: "RUNNING"
+        },
+        include: {
+            variants: {
+                include: {
+                    contacts: true
+                }
+            }
+        }
+    });
+
+    // Re-encolar jobs pendientes si los hay
+    triggerTestCalls(test).catch(err => {
+        logger.error(`Error re-encolando llamadas del test ${id}:`, err);
+    });
+
+    return test;
+}
+
 module.exports = {
     createTest,
     getTestProgress,
@@ -605,5 +609,7 @@ module.exports = {
     eliminateCandidateById,
     getCandidatesWithDetails,
     getCandidatesWithSnapshot,
-    stopTest
+    stopTest,
+    pauseTest,
+    resumeTest
 };

@@ -1,6 +1,10 @@
 const abTestsService = require("../services/abTestsService");
 const abTestsServiceExtended = require("../services/abTestsServiceExtended");
 const logger = require("../config/logger");
+const { getSDRQueueStats } = require("../queues/sdrCallQueue");
+const { getQualificationQueueStats } = require("../queues/qualificationCallQueue");
+const { sdrCallQueue } = require("../queues/sdrCallQueue");
+const { qualificationCallQueue } = require("../queues/qualificationCallQueue");
 
 exports.create = async (req, res) => {
     try {
@@ -160,6 +164,75 @@ exports.clearCandidates = async (req, res) => {
         res.json({ success: true, message: "All candidates cleared" });
     } catch (error) {
         logger.error("Error clearing candidates:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Queue monitoring endpoints
+exports.getQueueStats = async (req, res) => {
+    try {
+        const sdrStats = await getSDRQueueStats();
+        const qualificationStats = await getQualificationQueueStats();
+        
+        res.json({
+            success: true,
+            data: {
+                sdr: sdrStats,
+                qualification: qualificationStats,
+                totalPending: sdrStats.waiting + qualificationStats.waiting,
+                totalActive: sdrStats.active + qualificationStats.active,
+                totalCompleted: sdrStats.completed + qualificationStats.completed,
+                totalFailed: sdrStats.failed + qualificationStats.failed
+            }
+        });
+    } catch (error) {
+        logger.error("Error getting queue stats:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.pauseTest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Pausar las colas temporalmente
+        await sdrCallQueue.pause();
+        await qualificationCallQueue.pause();
+        
+        // Actualizar estado del test a PAUSED
+        const test = await abTestsService.pauseTest(id);
+        
+        logger.info(`[A/B Test] Test ${id} pausado`);
+        res.json({ 
+            success: true, 
+            data: test,
+            message: "Test pausado. Las llamadas en progreso terminarán, pero no se procesarán nuevas." 
+        });
+    } catch (error) {
+        logger.error(`Error pausing test ${req.params.id}:`, error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.resumeTest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Reanudar las colas
+        await sdrCallQueue.resume();
+        await qualificationCallQueue.resume();
+        
+        // Actualizar estado del test a RUNNING
+        const test = await abTestsService.resumeTest(id);
+        
+        logger.info(`[A/B Test] Test ${id} reanudado`);
+        res.json({ 
+            success: true, 
+            data: test,
+            message: "Test reanudado. Los workers continuarán procesando las llamadas pendientes." 
+        });
+    } catch (error) {
+        logger.error(`Error resuming test ${req.params.id}:`, error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
