@@ -98,22 +98,30 @@ async function executeSDRCall(jobData) {
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
 
+    // Preparar payload en el formato que espera el agente SDR
+    const payload = {
+      establishment_id: contactId,
+      establishment_name: establishmentData?.name || "Establecimiento",
+      phone: establishmentData?.phone || "",
+      employee_range: establishmentData?.employeeRange || "0 a 5 personas",
+      address: establishmentData?.address || "",
+      // Contexto A/B Testing
+      ab_test_contact_id: abTestContactId,
+      // Agent config
+      agent_config: {
+        id: agentConfigId,
+        name: establishmentData?.agentConfigName || "Agente SDR",
+      },
+    };
+
     // Ejecutar llamada al agente SDR
     const response = await axios.post(
-      `${SDR_AGENT_URL}/api/call`,
-      {
-        contactId,
-        agentConfigId,
-        establishmentData,
-        metadata: {
-          abTestContactId,
-          source: "ab-testing",
-        },
-      },
+      `${SDR_AGENT_URL}/api/sdr/initiate-call`,
+      payload,
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${SDR_API_KEY}`,
+          "X-API-Key": SDR_API_KEY,
         },
         timeout: 60000, // 60 segundos de timeout
       }

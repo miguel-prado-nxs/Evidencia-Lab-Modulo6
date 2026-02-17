@@ -105,30 +105,27 @@ async function executeQualificationCall(jobData) {
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
 
-    // Preparar payload para el agente
+    // Preparar payload en el formato que espera el agente de Calificación
     const payload = {
-      contactId,
-      agentConfigId,
-      establishmentData,
-      metadata: {
-        abTestContactId,
-        source: "ab-testing",
-      },
+      establishment_id: contactId,
+      business_name: establishmentData?.name || "Establecimiento",
+      phone: establishmentData?.phone || "",
+      prospect_name: decisionMakerData?.name || "Contacto",
+      email: decisionMakerData?.email || null,
+      // Contexto A/B Testing
+      ab_test_contact_id: abTestContactId,
+      // Agent config
+      agent_config_id: agentConfigId,
     };
-
-    // Incluir datos del tomador de decisiones si están disponibles
-    if (decisionMakerData) {
-      payload.decisionMakerData = decisionMakerData;
-    }
 
     // Ejecutar llamada al agente de Calificación
     const response = await axios.post(
-      `${QUALIFICATION_AGENT_URL}/api/call`,
+      `${QUALIFICATION_AGENT_URL}/api/qualification/initiate-call`,
       payload,
       {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${QUALIFICATION_API_KEY}`,
+          "X-API-Key": QUALIFICATION_API_KEY,
         },
         timeout: 90000, // 90 segundos de timeout (llamadas de calificación pueden ser más largas)
       }

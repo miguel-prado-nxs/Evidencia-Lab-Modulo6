@@ -80,7 +80,9 @@ async function testQueues() {
       establishmentData: {
         name: "Restaurante de Prueba",
         phone: "6672398415",
-        address: "Calle Falsa 123",
+        address: "Calle Falsa 123, Culiacán, Sinaloa",
+        employeeRange: "6 a 10 personas",
+        agentConfigName: variant.agentConfigName,
       },
     };
 
@@ -99,11 +101,14 @@ async function testQueues() {
       establishmentData: {
         name: "Restaurante de Prueba 2",
         phone: "6674044517",
-        address: "Avenida Siempre Viva 742",
+        address: "Avenida Siempre Viva 742, Guadalajara, Jalisco",
+        employeeRange: "11 a 50 personas",
+        agentConfigName: variant.agentConfigName,
       },
       decisionMakerData: {
         name: "Juan Pérez",
         position: "Gerente",
+        email: "juan.perez@restaurante.com",
       },
     };
 

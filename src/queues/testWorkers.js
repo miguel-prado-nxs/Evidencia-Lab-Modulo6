@@ -88,9 +88,9 @@ async function testWorkers() {
       establishmentData: {
         name: "Restaurante de Prueba SDR",
         phone: "6672398415",
-        address: "Calle Prueba 123",
-        city: "Ciudad de México",
-        state: "CDMX",
+        address: "Calle Prueba 123, Ciudad de México, CDMX",
+        employeeRange: "6 a 10 personas",
+        agentConfigName: variant.agentConfigName,
       },
     };
 
@@ -102,13 +102,14 @@ async function testWorkers() {
       establishmentData: {
         name: "Restaurante de Prueba Calificación",
         phone: "6674044517",
-        address: "Avenida Prueba 456",
-        city: "Guadalajara",
-        state: "Jalisco",
+        address: "Avenida Prueba 456, Guadalajara, Jalisco",
+        employeeRange: "11 a 50 personas",
+        agentConfigName: variant.agentConfigName,
       },
       decisionMakerData: {
         name: "Juan Pérez",
         position: "Gerente",
+        email: "juan.perez@restaurante.com",
       },
     };
 

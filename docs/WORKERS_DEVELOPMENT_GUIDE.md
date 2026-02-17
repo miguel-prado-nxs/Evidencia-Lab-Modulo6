@@ -15,7 +15,7 @@ Los jobs se procesarán pero fallarán con error 404:
 ```
 [error]: [SDR Worker] Error en llamada SDR
   "error": "Request failed with status code 404"
-  "response": {"message": "Route POST:/api/call not found"}
+  "response": {"message": "Route POST:/api/sdr/initiate-call not found"}
 ```
 
 Este comportamiento es **ESPERADO** y **NO INDICA UN ERROR** en el sistema de colas.
@@ -57,21 +57,35 @@ const app = express();
 
 app.use(express.json());
 
-app.post('/api/call', (req, res) => {
-  console.log('Mock Agent - Llamada recibida:', req.body);
+// Mock SDR Agent
+app.post('/api/sdr/initiate-call', (req, res) => {
+  console.log('[Mock SDR] Llamada recibida:', req.body);
   
   // Simular respuesta exitosa
   res.json({
-    status: 'completed',
-    callId: `mock-call-${Date.now()}`,
-    duration: 180,
-    outcome: 'interested',
+    success: true,
+    call_id: `mock-sdr-call-${Date.now()}`,
+    status: 'initiated',
+    message: 'Llamada SDR simulada exitosamente'
+  });
+});
+
+// Mock Qualification Agent  
+app.post('/api/qualification/initiate-call', (req, res) => {
+  console.log('[Mock Qualification] Llamada recibida:', req.body);
+  
+  // Simular respuesta exitosa
+  res.json({
+    success: true,
+    call_id: `mock-qual-call-${Date.now()}`,
+    status: 'initiated',
+    message: 'Llamada de calificación simulada exitosamente'
   });
 });
 
 const PORT = process.env.MOCK_PORT || 8080;
 app.listen(PORT, () => {
-  console.log(`Mock Agent corriendo en http://localhost:${PORT}`);
+  console.log(`Mock Agents corriendo en http://localhost:${PORT}`);
 });
 ```
 
@@ -256,7 +270,7 @@ redis-cli
 |----------|-------|----------|
 | Jobs no se procesan | Workers no corriendo | `npm run start:workers` |
 | Error "Record not found" | Job sin registro en BD | Usar scripts de prueba actualizados |
-| Error 404 | Agentes no disponibles | Esperado en dev, usar mocks o ignorar |
+| Error 404 en `/api/sdr/initiate-call` o `/api/qualification/initiate-call` | Agentes no disponibles o URLs incorrectas | Verificar URLs en .env, usar mocks locales, o ignorar en dev |
 | Jobs estancados | Timeout muy bajo | Ajustar `lockDuration` en config |
 | Redis desconectado | Redis no activo | `npm run redis:check` y reiniciar Redis |
 

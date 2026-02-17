@@ -68,15 +68,20 @@ El worker realiza una petición HTTP POST al agente correspondiente:
 
 **SDR Agent:**
 ```javascript
-POST {SDR_AGENT_URL}/api/call
-Headers: Authorization: Bearer {SDR_API_KEY}
+POST {SDR_AGENT_URL}/api/sdr/initiate-call
+Headers: 
+  Content-Type: application/json
+  X-API-Key: {SDR_API_KEY}
 Body: {
-  contactId,
-  agentConfigId,
-  establishmentData,
-  metadata: {
-    abTestContactId,
-    source: "ab-testing"
+  establishment_id,
+  establishment_name,
+  phone,
+  employee_range,
+  address,
+  ab_test_contact_id,
+  agent_config: {
+    id,
+    name
   }
 }
 Timeout: 60 segundos
@@ -84,17 +89,18 @@ Timeout: 60 segundos
 
 **Qualification Agent:**
 ```javascript
-POST {QUALIFICATION_AGENT_URL}/api/call
-Headers: Authorization: Bearer {QUALIFICATION_API_KEY}
+POST {QUALIFICATION_AGENT_URL}/api/qualification/initiate-call
+Headers: 
+  Content-Type: application/json
+  X-API-Key: {QUALIFICATION_API_KEY}
 Body: {
-  contactId,
-  agentConfigId,
-  establishmentData,
-  decisionMakerData,
-  metadata: {
-    abTestContactId,
-    source: "ab-testing"
-  }
+  establishment_id,
+  business_name,
+  phone,
+  prospect_name,
+  email,
+  ab_test_contact_id,
+  agent_config_id
 }
 Timeout: 90 segundos
 ```
