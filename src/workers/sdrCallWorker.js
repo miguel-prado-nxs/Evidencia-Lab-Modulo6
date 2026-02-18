@@ -27,15 +27,12 @@ const prisma = new PrismaClient();
 const SDR_AGENT_URL = config.agents.sdr.url;
 const SDR_API_KEY = config.agents.sdr.apiKey;
 
-// Delay entre llamadas para evitar saturación (3 segundos)
+// Delay mínimo entre procesamiento de jobs (3 segundos)
 const CALL_DELAY_MS = 3000;
 
-// Tiempo estimado promedio de duración de llamada SDR (90 segundos)
-// Este delay asegura que el worker no complete el job hasta que la llamada termine
-const ESTIMATED_CALL_DURATION_MS = 90000; // 90 segundos
-
-// Intervalo para polling de estado de llamada
-const CALL_STATUS_POLL_INTERVAL_MS = 10000; // 10 segundos
+// Configuración para polling de estado de llamada
+const CALL_STATUS_POLL_INTERVAL_MS = 5000; // Consultar cada 5 segundos
+const MAX_CALL_WAIT_TIME_MS = 150000; // Máximo 2.5 minutos de espera para SDR
 
 /**
  * Función auxiliar para introducir un delay
@@ -45,23 +42,24 @@ function delay(ms) {
 }
 
 /**
- * Espera a que la llamada termine consultando el estado periódicamente
- * Si el agente no tiene endpoint de status, usa delay estimado
+ * Consulta el estado de una llamada hasta que termine
+ * Hace polling al endpoint de status del agente cada 5 segundos
  */
 async function waitForCallCompletion(establishmentId, callId, abTestContactId) {
-  const maxWaitTime = 150000; // Máximo 2.5 minutos de espera para SDR
   const startTime = Date.now();
+  let pollCount = 0;
 
   logger.info("[SDR Worker] Esperando finalización de llamada", {
     establishmentId,
     callId,
-    maxWaitTime: `${maxWaitTime / 1000}s`,
+    abTestContactId,
+    maxWaitTime: `${MAX_CALL_WAIT_TIME_MS / 1000}s`,
   });
 
-  // Intentar consultar el estado de la llamada cada 10 segundos
-  while (Date.now() - startTime < maxWaitTime) {
+  while (Date.now() - startTime < MAX_CALL_WAIT_TIME_MS) {
+    pollCount++;
+    
     try {
-      // Intentar obtener estado de la llamada del agente
       const statusResponse = await axios.get(
         `${SDR_AGENT_URL}/api/sdr/call-status/${establishmentId}`,
         {
@@ -75,55 +73,74 @@ async function waitForCallCompletion(establishmentId, callId, abTestContactId) {
       );
 
       if (statusResponse.status === 200 && statusResponse.data) {
-        const { status, isActive } = statusResponse.data;
+        const { status, isActive, callSid } = statusResponse.data;
 
-        // Si la llamada ya no está activa, terminó
-        if (!isActive || status === "completed" || status === "failed" || status === "no-answer") {
-          logger.info("[SDR Worker] Llamada finalizada", {
-            establishmentId,
-            callId,
-            status,
-            duration: `${(Date.now() - startTime) / 1000}s`,
-          });
-          return;
-        }
-
-        logger.info("[SDR Worker] Llamada en curso", {
+        logger.info(`[SDR Worker] Poll #${pollCount} - Estado de llamada`, {
           establishmentId,
           status,
-          elapsed: `${(Date.now() - startTime) / 1000}s`,
+          isActive,
+          callSid,
+          elapsed: `${Math.round((Date.now() - startTime) / 1000)}s`,
         });
+
+        // Si la llamada ya no está activa o tiene un estado final, terminó
+        if (
+          !isActive ||
+          status === "completed" ||
+          status === "failed" ||
+          status === "no-answer" ||
+          status === "busy" ||
+          status === "canceled"
+        ) {
+          logger.info("[SDR Worker] ✅ Llamada finalizada", {
+            establishmentId,
+            callId,
+            finalStatus: status,
+            duration: `${Math.round((Date.now() - startTime) / 1000)}s`,
+            polls: pollCount,
+          });
+          return { status, duration: Date.now() - startTime };
+        }
+      } else if (statusResponse.status === 404) {
+        // Si no existe registro (ya fue limpiado), asumir que terminó
+        logger.info("[SDR Worker] ✅ Llamada no encontrada (ya finalizada)", {
+          establishmentId,
+          duration: `${Math.round((Date.now() - startTime) / 1000)}s`,
+        });
+        return { status: "completed", duration: Date.now() - startTime };
       }
     } catch (error) {
-      // Si el endpoint no existe (404), usar delay estimado
-      if (error.response?.status === 404 || error.code === "ECONNREFUSED") {
+      // Error de conexión o timeout
+      if (error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT") {
         logger.warn(
-          "[SDR Worker] Endpoint de status no disponible, usando delay estimado",
+          `[SDR Worker] Poll #${pollCount} - Error de conexión al agente`,
           {
-            establishmentId,
-            estimatedDuration: `${ESTIMATED_CALL_DURATION_MS / 1000}s`,
+            error: error.message,
+            elapsed: `${Math.round((Date.now() - startTime) / 1000)}s`,
           }
         );
-        await delay(ESTIMATED_CALL_DURATION_MS);
-        return;
+        // Continuar polling, el agente puede estar reiniciándose
+      } else {
+        logger.error(`[SDR Worker] Poll #${pollCount} - Error consultando estado`, {
+          error: error.message,
+          establishmentId,
+        });
       }
-
-      // Otro error, continuar polling
-      logger.error("[SDR Worker] Error consultando estado de llamada", {
-        error: error.message,
-      });
     }
 
     // Esperar intervalo antes de siguiente consulta
     await delay(CALL_STATUS_POLL_INTERVAL_MS);
   }
 
-  // Si llegamos al máximo tiempo de espera
-  logger.warn("[SDR Worker] Tiempo máximo de espera alcanzado", {
+  // Si llegamos al máximo tiempo de espera, asumir que terminó
+  logger.warn("[SDR Worker] ⚠️ Timeout alcanzado, liberando slot", {
     establishmentId,
     callId,
-    duration: `${(Date.now() - startTime) / 1000}s`,
+    duration: `${Math.round((Date.now() - startTime) / 1000)}s`,
+    polls: pollCount,
   });
+  
+  return { status: "timeout", duration: Date.now() - startTime };
 }
 
 /**
@@ -229,32 +246,36 @@ async function executeSDRCall(jobData) {
     const callId = response.data?.callId;
     const establishmentId = contactId;
 
-    logger.info("[SDR Worker] Llamada iniciada, esperando finalización", {
+    logger.info("[SDR Worker] Llamada iniciada, monitoreando estado", {
       abTestContactId,
       callId,
       establishmentId,
     });
 
-    // CRÍTICO: Esperar a que la llamada termine antes de completar el job
-    // Esto asegura que Bull Queue respete el límite de concurrencia
-    await waitForCallCompletion(establishmentId, callId, abTestContactId);
+    // CRÍTICO: Esperar a que la llamada termine consultando su estado real
+    // Esto asegura que Bull Queue respete el límite de concurrencia de llamadas FÍSICAS
+    const callResult = await waitForCallCompletion(establishmentId, callId, abTestContactId);
 
     // Procesar respuesta exitosa después de que la llamada terminó
     const result = {
       success: true,
-      status: "completed",
+      status: callResult.status,
       callId: callId,
+      duration: Math.round(callResult.duration / 1000), // En segundos
+      outcome: response.data?.outcome,
       timestamp: new Date().toISOString(),
     };
 
     await updateContactStatus(abTestContactId, "COMPLETED", result);
 
-    logger.info("[SDR Worker] Llamada completada exitosamente", {
+    logger.info("[SDR Worker] ✅ Llamada completada, slot liberado", {
       abTestContactId,
       callId,
+      status: callResult.status,
+      duration: `${result.duration}s`,
     });
 
-    // Delay antes de procesar siguiente llamada
+    // Delay adicional antes de procesar siguiente llamada
     await delay(CALL_DELAY_MS);
 
     return result;
