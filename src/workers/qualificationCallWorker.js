@@ -116,9 +116,13 @@ async function executeQualificationCall(jobData) {
       ab_test_contact_id: abTestContactId,
     };
 
-    // Incluir agent_config_id solo si el agentConfigId no es de prueba
+    // Incluir agent_config solo si el agentConfigId no es de prueba
+    // Usar el mismo formato que SDR para consistencia
     if (agentConfigId && !agentConfigId.startsWith('test-')) {
-      payload.agent_config_id = agentConfigId;
+      payload.agent_config = {
+        id: agentConfigId,
+        name: establishmentData?.agentConfigName || "Agente de Calificación",
+      };
     }
 
     // Ejecutar llamada al agente de Calificación
