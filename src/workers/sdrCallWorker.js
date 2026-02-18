@@ -98,11 +98,18 @@ async function executeSDRCall(jobData) {
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
 
+    // Formatear número de teléfono a formato internacional E.164
+    let formattedPhone = establishmentData?.phone || "";
+    if (formattedPhone && !formattedPhone.startsWith('+')) {
+      // Agregar código de país para México si no tiene
+      formattedPhone = `+52${formattedPhone}`;
+    }
+
     // Preparar payload en el formato que espera el agente SDR
     const payload = {
       establishment_id: contactId,
       establishment_name: establishmentData?.name || "Establecimiento",
-      phone: establishmentData?.phone || "",
+      phone: formattedPhone,
       employee_range: establishmentData?.employeeRange || "0 a 5 personas",
       address: establishmentData?.address || "",
       // Contexto A/B Testing

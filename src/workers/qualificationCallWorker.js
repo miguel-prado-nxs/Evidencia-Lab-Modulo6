@@ -105,11 +105,18 @@ async function executeQualificationCall(jobData) {
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
 
+    // Formatear número de teléfono a formato internacional E.164
+    let formattedPhone = establishmentData?.phone || "";
+    if (formattedPhone && !formattedPhone.startsWith('+')) {
+      // Agregar código de país para México si no tiene
+      formattedPhone = `+52${formattedPhone}`;
+    }
+
     // Preparar payload en el formato que espera el agente de Calificación
     const payload = {
       establishment_id: contactId,
       business_name: establishmentData?.name || "Establecimiento",
-      phone: establishmentData?.phone || "",
+      phone: formattedPhone,
       prospect_name: decisionMakerData?.name || "Contacto",
       email: decisionMakerData?.email || null,
       // Contexto A/B Testing
