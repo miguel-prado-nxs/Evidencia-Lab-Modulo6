@@ -38,7 +38,12 @@ async function handleCallResult(req, res, next) {
             userId,  // ID del usuario que inició la llamada (para asignación de prospecto)
             agentConfigId,  // ID de la configuración del agente usada (Agent Builder)
             twilioCallSid,  // SID de la llamada Twilio para trazabilidad
+            abTestContactId,  // ID del contacto en A/B Testing (si aplica)
+            ab_test_contact_id,  // Soportar snake_case también
         } = req.body;
+        
+        // Normalizar abTestContactId (soportar ambos formatos)
+        const testContactId = abTestContactId || ab_test_contact_id;
 
         // Validación básica.
         if (!establishmentId) {
@@ -317,6 +322,36 @@ async function handleCallResult(req, res, next) {
             status: callStatus,
             enrichmentStatus: enrichmentStatus,
         });
+
+        // ==================== ACTUALIZAR A/B TEST CONTACT (si aplica) ====================
+        if (testContactId) {
+            try {
+                const callResult = {
+                    success: true,
+                    status: callStatus,
+                    twilioCallSid,
+                    callSummary,
+                    callDurationSeconds,
+                    enrichmentStatus,
+                    decisionMakerIdentified: !!decisionMaker.name,
+                    completedAt: new Date().toISOString(),
+                };
+
+                await prisma.abTestContact.update({
+                    where: { id: testContactId },
+                    data: {
+                        status: "COMPLETED",
+                        result: JSON.stringify(callResult),
+                        completedAt: new Date(),
+                    },
+                });
+
+                logger.info(`[SDR] ✅ A/B Test Contact actualizado: ${testContactId} → COMPLETED`);
+            } catch (abTestError) {
+                logger.error(`[SDR] ❌ Error actualizando abTestContact ${testContactId}:`, abTestError.message);
+                // No fallar todo el flujo si hay error actualizando A/B test
+            }
+        }
 
         return res.status(201).json({
             success: true,

@@ -30,11 +30,100 @@ const SDR_API_KEY = config.agents.sdr.apiKey;
 // Delay entre llamadas para evitar saturación (3 segundos)
 const CALL_DELAY_MS = 3000;
 
+// Tiempo estimado promedio de duración de llamada SDR (90 segundos)
+// Este delay asegura que el worker no complete el job hasta que la llamada termine
+const ESTIMATED_CALL_DURATION_MS = 90000; // 90 segundos
+
+// Intervalo para polling de estado de llamada
+const CALL_STATUS_POLL_INTERVAL_MS = 10000; // 10 segundos
+
 /**
  * Función auxiliar para introducir un delay
  */
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Espera a que la llamada termine consultando el estado periódicamente
+ * Si el agente no tiene endpoint de status, usa delay estimado
+ */
+async function waitForCallCompletion(establishmentId, callId, abTestContactId) {
+  const maxWaitTime = 150000; // Máximo 2.5 minutos de espera para SDR
+  const startTime = Date.now();
+
+  logger.info("[SDR Worker] Esperando finalización de llamada", {
+    establishmentId,
+    callId,
+    maxWaitTime: `${maxWaitTime / 1000}s`,
+  });
+
+  // Intentar consultar el estado de la llamada cada 10 segundos
+  while (Date.now() - startTime < maxWaitTime) {
+    try {
+      // Intentar obtener estado de la llamada del agente
+      const statusResponse = await axios.get(
+        `${SDR_AGENT_URL}/api/sdr/call-status/${establishmentId}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": SDR_API_KEY,
+          },
+          timeout: 5000,
+          validateStatus: (status) => status < 500, // No lanzar error en 404
+        }
+      );
+
+      if (statusResponse.status === 200 && statusResponse.data) {
+        const { status, isActive } = statusResponse.data;
+
+        // Si la llamada ya no está activa, terminó
+        if (!isActive || status === "completed" || status === "failed" || status === "no-answer") {
+          logger.info("[SDR Worker] Llamada finalizada", {
+            establishmentId,
+            callId,
+            status,
+            duration: `${(Date.now() - startTime) / 1000}s`,
+          });
+          return;
+        }
+
+        logger.info("[SDR Worker] Llamada en curso", {
+          establishmentId,
+          status,
+          elapsed: `${(Date.now() - startTime) / 1000}s`,
+        });
+      }
+    } catch (error) {
+      // Si el endpoint no existe (404), usar delay estimado
+      if (error.response?.status === 404 || error.code === "ECONNREFUSED") {
+        logger.warn(
+          "[SDR Worker] Endpoint de status no disponible, usando delay estimado",
+          {
+            establishmentId,
+            estimatedDuration: `${ESTIMATED_CALL_DURATION_MS / 1000}s`,
+          }
+        );
+        await delay(ESTIMATED_CALL_DURATION_MS);
+        return;
+      }
+
+      // Otro error, continuar polling
+      logger.error("[SDR Worker] Error consultando estado de llamada", {
+        error: error.message,
+      });
+    }
+
+    // Esperar intervalo antes de siguiente consulta
+    await delay(CALL_STATUS_POLL_INTERVAL_MS);
+  }
+
+  // Si llegamos al máximo tiempo de espera
+  logger.warn("[SDR Worker] Tiempo máximo de espera alcanzado", {
+    establishmentId,
+    callId,
+    duration: `${(Date.now() - startTime) / 1000}s`,
+  });
 }
 
 /**
@@ -137,13 +226,24 @@ async function executeSDRCall(jobData) {
       }
     );
 
-    // Procesar respuesta exitosa
+    const callId = response.data?.callId;
+    const establishmentId = contactId;
+
+    logger.info("[SDR Worker] Llamada iniciada, esperando finalización", {
+      abTestContactId,
+      callId,
+      establishmentId,
+    });
+
+    // CRÍTICO: Esperar a que la llamada termine antes de completar el job
+    // Esto asegura que Bull Queue respete el límite de concurrencia
+    await waitForCallCompletion(establishmentId, callId, abTestContactId);
+
+    // Procesar respuesta exitosa después de que la llamada terminó
     const result = {
       success: true,
-      status: response.data?.status || "completed",
-      callId: response.data?.callId,
-      duration: response.data?.duration,
-      outcome: response.data?.outcome,
+      status: "completed",
+      callId: callId,
       timestamp: new Date().toISOString(),
     };
 
@@ -151,7 +251,7 @@ async function executeSDRCall(jobData) {
 
     logger.info("[SDR Worker] Llamada completada exitosamente", {
       abTestContactId,
-      callId: result.callId,
+      callId,
     });
 
     // Delay antes de procesar siguiente llamada

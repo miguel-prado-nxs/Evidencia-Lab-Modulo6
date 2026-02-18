@@ -31,6 +31,9 @@ async function handleCallResult(req, res, next) {
         const establishmentId = body.establishmentId || body.establishment_id;
         const callLeadId = body.callLeadId || body.call_lead_id;
         const twilioCallSid = body.twilioCallSid || body.twilio_call_sid;
+        
+        // A/B Testing Context
+        const abTestContactId = body.abTestContactId || body.ab_test_contact_id;
 
         // Datos del prospecto
         const fullName = body.fullName || body.full_name;
@@ -416,6 +419,40 @@ async function handleCallResult(req, res, next) {
                 }
             } else {
                 console.log(`[Qualification] ⚠️ No se guardó meeting - demoScheduled: ${demoScheduled}, demoDate: ${demoDate}, userId: ${meetingUserId}`);
+            }
+        }
+
+        // =========================================
+        // 5. ACTUALIZAR A/B TEST CONTACT (si aplica)
+        // =========================================
+        if (abTestContactId) {
+            try {
+                const callResult = {
+                    success: true,
+                    status: callStatus,
+                    twilioCallSid,
+                    callSummary,
+                    callDurationSeconds,
+                    qualificationScore,
+                    intentScore,
+                    qualificationCompleted,
+                    demoScheduled,
+                    completedAt: new Date().toISOString(),
+                };
+
+                await prisma.abTestContact.update({
+                    where: { id: abTestContactId },
+                    data: {
+                        status: "COMPLETED",
+                        result: JSON.stringify(callResult),
+                        completedAt: new Date(),
+                    },
+                });
+
+                logger.info(`[Qualification] ✅ A/B Test Contact actualizado: ${abTestContactId} → COMPLETED`);
+            } catch (abTestError) {
+                logger.error(`[Qualification] ❌ Error actualizando abTestContact ${abTestContactId}:`, abTestError.message);
+                // No fallar todo el flujo si hay error actualizando A/B test
             }
         }
 
