@@ -17,6 +17,12 @@ router.post("/call-result", validateEnrichmentAgent, qualificationController.han
 // Requiere autenticación con X-Enrichment-Agent-Key
 router.patch("/call-result", validateEnrichmentAgent, qualificationController.handleCallResult);
 
+// POST /api/v1/qualification/call-record - Alias para call-result (compatibilidad con CallRecordService)
+router.post("/call-record", validateEnrichmentAgent, qualificationController.handleCallResult);
+
+// PUT /api/v1/qualification/call-record/:id - Actualiza registro existente por ID
+router.put("/call-record/:id", validateEnrichmentAgent, qualificationController.updateCallRecord);
+
 // GET /api/v1/qualification/stats - Estadísticas de calificación (requiere API Key)
 router.get("/stats", authenticateApiKey, qualificationController.getStats);
 

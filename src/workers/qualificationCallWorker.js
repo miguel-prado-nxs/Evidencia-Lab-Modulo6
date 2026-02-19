@@ -31,9 +31,9 @@ const QUALIFICATION_API_KEY = config.agents.qualification.apiKey;
 // Delay mínimo entre procesamiento de jobs (3 segundos)
 const CALL_DELAY_MS = 3000;
 
-// Configuración para polling de estado de llamada
-const CALL_STATUS_POLL_INTERVAL_MS = 5000; // Consultar cada 5 segundos
-const MAX_CALL_WAIT_TIME_MS = 180000; // Máximo 3 minutos de espera
+// Configuración de polling para monitoreo de estado de llamada
+const CALL_STATUS_POLLING_INTERVAL_MS = 5000; // 5 segundos entre consultas
+const CALL_STATUS_MAX_WAIT_TIME_MS = 180000; // 3 minutos máximo de espera
 
 /**
  * Función auxiliar para introducir un delay
@@ -43,105 +43,75 @@ function delay(ms) {
 }
 
 /**
- * Consulta el estado de una llamada hasta que termine
- * Hace polling al endpoint de status del agente cada 5 segundos
+ * Monitorea el estado de una llamada consultando establishment_enrichments.call_status
+ * Espera hasta que la llamada finalice (call_status != 'in_progress', 'calling', 'ringing')
+ * 
+ * @param {string} establishmentId - ID del establecimiento
+ * @param {string} abTestContactId - ID del contacto en A/B test
+ * @returns {Promise<{duration: number, finalStatus: string}>}
  */
-async function waitForCallCompletion(establishmentId, callId, abTestContactId) {
+async function waitForCallCompletion(establishmentId, abTestContactId) {
   const startTime = Date.now();
-  let pollCount = 0;
+  const maxEndTime = startTime + CALL_STATUS_MAX_WAIT_TIME_MS;
+  const activeStatuses = ['in_progress', 'calling', 'ringing', 'initiated']; // Estados que indican llamada activa
 
   logger.info("[Qualification Worker] Esperando finalización de llamada", {
     establishmentId,
-    callId,
     abTestContactId,
-    maxWaitTime: `${MAX_CALL_WAIT_TIME_MS / 1000}s`,
+    maxWaitTime: `${CALL_STATUS_MAX_WAIT_TIME_MS / 1000}s`,
   });
 
-  while (Date.now() - startTime < MAX_CALL_WAIT_TIME_MS) {
-    pollCount++;
-    
+  while (Date.now() < maxEndTime) {
     try {
-      const statusResponse = await axios.get(
-        `${QUALIFICATION_AGENT_URL}/api/qualification/call-status/${establishmentId}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-Key": QUALIFICATION_API_KEY,
-          },
-          timeout: 5000,
-          validateStatus: (status) => status < 500, // No lanzar error en 404
-        }
-      );
+      // Consultar call_status en establishment_enrichments
+      const enrichment = await prisma.establishmentEnrichment.findUnique({
+        where: { establishmentId },
+        select: { callStatus: true },
+      });
 
-      if (statusResponse.status === 200 && statusResponse.data) {
-        const { status, isActive, callSid } = statusResponse.data;
+      const currentStatus = enrichment?.callStatus;
 
-        logger.info(`[Qualification Worker] Poll #${pollCount} - Estado de llamada`, {
+      // Si no hay status o ya no está en estado activo, la llamada terminó
+      if (!currentStatus || !activeStatuses.includes(currentStatus.toLowerCase())) {
+        const duration = Math.round((Date.now() - startTime) / 1000);
+        
+        logger.info("[Qualification Worker] ✅ Llamada finalizada", {
           establishmentId,
-          status,
-          isActive,
-          callSid,
-          elapsed: `${Math.round((Date.now() - startTime) / 1000)}s`,
+          abTestContactId,
+          finalStatus: currentStatus || 'unknown',
+          duration: `${duration}s`,
         });
 
-        // Si la llamada ya no está activa o tiene un estado final, terminó
-        if (
-          !isActive ||
-          status === "completed" ||
-          status === "failed" ||
-          status === "no-answer" ||
-          status === "busy" ||
-          status === "canceled"
-        ) {
-          logger.info("[Qualification Worker] ✅ Llamada finalizada", {
-            establishmentId,
-            callId,
-            finalStatus: status,
-            duration: `${Math.round((Date.now() - startTime) / 1000)}s`,
-            polls: pollCount,
-          });
-          return { status, duration: Date.now() - startTime };
-        }
-      } else if (statusResponse.status === 404) {
-        // Si no existe registro (ya fue limpiado), asumir que terminó
-        logger.info("[Qualification Worker] ✅ Llamada no encontrada (ya finalizada)", {
-          establishmentId,
-          duration: `${Math.round((Date.now() - startTime) / 1000)}s`,
-        });
-        return { status: "completed", duration: Date.now() - startTime };
+        return { duration, finalStatus: currentStatus || 'completed' };
       }
+
+      // Llamada sigue activa, esperar antes de siguiente consulta
+      logger.debug("[Qualification Worker] Llamada aún activa, esperando...", {
+        establishmentId,
+        currentStatus,
+        elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
+      });
+
+      await delay(CALL_STATUS_POLLING_INTERVAL_MS);
     } catch (error) {
-      // Error de conexión o timeout
-      if (error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT") {
-        logger.warn(
-          `[Qualification Worker] Poll #${pollCount} - Error de conexión al agente`,
-          {
-            error: error.message,
-            elapsed: `${Math.round((Date.now() - startTime) / 1000)}s`,
-          }
-        );
-        // Continuar polling, el agente puede estar reiniciándose
-      } else {
-        logger.error(`[Qualification Worker] Poll #${pollCount} - Error consultando estado`, {
-          error: error.message,
-          establishmentId,
-        });
-      }
+      logger.error("[Qualification Worker] Error consultando call_status", {
+        establishmentId,
+        error: error.message,
+      });
+      // En caso de error, esperar y reintentar
+      await delay(CALL_STATUS_POLLING_INTERVAL_MS);
     }
-
-    // Esperar intervalo antes de siguiente consulta
-    await delay(CALL_STATUS_POLL_INTERVAL_MS);
   }
 
-  // Si llegamos al máximo tiempo de espera, asumir que terminó
-  logger.warn("[Qualification Worker] ⚠️ Timeout alcanzado, liberando slot", {
+  // Timeout alcanzado
+  const duration = Math.round((Date.now() - startTime) / 1000);
+  logger.warn("[Qualification Worker] ⚠️ Timeout alcanzado esperando finalización", {
     establishmentId,
-    callId,
-    duration: `${Math.round((Date.now() - startTime) / 1000)}s`,
-    polls: pollCount,
+    abTestContactId,
+    duration: `${duration}s`,
   });
-  
-  return { status: "timeout", duration: Date.now() - startTime };
+
+  return { duration, finalStatus: 'timeout' };
 }
 
 /**
@@ -252,24 +222,23 @@ async function executeQualificationCall(jobData) {
     );
 
     const callId = response.data?.callId;
-    const establishmentId = contactId;
 
     logger.info("[Qualification Worker] Llamada iniciada, monitoreando estado", {
       abTestContactId,
-      callId,
-      establishmentId,
+      establishmentId: contactId,
     });
 
-    // CRÍTICO: Esperar a que la llamada termine consultando su estado real
-    // Esto asegura que Bull Queue respete el límite de concurrencia de llamadas FÍSICAS
-    const callResult = await waitForCallCompletion(establishmentId, callId, abTestContactId);
+    // CRÍTICO: Esperar a que la llamada realmente finalice consultando call_status en BD
+    // Esto sincroniza Bull Queue con el estado real de las llamadas en los agentes
+    const { duration, finalStatus } = await waitForCallCompletion(contactId, abTestContactId);
 
-    // Procesar respuesta exitosa después de que la llamada terminó
+    // Procesar respuesta exitosa después de finalización real
     const result = {
       success: true,
-      status: callResult.status,
+      status: finalStatus === 'timeout' ? 'completed' : 'completed',
       callId: callId,
-      duration: Math.round(callResult.duration / 1000), // En segundos
+      duration: duration, // Duración real en segundos
+      finalCallStatus: finalStatus,
       outcome: response.data?.outcome,
       qualificationScore: response.data?.qualificationScore,
       timestamp: new Date().toISOString(),
@@ -279,9 +248,8 @@ async function executeQualificationCall(jobData) {
 
     logger.info("[Qualification Worker] ✅ Llamada completada, slot liberado", {
       abTestContactId,
-      callId,
-      status: callResult.status,
-      duration: `${result.duration}s`,
+      status: finalStatus,
+      duration: `${duration}s`,
     });
 
     // Delay adicional antes de procesar siguiente llamada
