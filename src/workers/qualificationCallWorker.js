@@ -75,7 +75,7 @@ async function waitForCallCompletion(establishmentId, abTestContactId) {
       if (!currentStatus || !activeStatuses.includes(currentStatus.toLowerCase())) {
         const duration = Math.round((Date.now() - startTime) / 1000);
         
-        logger.info("[Qualification Worker] ✅ Llamada finalizada", {
+        logger.info("[Qualification Worker] Llamada finalizada", {
           establishmentId,
           abTestContactId,
           finalStatus: currentStatus || 'unknown',
@@ -105,7 +105,7 @@ async function waitForCallCompletion(establishmentId, abTestContactId) {
 
   // Timeout alcanzado
   const duration = Math.round((Date.now() - startTime) / 1000);
-  logger.warn("[Qualification Worker] ⚠️ Timeout alcanzado esperando finalización", {
+  logger.warn("[Qualification Worker] Timeout alcanzado esperando finalización", {
     establishmentId,
     abTestContactId,
     duration: `${duration}s`,
@@ -246,7 +246,7 @@ async function executeQualificationCall(jobData) {
 
     await updateContactStatus(abTestContactId, "COMPLETED", result);
 
-    logger.info("[Qualification Worker] ✅ Llamada completada, slot liberado", {
+    logger.info("[Qualification Worker] Llamada completada, slot liberado", {
       abTestContactId,
       status: finalStatus,
       duration: `${duration}s`,

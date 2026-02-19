@@ -15,6 +15,11 @@ router.post('/update-result', abTestsController.updateResult);
 // Queue monitoring
 router.get('/queue-stats', abTestsController.getQueueStats);
 
+// Real-time monitoring via Server-Sent Events (SSE)
+router.get('/queues/monitor-stream', abTestsController.streamGlobalQueueMonitoring);
+router.get('/monitoring/connections', abTestsController.getActiveMonitoringConnections);
+router.get('/:id/monitor-stream', abTestsController.streamTestMonitoring);
+
 // Extended metrics endpoints
 router.get('/:id/metrics', abTestsController.getMetrics);
 router.get('/:id/winner', abTestsController.getWinner);

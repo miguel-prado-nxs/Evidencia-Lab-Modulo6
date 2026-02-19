@@ -1,5 +1,6 @@
 const abTestsService = require("../services/abTestsService");
 const abTestsServiceExtended = require("../services/abTestsServiceExtended");
+const abTestMonitoringService = require("../services/abTestMonitoringService");
 const logger = require("../config/logger");
 const { getSDRQueueStats } = require("../queues/sdrCallQueue");
 const { getQualificationQueueStats } = require("../queues/qualificationCallQueue");
@@ -469,6 +470,101 @@ exports.getCandidatesWithSnapshot = async (req, res) => {
         res.json({ success: true, data: candidates });
     } catch (error) {
         logger.error("Error getting candidates with snapshot:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+/**
+ * GET /api/v1/ab-tests/:id/monitor-stream
+ * Stream de monitoreo en tiempo real usando Server-Sent Events (SSE)
+ * 
+ * Transmite progreso del test y estadísticas de colas cada 2 segundos.
+ * La conexión se cierra automáticamente cuando el test completa o el cliente se desconecta.
+ * 
+ * Tipos de eventos:
+ * - 'connected': Confirmación de conexión inicial
+ * - 'update': Actualizaciones periódicas con estadísticas de colas y progreso del test
+ * - 'complete': Ejecución del test finalizada
+ * - 'error': Ocurrió un error durante el streaming
+ * 
+ * Formato de respuesta: text/event-stream
+ */
+exports.streamTestMonitoring = async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Validar que el test existe antes de iniciar el stream
+        const prisma = require("../config/database");
+        const test = await prisma.abTest.findUnique({
+            where: { id },
+            select: { id: true, name: true, status: true }
+        });
+
+        if (!test) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Test no encontrado' 
+            });
+        }
+
+        logger.info(`[SSE] Starting monitoring stream for test ${id} (${test.name})`);
+        
+        // Iniciar stream SSE (maneja la respuesta internamente)
+        abTestMonitoringService.startTestMonitoringStream(req, res, id);
+        
+    } catch (error) {
+        logger.error(`Error starting monitoring stream for test ${req.params.id}:`, error);
+        
+        // Solo enviar respuesta de error si los headers no se han enviado aún
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+};
+
+/**
+ * GET /api/v1/ab-tests/queues/monitor-stream
+ * Stream de monitoreo global de colas usando Server-Sent Events (SSE)
+ * 
+ * Transmite estadísticas de colas para todos los tests cada 2 segundos.
+ * Útil para monitorear la carga general del sistema y salud de las colas.
+ * 
+ * Tipos de eventos:
+ * - 'connected': Confirmación de conexión inicial
+ * - 'update': Actualizaciones periódicas de estadísticas de colas
+ * - 'error': Ocurrió un error durante el streaming
+ * 
+ * Formato de respuesta: text/event-stream
+ */
+exports.streamGlobalQueueMonitoring = async (req, res) => {
+    try {
+        logger.info('[SSE] Starting global queue monitoring stream');
+        
+        // Iniciar stream SSE para monitoreo global de colas
+        abTestMonitoringService.startGlobalQueueMonitoringStream(req, res);
+        
+    } catch (error) {
+        logger.error('Error starting global queue monitoring stream:', error);
+        
+        // Solo enviar respuesta de error si los headers no se han enviado aún
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    }
+};
+
+/**
+ * GET /api/v1/ab-tests/monitoring/connections
+ * Obtiene información sobre las conexiones SSE de monitoreo activas
+ * 
+ * Útil para depuración y monitoreo de capacidad.
+ */
+exports.getActiveMonitoringConnections = async (req, res) => {
+    try {
+        const info = abTestMonitoringService.getActiveConnectionsInfo();
+        res.json({ success: true, data: info });
+    } catch (error) {
+        logger.error('Error getting active connections info:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };

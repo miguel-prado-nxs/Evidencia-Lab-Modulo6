@@ -424,13 +424,13 @@ async function handleCallResult(req, res, next) {
                             ...meetingData,
                         },
                     });
-                    logger.info(`[Qualification] ✅ Demo guardada en establishment_meetings para ${establishmentId}: ${demoDate}`);
+                    logger.info(`[Qualification] Demo guardada en establishment_meetings para ${establishmentId}: ${demoDate}`);
                 } catch (meetingError) {
-                    logger.error(`[Qualification] ❌ Error guardando meeting:`, meetingError.message);
+                    logger.error(`[Qualification] Error guardando meeting:`, meetingError.message);
                     console.error(meetingError);
                 }
             } else {
-                console.log(`[Qualification] ⚠️ No se guardó meeting - demoScheduled: ${demoScheduled}, demoDate: ${demoDate}, userId: ${meetingUserId}`);
+                console.log(`[Qualification] No se guardó meeting - demoScheduled: ${demoScheduled}, demoDate: ${demoDate}, userId: ${meetingUserId}`);
             }
         }
 
@@ -461,9 +461,9 @@ async function handleCallResult(req, res, next) {
                     },
                 });
 
-                logger.info(`[Qualification] ✅ A/B Test Contact actualizado: ${abTestContactId} → COMPLETED`);
+                logger.info(`[Qualification] A/B Test Contact actualizado: ${abTestContactId} → COMPLETED`);
             } catch (abTestError) {
-                logger.error(`[Qualification] ❌ Error actualizando abTestContact ${abTestContactId}:`, abTestError.message);
+                logger.error(`[Qualification] Error actualizando abTestContact ${abTestContactId}:`, abTestError.message);
                 // No fallar todo el flujo si hay error actualizando A/B test
             }
         }

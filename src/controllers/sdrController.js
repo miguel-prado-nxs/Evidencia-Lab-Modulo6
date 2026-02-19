@@ -346,9 +346,9 @@ async function handleCallResult(req, res, next) {
                     },
                 });
 
-                logger.info(`[SDR] ✅ A/B Test Contact actualizado: ${testContactId} → COMPLETED`);
+                logger.info(`[SDR] A/B Test Contact actualizado: ${testContactId} → COMPLETED`);
             } catch (abTestError) {
-                logger.error(`[SDR] ❌ Error actualizando abTestContact ${testContactId}:`, abTestError.message);
+                logger.error(`[SDR] Error actualizando abTestContact ${testContactId}:`, abTestError.message);
                 // No fallar todo el flujo si hay error actualizando A/B test
             }
         }

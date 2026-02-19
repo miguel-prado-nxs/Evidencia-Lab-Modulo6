@@ -74,7 +74,7 @@ async function waitForCallCompletion(establishmentId, abTestContactId) {
       if (!currentStatus || !activeStatuses.includes(currentStatus.toLowerCase())) {
         const duration = Math.round((Date.now() - startTime) / 1000);
         
-        logger.info("[SDR Worker] ✅ Llamada finalizada", {
+        logger.info("[SDR Worker] Llamada finalizada", {
           establishmentId,
           abTestContactId,
           finalStatus: currentStatus || 'unknown',
@@ -104,7 +104,7 @@ async function waitForCallCompletion(establishmentId, abTestContactId) {
 
   // Timeout alcanzado
   const duration = Math.round((Date.now() - startTime) / 1000);
-  logger.warn("[SDR Worker] ⚠️ Timeout alcanzado esperando finalización", {
+  logger.warn("[SDR Worker] Timeout alcanzado esperando finalización", {
     establishmentId,
     abTestContactId,
     duration: `${duration}s`,
@@ -237,7 +237,7 @@ async function executeSDRCall(jobData) {
 
     await updateContactStatus(abTestContactId, "COMPLETED", result);
 
-    logger.info("[SDR Worker] ✅ Llamada completada, slot liberado", {
+    logger.info("[SDR Worker] Llamada completada, slot liberado", {
       abTestContactId,
       status: finalStatus,
       duration: `${duration}s`,
