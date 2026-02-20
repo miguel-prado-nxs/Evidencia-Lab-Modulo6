@@ -176,9 +176,37 @@ async function executeSDRCall(jobData) {
 
     // Formatear número de teléfono a formato internacional E.164
     let formattedPhone = establishmentData?.phone || "";
-    if (formattedPhone && !formattedPhone.startsWith('+')) {
-      // Agregar código de país para México si no tiene
-      formattedPhone = `+52${formattedPhone}`;
+    
+    // Limpiar número: remover espacios, guiones, paréntesis, puntos
+    formattedPhone = formattedPhone.replace(/[\s\-\(\)\.]/g, '');
+    
+    // Si ya tiene +52, validar que tenga 12 dígitos en total (+52 + 10 dígitos)
+    if (formattedPhone.startsWith('+52')) {
+      // Ya tiene código de país
+      if (formattedPhone.length !== 13) {
+        logger.warn("[SDR Worker] Número con +52 pero longitud incorrecta", {
+          original: establishmentData?.phone,
+          cleaned: formattedPhone,
+          length: formattedPhone.length
+        });
+      }
+    } else if (formattedPhone.startsWith('52') && formattedPhone.length === 12) {
+      // Tiene 52 al inicio pero sin +, agregarlo
+      formattedPhone = `+${formattedPhone}`;
+    } else {
+      // No tiene código de país, agregar +52
+      // Validar que sea número de 10 dígitos
+      if (formattedPhone.length === 10 && /^\d{10}$/.test(formattedPhone)) {
+        formattedPhone = `+52${formattedPhone}`;
+      } else {
+        logger.warn("[SDR Worker] Número con formato inesperado", {
+          original: establishmentData?.phone,
+          cleaned: formattedPhone,
+          length: formattedPhone.length
+        });
+        // Intentar agregarlo de todos modos
+        formattedPhone = `+52${formattedPhone}`;
+      }
     }
 
     // Preparar payload en el formato que espera el agente SDR

@@ -5,18 +5,26 @@
  * 
  * Uso:
  *   node test-sse-monitoring.js [test-id]
+ *   API_BASE_URL=http://localhost:3004 node test-sse-monitoring.js [test-id]
  * 
  * Si se proporciona test-id, monitorea ese test específico.
  * De lo contrario, monitorea las estadísticas globales de colas.
  * 
  * Requisitos:
- *   - Servidor API corriendo (default: http://localhost:3001)
+ *   - Servidor API corriendo (default: http://localhost:3004)
  *   - Test A/B activo (para monitoreo específico de test)
  */
 
+// Cargar variables de entorno desde .env si existe dotenv
+try {
+  require('dotenv').config();
+} catch (error) {
+  // dotenv no está instalado, continuar sin él
+}
+
 const http = require('http');
 
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3004';
 const testId = process.argv[2];
 
 // Colores para salida de consola
@@ -41,7 +49,7 @@ function formatBytes(bytes) {
 
 function testSSE(endpoint, testName) {
   log('blue', 'INFO', `Iniciando prueba SSE: ${testName}`);
-  log('cyan', 'INFO', `Endpoint: ${endpoint}`);
+  log('cyan', 'INFO', `Endpoint: ${API_BASE_URL}${endpoint}`);
   
   const url = new URL(endpoint, API_BASE_URL);
   let totalBytesReceived = 0;
@@ -50,7 +58,7 @@ function testSSE(endpoint, testName) {
   
   const req = http.request({
     hostname: url.hostname,
-    port: url.port || 3001,
+    port: url.port || 3004,
     path: url.pathname,
     method: 'GET',
     headers: {

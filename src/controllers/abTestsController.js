@@ -39,7 +39,10 @@ exports.getAll = async (req, res) => {
 exports.getProgress = async (req, res) => {
     try {
         const { id } = req.params;
-        const progress = await abTestsService.getTestProgress(id);
+        const progress = await abTestMonitoringService.getTestProgressDetails(id);
+        if (!progress) {
+            return res.status(404).json({ success: false, error: 'Test not found' });
+        }
         res.json({ success: true, data: progress });
     } catch (error) {
         logger.error(`Error getting progress for test ${req.params.id}:`, error);

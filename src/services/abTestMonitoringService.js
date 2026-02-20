@@ -208,8 +208,13 @@ function startTestMonitoringStream(req, res, testId) {
             res.write(formatSSEMessage('update', updateData));
 
             // Verificar si el test está completado
-            if (testProgress.status === 'COMPLETED' || testProgress.overall.totalPending === 0) {
-                logger.info(`[SSE Monitoring] Test ${testId} monitoring complete`);
+            // Un test está completo cuando:
+            // 1. Su estado está marcado como COMPLETED en BD, O
+            // 2. Todos los contactos han sido procesados (completed + failed = total)
+            const allContactsProcessed = testProgress.overall.totalProcessed === testProgress.overall.totalContacts;
+            
+            if (testProgress.status === 'COMPLETED' || allContactsProcessed) {
+                logger.info(`[SSE Monitoring] Test ${testId} monitoring complete - Status: ${testProgress.status}, Processed: ${testProgress.overall.totalProcessed}/${testProgress.overall.totalContacts}`);
                 res.write(formatSSEMessage('complete', { 
                     testId,
                     finalProgress: testProgress 

@@ -17,8 +17,8 @@
     "db:seed": "node prisma/seed.js",
     "seed:emails": "node prisma/seed-email-templates.js",
     "redis:check": "node scripts/checkRedis.js",
-    "test:enqueue": "node src/queues/testEnqueue.js",
-    "test:workers": "node src/queues/testWorkers.js"
+    "test:integration": "node tests/integration/queue-system.test.js",
+    "test:integration:watch": "nodemon tests/integration/queue-system.test.js"
   },
   "keywords": [
     "partners",
