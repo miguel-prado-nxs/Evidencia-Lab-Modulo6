@@ -31,8 +31,8 @@ const SDR_API_KEY = config.agents.sdr.apiKey;
 const CALL_DELAY_MS = 3000;
 
 // Configuración de polling para monitoreo de estado de llamada
-const CALL_STATUS_POLLING_INTERVAL_MS = 5000; // 5 segundos entre consultas
-const CALL_STATUS_MAX_WAIT_TIME_MS = 150000; // 2.5 minutos máximo de espera (SDR más cortas)
+const CALL_STATUS_POLLING_INTERVAL_MS = 3000; // 3 segundos entre consultas
+const CALL_STATUS_MAX_WAIT_TIME_MS = 300000; // 5 minutos máximo de espera (llamadas SDR son más cortas que calificación)
 
 /**
  * Función auxiliar para introducir un delay
@@ -252,10 +252,11 @@ async function executeSDRCall(jobData) {
     // Esto sincroniza Bull Queue con el estado real de las llamadas en los agentes
     const { duration, finalStatus } = await waitForCallCompletion(contactId, abTestContactId);
 
-    // Procesar respuesta exitosa después de finalización real
+    // Procesar resultado según si finalizó realmente o hizo timeout
+    const isTimeout = finalStatus === 'timeout';
     const result = {
-      success: true,
-      status: finalStatus === 'timeout' ? 'completed' : 'completed',
+      success: !isTimeout,
+      status: isTimeout ? 'timeout' : 'completed',
       callId: callId,
       duration: duration, // Duración real en segundos
       finalCallStatus: finalStatus,
@@ -263,11 +264,15 @@ async function executeSDRCall(jobData) {
       timestamp: new Date().toISOString(),
     };
 
-    await updateContactStatus(abTestContactId, "COMPLETED", result);
+    // En timeout: marcar FAILED (el webhook de handleCallResult/sdrController actualizará
+    // a COMPLETED cuando el agente realmente termine, actuando como safety net)
+    const contactStatus = isTimeout ? "FAILED" : "COMPLETED";
+    await updateContactStatus(abTestContactId, contactStatus, result);
 
-    logger.info("[SDR Worker] Llamada completada, slot liberado", {
+    logger.info(`[SDR Worker] Llamada ${isTimeout ? 'timeout (webhook completará)' : 'completada'}, slot liberado`, {
       abTestContactId,
       status: finalStatus,
+      contactStatus,
       duration: `${duration}s`,
     });
 

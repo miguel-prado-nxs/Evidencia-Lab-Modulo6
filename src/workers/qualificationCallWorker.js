@@ -32,8 +32,8 @@ const QUALIFICATION_API_KEY = config.agents.qualification.apiKey;
 const CALL_DELAY_MS = 3000;
 
 // Configuración de polling para monitoreo de estado de llamada
-const CALL_STATUS_POLLING_INTERVAL_MS = 5000; // 5 segundos entre consultas
-const CALL_STATUS_MAX_WAIT_TIME_MS = 180000; // 3 minutos máximo de espera
+const CALL_STATUS_POLLING_INTERVAL_MS = 3000; // 3 segundos entre consultas
+const CALL_STATUS_MAX_WAIT_TIME_MS = 600000; // 10 minutos máximo de espera (llamadas de calificación pueden durar 4-6 min)
 
 /**
  * Función auxiliar para introducir un delay
@@ -260,10 +260,11 @@ async function executeQualificationCall(jobData) {
     // Esto sincroniza Bull Queue con el estado real de las llamadas en los agentes
     const { duration, finalStatus } = await waitForCallCompletion(contactId, abTestContactId);
 
-    // Procesar respuesta exitosa después de finalización real
+    // Procesar resultado según si finalizó realmente o hizo timeout
+    const isTimeout = finalStatus === 'timeout';
     const result = {
-      success: true,
-      status: finalStatus === 'timeout' ? 'completed' : 'completed',
+      success: !isTimeout,
+      status: isTimeout ? 'timeout' : 'completed',
       callId: callId,
       duration: duration, // Duración real en segundos
       finalCallStatus: finalStatus,
@@ -272,11 +273,15 @@ async function executeQualificationCall(jobData) {
       timestamp: new Date().toISOString(),
     };
 
-    await updateContactStatus(abTestContactId, "COMPLETED", result);
+    // En timeout: marcar FAILED (el webhook de handleCallResult actualizará a COMPLETED
+    // cuando el agente realmente termine la llamada, actuando como safety net)
+    const contactStatus = isTimeout ? "FAILED" : "COMPLETED";
+    await updateContactStatus(abTestContactId, contactStatus, result);
 
-    logger.info("[Qualification Worker] Llamada completada, slot liberado", {
+    logger.info(`[Qualification Worker] Llamada ${isTimeout ? 'timeout (webhook completará)' : 'completada'}, slot liberado`, {
       abTestContactId,
       status: finalStatus,
+      contactStatus,
       duration: `${duration}s`,
     });
 
