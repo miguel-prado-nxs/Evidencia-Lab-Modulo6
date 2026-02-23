@@ -101,12 +101,15 @@ async function getTestProgressDetails(testId) {
                 ? Math.round((completed / totalProcessed) * 100)
                 : 0;
 
+            const { _count, ...variantData } = variant;
             return {
-                variantId: variant.id,
-                variantName: variant.agentConfigName,
-                agentConfigId: variant.agentConfigId,
-                voiceId: variant.voiceId,
-                percentage: variant.percentage,
+                ...variantData,
+                metrics: {
+                    totalAssigned,
+                    completed,
+                    called,
+                    failed,
+                },
                 totalAssigned,
                 pending,
                 called,
