@@ -56,7 +56,8 @@ sdrCallQueue.on("stalled", (jobId) => {
  * @param {object} jobData - Datos del trabajo a encolar.
  * @param {string} jobData.contactId - ID del contacto (establishment enrichment).
  * @param {string} jobData.abTestContactId - ID del registro en abTestContact.
- * @param {string} jobData.agentConfigId - ID de la configuración del agente.
+ * @param {string} [jobData.agentConfigId] - ElevenLabs Agent ID (o legacy config ID).
+ * @param {string} [jobData.elevenLabsAgentId] - ElevenLabs Agent ID explícito.
  * @param {object} jobData.establishmentData - Datos del establecimiento para la llamada.
  * @param {object} [options={}] - Opciones adicionales para el job.
  * @param {number} [options.priority] - Prioridad del job (menor = mayor prioridad).
@@ -64,11 +65,11 @@ sdrCallQueue.on("stalled", (jobId) => {
  * @returns {Promise<object>} Job encolado con id y metadata.
  */
 async function enqueueSDRCall(jobData, options = {}) {
-  const { contactId, abTestContactId, agentConfigId, establishmentData } = jobData;
+  const { contactId, abTestContactId, agentConfigId, elevenLabsAgentId, establishmentData } = jobData;
 
-  if (!contactId || !abTestContactId || !agentConfigId) {
+  if (!contactId || !abTestContactId) {
     throw new Error(
-      "Faltan datos requeridos: contactId, abTestContactId, agentConfigId"
+      "Faltan datos requeridos: contactId, abTestContactId"
     );
   }
 
@@ -77,7 +78,8 @@ async function enqueueSDRCall(jobData, options = {}) {
     {
       contactId,
       abTestContactId,
-      agentConfigId,
+      agentConfigId: agentConfigId || elevenLabsAgentId,
+      elevenLabsAgentId: elevenLabsAgentId || agentConfigId,
       establishmentData,
       enqueuedAt: new Date().toISOString(),
     },

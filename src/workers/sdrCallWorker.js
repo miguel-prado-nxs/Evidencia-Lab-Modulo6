@@ -1,18 +1,18 @@
 /**
- * Worker de procesamiento de llamadas SDR.
+ * Worker de procesamiento de llamadas SDR (ElevenLabs).
  *
- * Este worker procesa trabajos de la cola "sdr-calls" con un límite de concurrencia
- * de 3 llamadas simultáneas. Cada job representa una llamada a un contacto específico
- * utilizando la configuración del agente SDR asignado en el test A/B.
+ * Este worker procesa trabajos de la cola "sdr-calls" y envía las llamadas
+ * al servicio elevenlabs-sdr. Ya NO hace polling para detectar finalización —
+ * el webhook de ElevenLabs notifica cuando la llamada termina.
  *
  * Flujo de procesamiento:
  * 1. Obtiene job de la cola
  * 2. Actualiza estado a CALLED en BD
- * 3. Ejecuta llamada al agente SDR
- * 4. Procesa respuesta y actualiza estado final (COMPLETED/FAILED)
- * 5. Registra resultado en BD
+ * 3. Envía POST a elevenlabs-sdr/api/sdr/initiate-call
+ * 4. Actualiza estado a IN_PROGRESS con conversation_id
+ * 5. Retorna (el webhook de ElevenLabs actualizará a COMPLETED/FAILED)
  *
- * Concurrencia: 3 llamadas simultáneas
+ * Concurrencia: Configurable via env (default 8, max 20 por plan ElevenLabs Pro)
  * Reintentos: Configurados en Bull (3 intentos por defecto)
  */
 
@@ -24,15 +24,13 @@ const config = require("../config/env");
 
 const prisma = new PrismaClient();
 
-const SDR_AGENT_URL = config.agents.sdr.url;
-const SDR_API_KEY = config.agents.sdr.apiKey;
+// ElevenLabs SDR Agent
+const AGENT_URL = config.agents.sdr.url;
+const AGENT_API_KEY = config.agents.sdr.apiKey;
+const CONCURRENCY = config.agents.sdrConcurrency;
 
-// Delay mínimo entre procesamiento de jobs (3 segundos)
-const CALL_DELAY_MS = 3000;
-
-// Configuración de polling para monitoreo de estado de llamada
-const CALL_STATUS_POLLING_INTERVAL_MS = 3000; // 3 segundos entre consultas
-const CALL_STATUS_MAX_WAIT_TIME_MS = 300000; // 5 minutos máximo de espera (llamadas SDR son más cortas que calificación)
+// Delay mínimo entre procesamiento de jobs (2 segundos)
+const CALL_DELAY_MS = 2000;
 
 /**
  * Función auxiliar para introducir un delay
@@ -42,83 +40,10 @@ function delay(ms) {
 }
 
 /**
- * Monitorea el estado de una llamada consultando establishment_enrichments.call_status
- * Espera hasta que la llamada finalice (call_status != 'in_progress', 'calling', 'ringing')
- * 
- * @param {string} establishmentId - ID del establecimiento
- * @param {string} abTestContactId - ID del contacto en A/B test
- * @returns {Promise<{duration: number, finalStatus: string}>}
- */
-async function waitForCallCompletion(establishmentId, abTestContactId) {
-  const startTime = Date.now();
-  const maxEndTime = startTime + CALL_STATUS_MAX_WAIT_TIME_MS;
-  const activeStatuses = ['in_progress', 'calling', 'ringing', 'initiated']; // Estados que indican llamada activa
-
-  logger.info("[SDR Worker] Esperando finalización de llamada", {
-    establishmentId,
-    abTestContactId,
-    maxWaitTime: `${CALL_STATUS_MAX_WAIT_TIME_MS / 1000}s`,
-  });
-
-  while (Date.now() < maxEndTime) {
-    try {
-      // Consultar call_status en establishment_enrichments
-      const enrichment = await prisma.establishmentEnrichment.findUnique({
-        where: { establishmentId },
-        select: { callStatus: true },
-      });
-
-      const currentStatus = enrichment?.callStatus;
-
-      // Si no hay status o ya no está en estado activo, la llamada terminó
-      if (!currentStatus || !activeStatuses.includes(currentStatus.toLowerCase())) {
-        const duration = Math.round((Date.now() - startTime) / 1000);
-        
-        logger.info("[SDR Worker] Llamada finalizada", {
-          establishmentId,
-          abTestContactId,
-          finalStatus: currentStatus || 'unknown',
-          duration: `${duration}s`,
-        });
-
-        return { duration, finalStatus: currentStatus || 'completed' };
-      }
-
-      // Llamada sigue activa, esperar antes de siguiente consulta
-      logger.debug("[SDR Worker] Llamada aún activa, esperando...", {
-        establishmentId,
-        currentStatus,
-        elapsedSeconds: Math.round((Date.now() - startTime) / 1000),
-      });
-
-      await delay(CALL_STATUS_POLLING_INTERVAL_MS);
-    } catch (error) {
-      logger.error("[SDR Worker] Error consultando call_status", {
-        establishmentId,
-        error: error.message,
-      });
-      // En caso de error, esperar y reintentar
-      await delay(CALL_STATUS_POLLING_INTERVAL_MS);
-    }
-  }
-
-  // Timeout alcanzado
-  const duration = Math.round((Date.now() - startTime) / 1000);
-  logger.warn("[SDR Worker] Timeout alcanzado esperando finalización", {
-    establishmentId,
-    abTestContactId,
-    duration: `${duration}s`,
-  });
-
-  return { duration, finalStatus: 'timeout' };
-}
-
-/**
  * Actualiza el estado de un contacto en el test A/B
  */
 async function updateContactStatus(abTestContactId, status, result = null, calledAt = null) {
   try {
-    // Verificar que el contacto existe antes de actualizar
     const existingContact = await prisma.abTestContact.findUnique({
       where: { id: abTestContactId },
     });
@@ -128,7 +53,7 @@ async function updateContactStatus(abTestContactId, status, result = null, calle
         abTestContactId,
         status,
       });
-      return; // No lanzar error, solo advertir
+      return;
     }
 
     const updateData = {
@@ -159,135 +84,114 @@ async function updateContactStatus(abTestContactId, status, result = null, calle
 }
 
 /**
- * Ejecuta la llamada al agente SDR
+ * Formatea número de teléfono a formato E.164 (México)
+ */
+function formatPhoneE164(phone) {
+  let formatted = (phone || "").replace(/[\s\-\(\)\.]/g, '');
+  
+  if (formatted.startsWith('+52')) {
+    return formatted;
+  } else if (formatted.startsWith('52') && formatted.length === 12) {
+    return `+${formatted}`;
+  } else if (formatted.length === 10 && /^\d{10}$/.test(formatted)) {
+    return `+52${formatted}`;
+  } else {
+    logger.warn("[SDR Worker] Número con formato inesperado", { original: phone, cleaned: formatted });
+    return `+52${formatted}`;
+  }
+}
+
+/**
+ * Ejecuta la llamada al servicio elevenlabs-sdr.
+ * Ya NO hace polling — el webhook de ElevenLabs actualiza el estado final.
  */
 async function executeSDRCall(jobData) {
-  const { contactId, abTestContactId, agentConfigId, establishmentData } = jobData;
+  const {
+    contactId,
+    abTestContactId,
+    agentConfigId,
+    elevenLabsAgentId,
+    establishmentData,
+  } = jobData;
 
   try {
-    logger.info("[SDR Worker] Iniciando llamada SDR", {
+    logger.info("[SDR Worker] Iniciando llamada ElevenLabs SDR", {
       abTestContactId,
       contactId,
       agentConfigId,
+      elevenLabsAgentId: elevenLabsAgentId || config.agents.sdr.agentId || 'default',
     });
 
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
 
-    // Formatear número de teléfono a formato internacional E.164
-    let formattedPhone = establishmentData?.phone || "";
-    
-    // Limpiar número: remover espacios, guiones, paréntesis, puntos
-    formattedPhone = formattedPhone.replace(/[\s\-\(\)\.]/g, '');
-    
-    // Si ya tiene +52, validar que tenga 12 dígitos en total (+52 + 10 dígitos)
-    if (formattedPhone.startsWith('+52')) {
-      // Ya tiene código de país
-      if (formattedPhone.length !== 13) {
-        logger.warn("[SDR Worker] Número con +52 pero longitud incorrecta", {
-          original: establishmentData?.phone,
-          cleaned: formattedPhone,
-          length: formattedPhone.length
-        });
-      }
-    } else if (formattedPhone.startsWith('52') && formattedPhone.length === 12) {
-      // Tiene 52 al inicio pero sin +, agregarlo
-      formattedPhone = `+${formattedPhone}`;
-    } else {
-      // No tiene código de país, agregar +52
-      // Validar que sea número de 10 dígitos
-      if (formattedPhone.length === 10 && /^\d{10}$/.test(formattedPhone)) {
-        formattedPhone = `+52${formattedPhone}`;
-      } else {
-        logger.warn("[SDR Worker] Número con formato inesperado", {
-          original: establishmentData?.phone,
-          cleaned: formattedPhone,
-          length: formattedPhone.length
-        });
-        // Intentar agregarlo de todos modos
-        formattedPhone = `+52${formattedPhone}`;
-      }
-    }
+    const formattedPhone = formatPhoneE164(establishmentData?.phone);
 
-    // Preparar payload en el formato que espera el agente SDR
+    // Payload para elevenlabs-sdr (formato que su POST /api/sdr/initiate-call espera)
     const payload = {
       establishment_id: contactId,
       establishment_name: establishmentData?.name || "Establecimiento",
       phone: formattedPhone,
-      employee_range: establishmentData?.employeeRange || "0 a 5 personas",
       address: establishmentData?.address || "",
+      employee_range: establishmentData?.employeeRange || "0 a 5 personas",
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
     };
 
-    // Incluir agent_config solo si el agentConfigId no es de prueba
-    if (agentConfigId && !agentConfigId.startsWith('test-')) {
-      payload.agent_config = {
-        id: agentConfigId,
-        name: establishmentData?.agentConfigName || "Agente SDR",
-      };
+    // Si hay un agent_config_id específico de ElevenLabs, pasarlo
+    if (elevenLabsAgentId) {
+      payload.agent_config_id = elevenLabsAgentId;
     }
 
-    // Ejecutar llamada al agente SDR
+    // Headers para elevenlabs-sdr
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (AGENT_API_KEY) {
+      headers["X-API-Key"] = AGENT_API_KEY;
+    }
+
+    // Ejecutar llamada al servicio elevenlabs-sdr
     const response = await axios.post(
-      `${SDR_AGENT_URL}/api/sdr/initiate-call`,
+      `${AGENT_URL}/api/sdr/initiate-call`,
       payload,
       {
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": SDR_API_KEY,
-        },
-        timeout: 60000, // 60 segundos de timeout
+        headers,
+        timeout: 30000, // 30s timeout para iniciar la llamada (ya no esperamos que termine)
       }
     );
 
-    const callId = response.data?.callId;
+    const conversationId = response.data?.call_id || response.data?.conversation_id;
+    const sessionId = response.data?.session_id;
 
-    logger.info("[SDR Worker] Llamada iniciada, monitoreando estado", {
+    logger.info("[SDR Worker] Llamada SDR iniciada exitosamente via ElevenLabs", {
       abTestContactId,
-      establishmentId: contactId,
+      conversationId,
+      sessionId,
     });
 
-    // CRÍTICO: Esperar a que la llamada realmente finalice consultando call_status en BD
-    // Esto sincroniza Bull Queue con el estado real de las llamadas en los agentes
-    const { duration, finalStatus } = await waitForCallCompletion(contactId, abTestContactId);
-
-    // Procesar resultado según si finalizó realmente o hizo timeout
-    const isTimeout = finalStatus === 'timeout';
+    // Actualizar estado a CALLED con info de tracking (webhook moverá a COMPLETED/FAILED)
     const result = {
-      success: !isTimeout,
-      status: isTimeout ? 'timeout' : 'completed',
-      callId: callId,
-      duration: duration, // Duración real en segundos
-      finalCallStatus: finalStatus,
-      outcome: response.data?.outcome,
+      success: true,
+      status: 'in_progress',
+      conversationId,
+      sessionId,
       timestamp: new Date().toISOString(),
     };
 
-    // En timeout: marcar FAILED (el webhook de handleCallResult/sdrController actualizará
-    // a COMPLETED cuando el agente realmente termine, actuando como safety net)
-    const contactStatus = isTimeout ? "FAILED" : "COMPLETED";
-    await updateContactStatus(abTestContactId, contactStatus, result);
+    await updateContactStatus(abTestContactId, "CALLED", result);
 
-    logger.info(`[SDR Worker] Llamada ${isTimeout ? 'timeout (webhook completará)' : 'completada'}, slot liberado`, {
-      abTestContactId,
-      status: finalStatus,
-      contactStatus,
-      duration: `${duration}s`,
-    });
-
-    // Delay adicional antes de procesar siguiente llamada
+    // Delay antes de procesar siguiente llamada
     await delay(CALL_DELAY_MS);
 
     return result;
   } catch (error) {
-    logger.error("[SDR Worker] Error en llamada SDR", {
+    logger.error("[SDR Worker] Error en llamada ElevenLabs SDR", {
       abTestContactId,
       error: error.message,
       response: error.response?.data,
     });
 
-    // Registrar fallo
     const result = {
       success: false,
       error: error.message,
@@ -306,10 +210,10 @@ async function executeSDRCall(jobData) {
  * Procesador de trabajos de la cola SDR
  */
 sdrCallQueue.process(
-  "sdr-call", // Tipo de trabajo
-  3, // Concurrencia: máximo 3 llamadas simultáneas
+  "sdr-call",
+  CONCURRENCY, // Concurrencia configurable (default 8)
   async (job) => {
-    const { contactId, abTestContactId, agentConfigId, establishmentData } = job.data;
+    const { contactId, abTestContactId } = job.data;
 
     logger.info("[SDR Worker] Procesando job", {
       jobId: job.id,
@@ -318,15 +222,13 @@ sdrCallQueue.process(
     });
 
     try {
-      // Validar datos requeridos
-      if (!contactId || !abTestContactId || !agentConfigId) {
-        throw new Error("Faltan datos requeridos en el job");
+      if (!contactId || !abTestContactId) {
+        throw new Error("Faltan datos requeridos en el job (contactId, abTestContactId)");
       }
 
-      // Ejecutar llamada
       const result = await executeSDRCall(job.data);
 
-      logger.info("[SDR Worker] Job completado", {
+      logger.info("[SDR Worker] Job completado (llamada iniciada)", {
         jobId: job.id,
         abTestContactId,
         success: result.success,
@@ -341,7 +243,6 @@ sdrCallQueue.process(
         error: error.message,
       });
 
-      // Si ya se hicieron todos los reintentos, marcar como fallido definitivamente
       if (job.attemptsMade >= job.opts.attempts) {
         logger.error("[SDR Worker] Job falló definitivamente después de todos los reintentos", {
           jobId: job.id,
@@ -349,7 +250,7 @@ sdrCallQueue.process(
         });
       }
 
-      throw error; // Re-lanzar para que Bull maneje el retry
+      throw error;
     }
   }
 );
@@ -366,6 +267,6 @@ sdrCallQueue.on("stalled", (job) => {
   });
 });
 
-logger.info("[SDR Worker] Iniciado con concurrencia de 3 llamadas");
+logger.info(`[SDR Worker] Iniciado con concurrencia de ${CONCURRENCY} llamadas (ElevenLabs)`);
 
 module.exports = { sdrCallQueue };

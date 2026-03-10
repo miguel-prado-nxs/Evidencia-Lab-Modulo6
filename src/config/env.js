@@ -39,16 +39,25 @@ const config = {
     port: parseInt(process.env.REDIS_PORT || "6381", 10),
     password: process.env.REDIS_PASSWORD || null,
   },
-  // Agentes de Voz
+  // Agentes de Voz (ElevenLabs)
   agents: {
     sdr: {
-      url: process.env.SDR_AGENT_URL || "http://localhost:8080",
-      apiKey: process.env.SDR_API_KEY || "",
+      url: process.env.ELEVENLABS_SDR_URL || process.env.SDR_AGENT_URL || "http://localhost:8080",
+      apiKey: process.env.ELEVENLABS_SDR_API_KEY || process.env.SDR_API_KEY || "",
+      agentId: process.env.ELEVENLABS_SDR_AGENT_ID || "",
     },
     qualification: {
-      url: process.env.QUALIFICATION_AGENT_URL || "http://localhost:8081",
-      apiKey: process.env.QUALIFICATION_API_KEY || "",
+      url: process.env.ELEVENLABS_QUALIFICATION_URL || process.env.QUALIFICATION_AGENT_URL || "http://localhost:8081",
+      apiKey: process.env.ELEVENLABS_QUALIFICATION_API_KEY || process.env.QUALIFICATION_API_KEY || "",
+      agentId: process.env.ELEVENLABS_QUALIFICATION_AGENT_ID || "",
     },
+    // Concurrencia configurable (ElevenLabs plan Pro = 20 simultáneas max)
+    sdrConcurrency: parseInt(process.env.SDR_CONCURRENCY || "8", 10),
+    qualificationConcurrency: parseInt(process.env.QUALIFICATION_CONCURRENCY || "10", 10),
+  },
+  // Webhook ElevenLabs
+  elevenlabs: {
+    webhookSecret: process.env.ELEVENLABS_WEBHOOK_SECRET || "",
   },
 };
 

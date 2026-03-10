@@ -58,7 +58,8 @@ qualificationCallQueue.on("stalled", (jobId) => {
  * @param {object} jobData - Datos del trabajo a encolar.
  * @param {string} jobData.contactId - ID del contacto (establishment enrichment).
  * @param {string} jobData.abTestContactId - ID del registro en abTestContact.
- * @param {string} jobData.agentConfigId - ID de la configuración del agente.
+ * @param {string} [jobData.agentConfigId] - ElevenLabs Agent ID (o legacy config ID).
+ * @param {string} [jobData.elevenLabsAgentId] - ElevenLabs Agent ID explícito.
  * @param {object} jobData.establishmentData - Datos del establecimiento para la llamada.
  * @param {object} [jobData.decisionMakerData] - Datos del tomador de decisiones (si aplica).
  * @param {object} [options={}] - Opciones adicionales para el job.
@@ -71,13 +72,14 @@ async function enqueueQualificationCall(jobData, options = {}) {
     contactId,
     abTestContactId,
     agentConfigId,
+    elevenLabsAgentId,
     establishmentData,
     decisionMakerData,
   } = jobData;
 
-  if (!contactId || !abTestContactId || !agentConfigId) {
+  if (!contactId || !abTestContactId) {
     throw new Error(
-      "Faltan datos requeridos: contactId, abTestContactId, agentConfigId"
+      "Faltan datos requeridos: contactId, abTestContactId"
     );
   }
 
@@ -86,7 +88,8 @@ async function enqueueQualificationCall(jobData, options = {}) {
     {
       contactId,
       abTestContactId,
-      agentConfigId,
+      agentConfigId: agentConfigId || elevenLabsAgentId,
+      elevenLabsAgentId: elevenLabsAgentId || agentConfigId,
       establishmentData,
       decisionMakerData,
       enqueuedAt: new Date().toISOString(),

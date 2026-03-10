@@ -8,6 +8,8 @@ const logger = require("./config/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const { initSocket } = require("./config/socket");
 const twentySyncWorker = require("./workers/twentySyncWorker");
+require("./workers/sdrCallWorker");
+require("./workers/qualificationCallWorker");
 const { setupBullBoard } = require("./queues/dashboard");
 const { getHealthClient } = require("./queues/config");
 
@@ -32,6 +34,7 @@ const easyorderRoutes = require("./routes/easyorder");
 const agentMetricsRoutes = require("./routes/agentMetrics");
 const abTestsRoutes = require("./routes/abTestsRoutes");
 const testCallRoutes = require("./routes/testCall");
+const webhooksRoutes = require("./routes/webhooks");
 
 // Crear aplicación Express
 const app = express();
@@ -161,6 +164,7 @@ app.use("/api/v1/easyorder", easyorderRoutes);
 app.use("/api/v1/agent-metrics", agentMetricsRoutes);
 app.use("/api/v1/ab-tests", abTestsRoutes);
 app.use("/api/v1/test-call", testCallRoutes);
+app.use("/api/v1/webhooks", webhooksRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES

@@ -1,4 +1,4 @@
-// Prisma Schema para EasyOrder Partners API
+﻿// Prisma Schema para EasyOrder Partners API
 generator client {
   provider = "prisma-client-js"
 }
@@ -119,29 +119,29 @@ model Partner {
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relaciones
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   leads        Lead[]
   deals        Deal[]
   commissions  Commission[]
   activities   Activity[]
-  referredBy   Partner?     @relation("PartnerReferrals", fields: [referredById], references: [id])
-  referredById String?      @map("referred_by_id")
-  referrals    Partner[]    @relation("PartnerReferrals")
+  referredBy   Partner?       @relation("PartnerReferrals", fields: [referredById], references: [id])
+  referredById String?        @map("referred_by_id")
+  referrals    Partner[]      @relation("PartnerReferrals")
   prospects    LeadProspect[] // GeoInsights prospects
-  
+
   // LMS relations
   enrollments    CourseEnrollment[]
   lessonProgress LessonProgress[]
   quizAttempts   QuizAttempt[]
   certificates   Certificate[]
-  
+
   // Referral campaigns
   referralCampaigns ReferralCampaign[]
-  
+
   // Establishment meetings
   establishmentMeetings EstablishmentMeeting[]
-  
-  // Call leads (resultados de llamadas de calificación)
+
+  // Call leads (resultados de llamadas de calificaci├│n)
   callLeads CallLead[]
 
   @@index([code])
@@ -181,8 +181,8 @@ model Lead {
   partnerId String @map("partner_id")
 
   // Datos del lead
-  businessName String @map("business_name")
-  contactName  String @map("contact_name")
+  businessName String  @map("business_name")
+  contactName  String  @map("contact_name")
   email        String
   phone        String?
 
@@ -337,8 +337,8 @@ enum CommissionStatus {
 // ========== ACTIVIDADES ==========
 
 model Activity {
-  id        String @id @default(uuid())
-  partnerId String @map("partner_id")
+  id        String  @id @default(uuid())
+  partnerId String  @map("partner_id")
   leadId    String? @map("lead_id")
 
   type        ActivityType
@@ -379,22 +379,22 @@ model Resource {
   category     ResourceCategory
   type         String // pdf, pptx, docx, mp4, png
   url          String? // URL externa (opcional)
-  thumbnailUrl String? @map("thumbnail_url")
+  thumbnailUrl String?          @map("thumbnail_url")
 
   // Archivos subidos localmente
-  fileName     String?  @map("file_name")
-  fileSize     Int?     @map("file_size") // bytes
-  mimeType     String?  @map("mime_type")
-  storagePath  String?  @map("storage_path")
+  fileName    String? @map("file_name")
+  fileSize    Int?    @map("file_size") // bytes
+  mimeType    String? @map("mime_type")
+  storagePath String? @map("storage_path")
 
   // Permisos
   minTier      PartnerTier   @default(REGISTERED) @map("min_tier")
   partnerTypes PartnerType[] @map("partner_types")
 
   // Metadata
-  tags         String[]
-  downloads    Int @default(0)
-  viewCount    Int @default(0) @map("view_count")
+  tags      String[]
+  downloads Int      @default(0)
+  viewCount Int      @default(0) @map("view_count")
 
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
@@ -493,19 +493,19 @@ model ApiKey {
 }
 
 // ========== NOTA SOBRE ESTABLECIMIENTOS ==========
-// Los establecimientos DENUE (800k+) están en Mapa DB (DATABASE_URL_RESTAURANTES)
+// Los establecimientos DENUE (800k+) est├ín en Mapa DB (DATABASE_URL_RESTAURANTES)
 // NO en Partners DB. El establishmentId es solo una referencia string.
-// La relación se maneja a nivel de aplicación, no con FK constraints.
+// La relaci├│n se maneja a nivel de aplicaci├│n, no con FK constraints.
 
 // ========== ENRIQUECIMIENTO DE ESTABLECIMIENTOS ==========
 
 // Nivel de enriquecimiento del establecimiento
 enum EstablishmentLevel {
   ESTABLISHMENT // Solo datos DENUE base
-  CONTACT       // Tiene phone/email/website (dato DENUE)
-  PROSPECT      // Tiene info del tomador de decisiones
-  LEAD          // Tiene cualificacion completa (intent/fear/pain/desire)
-  CLIENT        // Lead que ya realizo una compra
+  CONTACT // Tiene phone/email/website (dato DENUE)
+  PROSPECT // Tiene info del tomador de decisiones
+  LEAD // Tiene cualificacion completa (intent/fear/pain/desire)
+  CLIENT // Lead que ya realizo una compra
 }
 
 // Enriquecimiento de establecimientos (datos adicionales capturados por partners)
@@ -520,52 +520,66 @@ model EstablishmentEnrichment {
   decisionMakerPhone    String? @map("decision_maker_phone")
   decisionMakerWhatsApp String? @map("decision_maker_whatsapp")
   decisionMakerEmail    String? @map("decision_maker_email")
-  
+
   intent String? @db.Text
   fear   String? @db.Text
   pain   String? @db.Text
   desire String? @db.Text
-  
+
+  // ==================== BANT QUALIFICATION SCORES ====================
+  // Scores de calificaci├│n BANT (0-10, -1 = no explorado)
+  needScore      Int? @default(-1) @map("need_score")
+  authorityScore Int? @default(-1) @map("authority_score")
+  budgetScore    Int? @default(-1) @map("budget_score")
+  timelineScore  Int? @default(-1) @map("timeline_score")
+  overallScore   Int? @default(-1) @map("overall_score")
+
+  // Notas de calificaci├│n y metadata
+  qualificationNotes     String?  @map("qualification_notes") @db.Text
+  qualificationCompleted Boolean? @default(false) @map("qualification_completed")
+  confidenceLevel        String?  @map("confidence_level") @db.VarChar(20)
+  // 'high', 'medium', 'low', 'insufficient'
+
   purchaseDate     DateTime? @map("purchase_date")
   productPurchased String?   @map("product_purchased")
   purchaseAmount   Decimal?  @map("purchase_amount") @db.Decimal(10, 2)
   clientSince      DateTime? @map("client_since")
   clientStatus     String?   @map("client_status")
   clientNotes      String?   @map("client_notes") @db.Text
-  
+
   level EstablishmentLevel @default(ESTABLISHMENT)
-  
+
   enrichedBy    String?   @map("enriched_by")
   enrichedAt    DateTime? @map("enriched_at")
   lastUpdatedBy String?   @map("last_updated_by")
-  
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // ==================== NUEVAS COLUMNAS SDR  ====================
   // Tracking de llamadas SDR
-  callSummary          String?   @map("call_summary") @db.Text
-  strategy             String?   @db.VarChar(10)
-  callAttempts         Int?      @default(1) @map("call_attempts")
-  callDurationSeconds  Int?      @default(0) @map("call_duration_seconds")
-  callStatus           String?   @db.VarChar(20) @map("call_status")
-  enrichmentStatus     String?   @db.VarChar(30) @map("enrichment_status")
-  gatekeeperInfo       Json?     @map("gatekeeper_info")
-  bestCallTime         String?   @db.VarChar(50) @map("best_call_time")
+  callSummary         String? @map("call_summary") @db.Text
+  strategy            String? @db.VarChar(10)
+  callAttempts        Int?    @default(1) @map("call_attempts")
+  callDurationSeconds Int?    @default(0) @map("call_duration_seconds")
+  callStatus          String? @map("call_status") @db.VarChar(20)
+  enrichmentStatus    String? @map("enrichment_status") @db.VarChar(30)
+  gatekeeperInfo      Json?   @map("gatekeeper_info")
+  bestCallTime        String? @map("best_call_time") @db.VarChar(50)
 
   // ==================== DATOS DEL ESTABLECIMIENTO (para Orchestrator) ====================
   // Copia de datos de BD 801k para evitar joins cross-database
   // Campos: name, phone, email, employee_range, activity_code, activity_name, 
   //         latitude, longitude, state_name, municipality_name
-  establishmentData    Json?     @map("establishment_data")
+  establishmentData Json? @map("establishment_data")
 
-  // ==================== ÍNDICES (ACTUALIZAR) ====================
+  // ==================== ├ìNDICES (ACTUALIZAR) ====================
   @@index([level])
   @@index([establishmentId])
   @@index([enrichedBy])
-  @@index([enrichmentStatus]) 
-  @@index([strategy])          
-  @@index([callStatus])        
+  @@index([enrichmentStatus])
+  @@index([strategy])
+  @@index([callStatus])
   @@map("establishment_enrichments")
 }
 
@@ -573,31 +587,31 @@ model EstablishmentEnrichment {
 // Almacena los datos base capturados por Ventas antes de provisionar el POS
 // leadId referencia al enriquecimiento/lead en este sistema (no FK estricta)
 model RestaurantProfile {
-  id               String  @id @default(uuid())
-  establishmentId  String  @unique @map("establishment_id")
-  leadId           String? @map("lead_id")
-  restaurantId     Int?    @map("restaurant_id") // ID del restaurante en easyorder-backend
-  direccionId      Int?    @map("direccion_id")  // ID de la dirección en easyorder-backend
+  id              String  @id @default(uuid())
+  establishmentId String  @unique @map("establishment_id")
+  leadId          String? @map("lead_id")
+  restaurantId    Int?    @map("restaurant_id") // ID del restaurante en easyorder-backend
+  direccionId     Int?    @map("direccion_id") // ID de la direcci├│n en easyorder-backend
 
-  businessName     String   @map("business_name")
-  cuisineType      String?  @map("cuisine_type")
-  contactPhone     String?  @map("contact_phone")
-  contactEmail     String?  @map("contact_email")
-  contactWhatsapp  String?  @map("contact_whatsapp")
-  timezone         String?
-  address          Json?    // snapshot de la dirección enviada al POS
-  logoUrl          String?  @map("logo_url")
-  
+  businessName    String  @map("business_name")
+  cuisineType     String? @map("cuisine_type")
+  contactPhone    String? @map("contact_phone")
+  contactEmail    String? @map("contact_email")
+  contactWhatsapp String? @map("contact_whatsapp")
+  timezone        String?
+  address         Json? // snapshot de la direcci├│n enviada al POS
+  logoUrl         String? @map("logo_url")
+
   // Pasos completados del proceso de provisionamiento
-  step1Completed   Boolean  @default(false) @map("step1_completed") // Perfil básico + Logo
-  step2Completed   Boolean  @default(false) @map("step2_completed") // Sucursales
-  step3Completed   Boolean  @default(false) @map("step3_completed") // Menú
-  
+  step1Completed Boolean @default(false) @map("step1_completed") // Perfil b├ísico + Logo
+  step2Completed Boolean @default(false) @map("step2_completed") // Sucursales
+  step3Completed Boolean @default(false) @map("step3_completed") // Men├║
+
   // Estado de provisionamiento
-  provisionStatus  String   @default("pending") @map("provision_status")
+  provisionStatus String @default("pending") @map("provision_status")
   // 'pending', 'provisioned', 'failed', 'active'
-  
-  provisionedAt    DateTime? @map("provisioned_at")
+
+  provisionedAt DateTime? @map("provisioned_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -611,43 +625,43 @@ model RestaurantProfile {
 // ========== INTERACCIONES SDR ==========
 // Registro de todas las llamadas del agente SDR (exitosas y fallidas)
 model SdrInteraction {
-  id              String   @id @default(uuid())
-  establishmentId String   @map("establishment_id") // Referencia a Mapa DB (sin FK)
-  
+  id              String @id @default(uuid())
+  establishmentId String @map("establishment_id") // Referencia a Mapa DB (sin FK)
+
   // Estado de la llamada
-  callStatus        String?  @map("call_status") @db.VarChar(30)
+  callStatus String? @map("call_status") @db.VarChar(30)
   // 'completed', 'no_answer', 'busy', 'failed', 'voicemail'
-  
-  enrichmentStatus  String?  @map("enrichment_status") @db.VarChar(30)
+
+  enrichmentStatus String? @map("enrichment_status") @db.VarChar(30)
   // 'identified', 'not_found', 'gatekeeper_blocked', 'callback_scheduled', 'contacted'
-  
+
   // Resultado
-  decisionMakerFound  Boolean  @default(false) @map("decision_maker_found")
-  decisionMakerName   String?  @map("decision_maker_name")
-  decisionMakerRole   String?  @map("decision_maker_role")
-  
+  decisionMakerFound Boolean @default(false) @map("decision_maker_found")
+  decisionMakerName  String? @map("decision_maker_name")
+  decisionMakerRole  String? @map("decision_maker_role")
+
   // Detalles de la llamada
-  callSummary         String?  @map("call_summary") @db.Text
-  callDurationSeconds Int?     @map("call_duration_seconds")
-  attemptNumber       Int      @default(1) @map("attempt_number")
-  
+  callSummary         String? @map("call_summary") @db.Text
+  callDurationSeconds Int?    @map("call_duration_seconds")
+  attemptNumber       Int     @default(1) @map("attempt_number")
+
   // Estrategia A/B
-  strategy            String?  @db.VarChar(10)
-  
+  strategy String? @db.VarChar(10)
+
   // Info del gatekeeper (si aplica)
-  gatekeeperInfo      Json?    @map("gatekeeper_info")
-  // { name: "María", message: "El dueño no está", callback_time: "14:00" }
-  
+  gatekeeperInfo Json? @map("gatekeeper_info")
+  // { name: "Mar├¡a", message: "El due├▒o no est├í", callback_time: "14:00" }
+
   // Twilio
-  twilioCallSid       String?  @map("twilio_call_sid") @db.VarChar(50)
-  
+  twilioCallSid String? @map("twilio_call_sid") @db.VarChar(50)
+
   // Agent Config (from demo-form-service agent_configs table)
-  agentConfigId       String?  @map("agent_config_id") @db.Uuid
-  
+  agentConfigId String? @map("agent_config_id") @db.Uuid
+
   // Timestamps
-  createdAt           DateTime @default(now()) @map("created_at")
-  
-  // Índices
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // ├ìndices
   @@index([establishmentId])
   @@index([callStatus])
   @@index([enrichmentStatus])
@@ -662,8 +676,8 @@ model SdrInteraction {
 // NOTA: establishmentId referencia a Mapa DB usando clee (DENUE), NO hay FK constraint
 
 model LeadProspect {
-  id              String @id @default(uuid())
-  establishmentId String @map("establishment_id") // Clee del establecimiento DENUE (sin FK)
+  id              String  @id @default(uuid())
+  establishmentId String  @map("establishment_id") // Clee del establecimiento DENUE (sin FK)
   partnerId       String? @map("partner_id")
 
   status   ProspectStatus @default(AVAILABLE)
@@ -679,7 +693,7 @@ model LeadProspect {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  // Relaciones (solo con Partner, que sí está en esta DB)
+  // Relaciones (solo con Partner, que s├¡ est├í en esta DB)
   partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
 
   @@index([partnerId])
@@ -776,7 +790,7 @@ model EmailTemplate {
   subject   String
   htmlBody  String  @map("html_body") @db.Text
   textBody  String  @map("text_body") @db.Text
-  variables Json    // Variables disponibles para el template
+  variables Json // Variables disponibles para el template
   isActive  Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -785,7 +799,7 @@ model EmailTemplate {
   @@map("email_templates")
 }
 
-// ========== SISTEMA LMS (CAPACITACIÓN) ==========
+// ========== SISTEMA LMS (CAPACITACI├ôN) ==========
 
 model Course {
   id           String           @id @default(uuid())
@@ -793,7 +807,7 @@ model Course {
   slug         String           @unique
   description  String           @db.Text
   thumbnailUrl String?          @map("thumbnail_url")
-  duration     Int              // minutos totales estimados
+  duration     Int // minutos totales estimados
   difficulty   CourseDifficulty
   minTier      PartnerTier      @default(REGISTERED) @map("min_tier")
   partnerTypes PartnerType[]    @map("partner_types")
@@ -826,7 +840,7 @@ model Lesson {
   description String?
   content     String  @db.Text // Markdown
   videoUrl    String? @map("video_url") // YouTube/Vimeo embed
-  duration    Int     // minutos
+  duration    Int // minutos
   order       Int
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -862,7 +876,7 @@ model QuizQuestion {
   id            String  @id @default(uuid())
   quizId        String  @map("quiz_id")
   question      String
-  options       Json    // [{id, text}]
+  options       Json // [{id, text}]
   correctOption String  @map("correct_option")
   explanation   String?
   order         Int
@@ -920,7 +934,7 @@ model QuizAttempt {
   quizId      String   @map("quiz_id")
   score       Int
   passed      Boolean
-  answers     Json     // {questionId: answerId}
+  answers     Json // {questionId: answerId}
   attemptedAt DateTime @default(now()) @map("attempted_at")
 
   partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
@@ -935,7 +949,7 @@ model Certificate {
   id        String   @id @default(uuid())
   partnerId String   @map("partner_id")
   courseId  String   @map("course_id")
-  code      String   @unique // Código verificable
+  code      String   @unique // C├│digo verificable
   issuedAt  DateTime @default(now()) @map("issued_at")
   pdfUrl    String?  @map("pdf_url")
 
@@ -947,17 +961,17 @@ model Certificate {
   @@map("certificates")
 }
 
-// ========== CAMPAÑAS DE REFERIDO UTM ==========
+// ========== CAMPA├æAS DE REFERIDO UTM ==========
 
 model ReferralCampaign {
   id        String @id @default(uuid())
   partnerId String @map("partner_id")
 
-  // Datos de la campaña
+  // Datos de la campa├▒a
   name        String // Nombre descriptivo
-  utmSource   String @map("utm_source")
-  utmMedium   String @map("utm_medium")
-  utmCampaign String @map("utm_campaign")
+  utmSource   String  @map("utm_source")
+  utmMedium   String  @map("utm_medium")
+  utmCampaign String  @map("utm_campaign")
   utmTerm     String? @map("utm_term")
   utmContent  String? @map("utm_content")
 
@@ -989,15 +1003,15 @@ model ReferralCampaign {
 // ========== MEETINGS DE ESTABLECIMIENTOS ==========
 
 model EstablishmentMeeting {
-  id              String   @id @default(uuid())
-  establishmentId String   @map("establishment_id") // ID del establecimiento DENUE
-  partnerId       String   @map("partner_id") // Partner/Vendedor que agenda
+  id              String @id @default(uuid())
+  establishmentId String @map("establishment_id") // ID del establecimiento DENUE
+  partnerId       String @map("partner_id") // Partner/Vendedor que agenda
 
   // Datos del meeting
-  meetingScheduled Boolean  @default(false) @map("meeting_scheduled")
+  meetingScheduled Boolean   @default(false) @map("meeting_scheduled")
   meetingDate      DateTime? @map("meeting_date")
-  meetingLink      String?  @map("meeting_link") // Zoom/Meet link
-  calendlyEventUri String?  @map("calendly_event_uri") // URI del evento en Calendly
+  meetingLink      String?   @map("meeting_link") // Zoom/Meet link
+  calendlyEventUri String?   @map("calendly_event_uri") // URI del evento en Calendly
 
   // Notas
   notes String? @db.Text
@@ -1016,7 +1030,7 @@ model EstablishmentMeeting {
   @@map("establishment_meetings")
 }
 
-// ========== CALL LEADS - RESULTADOS DE LLAMADAS DE CALIFICACIÓN ==========
+// ========== CALL LEADS - RESULTADOS DE LLAMADAS DE CALIFICACI├ôN ==========
 
 model CallLead {
   id String @id @default(uuid())
@@ -1039,10 +1053,10 @@ model CallLead {
 
   // Resultados de la llamada (llenado por agente IA)
   callSummary         String? @map("call_summary") @db.Text
-  callTranscript      Json?   @map("call_transcript") // Transcripción completa
+  callTranscript      Json?   @map("call_transcript") // Transcripci├│n completa
   callDurationSeconds Int?    @map("call_duration_seconds")
 
-  // Calificación del lead
+  // Calificaci├│n del lead
   qualificationScore   String? @map("qualification_score") // 'A', 'B', 'C', 'D'
   intentScore          Int?    @map("intent_score") // 0-100
   qualificationDetails Json?   @map("qualification_details")
@@ -1057,7 +1071,7 @@ model CallLead {
   //   "bant": { "budget": {...}, "authority": {...}, "need": {...}, "timeline": {...} }
   // }
 
-  // Datos BANT específicos (intent, fear, pain, desire)
+  // Datos BANT espec├¡ficos (intent, fear, pain, desire)
   intent String? @db.Text
   fear   String? @db.Text
   pain   String? @db.Text
@@ -1067,23 +1081,23 @@ model CallLead {
   nextAction     String?   @map("next_action") // 'schedule_demo', 'send_info', 'follow_up_later', 'not_interested'
   nextActionDate DateTime? @map("next_action_date")
 
-  // Método de agendamiento
+  // M├®todo de agendamiento
   bookingMethod String? @map("booking_method") // 'verbal', 'calendly_link', 'agent_scheduled'
 
-  // Conversión
+  // Conversi├│n
   convertedToLeadId String? @map("converted_to_lead_id")
 
-  // Asignación
-  partnerId         String? @map("partner_id") // Partner/Vendedor asignado
+  // Asignaci├│n
+  partnerId          String? @map("partner_id") // Partner/Vendedor asignado
   representativeName String? @map("representative_name")
 
   // Tracking
-  source         String  @default("sales_qualification")
-  utmData        Json?   @map("utm_data")
-  twilioCallSid  String? @map("twilio_call_sid")
-  
+  source        String  @default("sales_qualification")
+  utmData       Json?   @map("utm_data")
+  twilioCallSid String? @map("twilio_call_sid")
+
   // Agent Config (from demo-form-service agent_configs table)
-  agentConfigId  String? @map("agent_config_id") @db.Uuid
+  agentConfigId String? @map("agent_config_id") @db.Uuid
 
   // Timestamps
   calledAt  DateTime? @map("called_at")
@@ -1108,8 +1122,8 @@ model CallLead {
 // Estado de sincronizacion con Twenty CRM
 // Guarda el mapeo entre establishmentId (Partners) y los IDs creados en Twenty
 model TwentySyncState {
-  id              String   @id @default(uuid())
-  establishmentId String   @unique @map("establishment_id")
+  id              String @id @default(uuid())
+  establishmentId String @unique @map("establishment_id")
 
   // IDs de registros en Twenty
   twentyEstablecimientoId String? @map("twenty_establecimiento_id")
@@ -1140,7 +1154,7 @@ model TwentySyncJob {
 
   // Metadata
   partnerId String? @map("partner_id")
-  reason    String  // ADD_TO_CONTACTS, CONTACT_TO_PROSPECT, QUALIFICATION_TO_LEAD, ENRICHMENT_TO_CLIENT, UPDATE_LEAD_STATUS
+  reason    String // ADD_TO_CONTACTS, CONTACT_TO_PROSPECT, QUALIFICATION_TO_LEAD, ENRICHMENT_TO_CLIENT, UPDATE_LEAD_STATUS
 
   // Estado del job
   status    TwentySyncJobStatus @default(PENDING)
@@ -1168,15 +1182,15 @@ enum TwentySyncJobStatus {
   FAILED
 }
 
-// Metadata del sistema de sincronización con Twenty
+// Metadata del sistema de sincronizaci├│n con Twenty
 model TwentySyncMetadata {
-  id                         String    @id @default("singleton")
-  initialMigrationCompleted  Boolean   @default(false) @map("initial_migration_completed")
-  initialMigrationStartedAt  DateTime? @map("initial_migration_started_at")
+  id                          String    @id @default("singleton")
+  initialMigrationCompleted   Boolean   @default(false) @map("initial_migration_completed")
+  initialMigrationStartedAt   DateTime? @map("initial_migration_started_at")
   initialMigrationCompletedAt DateTime? @map("initial_migration_completed_at")
-  totalRecordsMigrated       Int       @default(0) @map("total_records_migrated")
-  lastMigrationError         String?   @map("last_migration_error") @db.Text
-  
+  totalRecordsMigrated        Int       @default(0) @map("total_records_migrated")
+  lastMigrationError          String?   @map("last_migration_error") @db.Text
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1186,96 +1200,75 @@ model TwentySyncMetadata {
 // ========== A/B TESTING ==========
 
 model AbTest {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   name        String
   description String?
-  agentType   String   @map("agent_type") // SDR, QUALIFICATION
-  status      String   @default("DRAFT") // DRAFT, RUNNING, COMPLETED, CANCELLED
-  createdBy   String?  @map("created_by") // User ID quien creo el test
-  
-  startDate   DateTime? @map("start_date")
-  endDate     DateTime? @map("end_date")
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  
-  variants    AbTestVariant[]
-  
+  agentType   String  @map("agent_type") // SDR, QUALIFICATION
+  status      String  @default("DRAFT") // DRAFT, RUNNING, COMPLETED, CANCELLED
+  createdBy   String? @map("created_by") // User ID quien creo el test
+
+  startDate DateTime? @map("start_date")
+  endDate   DateTime? @map("end_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  variants AbTestVariant[]
+
   @@index([createdBy])
   @@map("ab_tests")
 }
 
 model AbTestVariant {
-  id          String   @id @default(uuid())
-  abTestId    String   @map("ab_test_id")
-  
+  id       String @id @default(uuid())
+  abTestId String @map("ab_test_id")
+
   agentConfigId   String @map("agent_config_id") // ID from demo-form-service
   agentConfigName String @map("agent_config_name") // Snapshot name
   voiceId         String @map("voice_id") // Snapshot voice/personality
-  
-  percentage  Int      // 0-100
-  
+
+  percentage Int // 0-100
+
   // Metrics snapshot
-  totalCalls      Int @default(0) @map("total_calls")
-  totalConnected  Int @default(0) @map("total_connected")
-  totalConverted  Int @default(0) @map("total_converted")
-  
-  abTest      AbTest   @relation(fields: [abTestId], references: [id], onDelete: Cascade)
-  contacts    AbTestContact[]
-  
+  totalCalls     Int @default(0) @map("total_calls")
+  totalConnected Int @default(0) @map("total_connected")
+  totalConverted Int @default(0) @map("total_converted")
+
+  abTest   AbTest          @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+  contacts AbTestContact[]
+
   @@map("ab_test_variants")
 }
 
 model AbTestContact {
-  id              String   @id @default(uuid())
-  abTestVariantId String   @map("ab_test_variant_id")
-  
-  contactId       String   @map("contact_id") // establishmentId or leadId
-  contactType     String   @default("ESTABLISHMENT") // ESTABLISHMENT, LEAD
-  
-  status          String   @default("PENDING") // PENDING, CALLED, COMPLETED, FAILED
-  result          String?  // JSON or string result
-  
-  calledAt        DateTime? @map("called_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  
-  variant         AbTestVariant @relation(fields: [abTestVariantId], references: [id], onDelete: Cascade)
-  
+  id              String @id @default(uuid())
+  abTestVariantId String @map("ab_test_variant_id")
+
+  contactId   String @map("contact_id") // establishmentId or leadId
+  contactType String @default("ESTABLISHMENT") // ESTABLISHMENT, LEAD
+
+  status String  @default("PENDING") // PENDING, CALLED, COMPLETED, FAILED
+  result String? // JSON or string result
+
+  calledAt  DateTime? @map("called_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  variant AbTestVariant @relation(fields: [abTestVariantId], references: [id], onDelete: Cascade)
+
   @@map("ab_test_contacts")
 }
 
 model AbTestCandidate {
-  id              String   @id @default(uuid())
-  establishmentId String   @unique @map("establishment_id") // ID del contacto/negocio
-  userId          String?  @map("user_id") // Para saber quién lo seleccionó
-  
-  // Snapshot mínimo para preview rápido y fallback
-  snapshotName      String?  @map("snapshot_name")
-  snapshotPhone     String?  @map("snapshot_phone")
-  snapshotUbicacion String?  @map("snapshot_ubicacion") // Estado, Municipio
-  
-  createdAt       DateTime @default(now()) @map("created_at")
+  id              String  @id @default(uuid())
+  establishmentId String  @unique @map("establishment_id") // ID del contacto/negocio
+  userId          String? @map("user_id") // Para saber qui├®n lo seleccion├│
+
+  // Snapshot m├¡nimo para preview r├ípido y fallback
+  snapshotName      String? @map("snapshot_name")
+  snapshotPhone     String? @map("snapshot_phone")
+  snapshotUbicacion String? @map("snapshot_ubicacion") // Estado, Municipio
+
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("ab_test_candidates")
-}
-
-// ========== INTERACCIONES DE ONBOARDING (ElevenLabs) ==========
-model OnboardingInteraction {
-  id              String   @id @default(uuid())
-  establishmentId String   @map("establishment_id")
-  agentId         String?  @map("agent_id")
-  conversationId  String?  @map("conversation_id")
-  customerName    String?  @map("customer_name")
-  businessName    String?  @map("business_name")
-  phone           String?
-  currentStep     String?  @map("current_step")
-  issueDescription String?  @map("issue_description") @db.Text
-  callStatus      String?  @map("call_status")
-  summary         String?  @db.Text
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  @@index([establishmentId])
-  @@index([conversationId])
-  @@map("onboarding_interactions")
 }

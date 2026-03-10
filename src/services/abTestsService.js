@@ -8,6 +8,9 @@ const { enqueueSDRCall, enqueueQualificationCall } = require("../queues");
  * createTest
  * Creates a new A/B Test, distributes contacts among variants, and saves to DB.
  * 
+ * Con ElevenLabs, cada variante tiene un agentConfigId que es el Agent ID de ElevenLabs.
+ * Ya no se buscan personalidades en demo-form-service.
+ * 
  * @param {Object} data
  * @param {string} data.name
  * @param {string} data.description
@@ -100,34 +103,22 @@ async function createTest(data) {
 }
 
 /**
- * fetchAgentConfig
- * Fetch full agent configuration from demo-form-service
+ * fetchAgentConfig (DEPRECATED - ElevenLabs)
+ * 
+ * Con ElevenLabs, las personalidades están configuradas directamente en el
+ * panel de ElevenLabs. El agentConfigId ahora ES el ElevenLabs Agent ID.
+ * Ya no se necesita consultar demo-form-service para obtener configs.
+ * 
+ * Se mantiene como stub por compatibilidad con código que pueda llamarla,
+ * retornando un objeto mínimo con el ID pasado.
  */
 async function fetchAgentConfig(agentConfigId) {
-    const DEMO_FORM_URL = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
-    const AGENTS_CONFIG_KEY = process.env.AGENTS_CONFIG_KEY;
-
-    try {
-        const response = await axios.get(
-            `${DEMO_FORM_URL}/agent-configs/${agentConfigId}`,
-            {
-                headers: {
-                    "X-API-Key": AGENTS_CONFIG_KEY || ""
-                },
-                timeout: 5000
-            }
-        );
-
-        if (response.data?.success && response.data?.data) {
-            return response.data.data;
-        }
-        
-        logger.warn(`[A/B Test] Agent config ${agentConfigId} not found or invalid response`);
-        return null;
-    } catch (error) {
-        logger.error(`[A/B Test] Error fetching agent config ${agentConfigId}:`, error.message);
-        return null;
-    }
+    logger.info(`[A/B Test] fetchAgentConfig llamado con ${agentConfigId} (ElevenLabs - no se consulta demo-form-service)`);
+    return {
+        id: agentConfigId,
+        name: `ElevenLabs Agent ${agentConfigId}`,
+        type: 'elevenlabs',
+    };
 }
 
 /**
@@ -299,37 +290,27 @@ async function fetchContactDetails(contactId, type) {
 }
 
 /**
- * Trigger calls for a running test (usando sistema de colas)
+ * Trigger calls for a running test (usando sistema de colas).
+ * 
+ * Con ElevenLabs, ya NO se necesita fetchAgentConfig del demo-form-service.
+ * El agentConfigId de cada variante ES el ElevenLabs Agent ID directamente.
+ * Las personalidades están configuradas en el panel de ElevenLabs.
  */
 async function triggerTestCalls(test) {
     const isSDR = test.agentType === "SDR";
 
-    logger.info(`[A/B Test] Starting test ${test.id} - ${test.variants.length} variants`);
-    logger.info(`[A/B Test] Encolando llamadas ${isSDR ? 'SDR' : 'QUALIFICATION'}...`);
-
-    // Fetch all agent configs upfront to avoid repeated calls
-    const agentConfigsMap = new Map();
-    for (const variant of test.variants) {
-        if (!agentConfigsMap.has(variant.agentConfigId)) {
-            const config = await fetchAgentConfig(variant.agentConfigId);
-            if (config) {
-                agentConfigsMap.set(variant.agentConfigId, config);
-                logger.info(`[A/B Test] Loaded config for variant: ${config.name}`);
-            }
-        }
-    }
+    logger.info(`[A/B Test] Starting test ${test.id} - ${test.variants.length} variants (ElevenLabs)`);
+    logger.info(`[A/B Test] Encolando llamadas ${isSDR ? 'SDR' : 'QUALIFICATION'} via ElevenLabs...`);
 
     let jobsEnqueued = 0;
     let jobsFailed = 0;
 
     for (const variant of test.variants) {
-        const fullAgentConfig = agentConfigsMap.get(variant.agentConfigId);
+        // Con ElevenLabs, agentConfigId es directamente el ElevenLabs Agent ID
+        const elevenLabsAgentId = variant.agentConfigId;
         
-        if (!fullAgentConfig) {
-            logger.error(`[A/B Test] Skipping variant ${variant.id} - agent config ${variant.agentConfigId} not found`);
-            continue;
-        }
-        
+        logger.info(`[A/B Test] Variante ${variant.id}: Agent ID ElevenLabs = ${elevenLabsAgentId}, nombre = ${variant.agentConfigName}`);
+
         for (const contact of variant.contacts) {
             if (contact.status !== "PENDING") continue;
 
@@ -349,32 +330,33 @@ async function triggerTestCalls(test) {
                         : 'su negocio',
                     phone: contactDetails.phone,
                     address: contactDetails.address || "",
-                    employeeRange: "6 a 10 personas", // Default, podría venir de contactDetails si lo agregas
-                    agentConfigName: fullAgentConfig.name
+                    employeeRange: "6 a 10 personas",
+                    agentConfigName: variant.agentConfigName,
                 };
 
                 const jobData = {
                     contactId: contact.contactId,
                     abTestContactId: contact.id,
-                    agentConfigId: fullAgentConfig.id,
-                    establishmentData
+                    agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
+                    elevenLabsAgentId, // Explicit para los workers
+                    establishmentData,
                 };
 
                 // Si es QUALIFICATION, agregar datos del tomador de decisiones
                 if (!isSDR && (contactDetails.decisionMakerName || contactDetails.email)) {
                     jobData.decisionMakerData = {
                         name: contactDetails.decisionMakerName || "Contacto",
-                        email: contactDetails.email || null
+                        email: contactDetails.email || null,
                     };
                 }
 
-                // Encolar job en lugar de llamar directamente
+                // Encolar job
                 if (isSDR) {
                     await enqueueSDRCall(jobData);
-                    logger.info(`[A/B Test] Job SDR encolado para ${contact.contactId}`);
+                    logger.info(`[A/B Test] Job SDR encolado para ${contact.contactId} (Agent: ${elevenLabsAgentId})`);
                 } else {
                     await enqueueQualificationCall(jobData);
-                    logger.info(`[A/B Test] Job QUALIFICATION encolado para ${contact.contactId}`);
+                    logger.info(`[A/B Test] Job QUALIFICATION encolado para ${contact.contactId} (Agent: ${elevenLabsAgentId})`);
                 }
 
                 jobsEnqueued++;
@@ -388,7 +370,7 @@ async function triggerTestCalls(test) {
     }
 
     logger.info(`[A/B Test] Encolamiento completado: ${jobsEnqueued} jobs encolados, ${jobsFailed} fallidos`);
-    logger.info(`[A/B Test] Los workers procesarán las llamadas asíncronamente`);
+    logger.info(`[A/B Test] Los workers procesarán las llamadas asíncronamente via ElevenLabs`);
 }
 
 async function listTests(userId = null) {
