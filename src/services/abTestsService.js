@@ -251,8 +251,8 @@ async function fetchContactDetails(contactId, type) {
         // Fetch from Geo DB - use 'name' field (same as frontend)
         const establishment = await prismaGeo.establishment.findUnique({
             where: { id: String(contactId) },
-            select: { 
-                phone: true, 
+            select: {
+                phone: true,
                 name: true,  // This is what frontend uses: item.establishment?.name
                 streetType: true,
                 exteriorNum: true,
@@ -260,18 +260,18 @@ async function fetchContactDetails(contactId, type) {
                 stateName: true
             }
         });
-        
+
         if (!establishment) return null;
-        
+
         // Try to get enrichment data for email and decision maker name
         const enrichment = await prisma.establishmentEnrichment.findFirst({
             where: { establishmentId: contactId },
-            select: { 
+            select: {
                 decisionMakerEmail: true,
                 decisionMakerName: true
             }
         });
-        
+
         return {
             phone: establishment.phone,
             name: establishment.name || 'el establecimiento',
@@ -308,7 +308,7 @@ async function triggerTestCalls(test) {
     for (const variant of test.variants) {
         // Con ElevenLabs, agentConfigId es directamente el ElevenLabs Agent ID
         const elevenLabsAgentId = variant.agentConfigId;
-        
+
         logger.info(`[A/B Test] Variante ${variant.id}: Agent ID ElevenLabs = ${elevenLabsAgentId}, nombre = ${variant.agentConfigName}`);
 
         for (const contact of variant.contacts) {
@@ -325,8 +325,8 @@ async function triggerTestCalls(test) {
 
                 // Preparar datos para encolar
                 const establishmentData = {
-                    name: contactDetails.name && contactDetails.name !== 'el establecimiento' 
-                        ? contactDetails.name 
+                    name: contactDetails.name && contactDetails.name !== 'el establecimiento'
+                        ? contactDetails.name
                         : 'su negocio',
                     phone: contactDetails.phone,
                     address: contactDetails.address || "",
@@ -339,11 +339,12 @@ async function triggerTestCalls(test) {
                     abTestContactId: contact.id,
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
+                    voiceId: variant.voiceId,
                     establishmentData,
                 };
 
-                // Si es QUALIFICATION, agregar datos del tomador de decisiones
-                if (!isSDR && (contactDetails.decisionMakerName || contactDetails.email)) {
+                // Agregar datos del tomador de decisiones si existen (necesario para personalización)
+                if (contactDetails.decisionMakerName || contactDetails.email) {
                     jobData.decisionMakerData = {
                         name: contactDetails.decisionMakerName || "Contacto",
                         email: contactDetails.email || null,
@@ -375,7 +376,7 @@ async function triggerTestCalls(test) {
 
 async function listTests(userId = null) {
     const whereClause = userId ? { createdBy: userId } : {};
-    
+
     return await prisma.abTest.findMany({
         where: whereClause,
         include: {
@@ -430,7 +431,7 @@ async function removeCandidate(establishmentId) {
             where: { establishmentId }
         });
     } catch (e) {
-        if (e.code === 'P2025') return null; 
+        if (e.code === 'P2025') return null;
         throw e;
     }
 }

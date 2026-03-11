@@ -73,6 +73,7 @@ async function enqueueQualificationCall(jobData, options = {}) {
     abTestContactId,
     agentConfigId,
     elevenLabsAgentId,
+    voiceId,
     establishmentData,
     decisionMakerData,
   } = jobData;
@@ -90,6 +91,7 @@ async function enqueueQualificationCall(jobData, options = {}) {
       abTestContactId,
       agentConfigId: agentConfigId || elevenLabsAgentId,
       elevenLabsAgentId: elevenLabsAgentId || agentConfigId,
+      voiceId,
       establishmentData,
       decisionMakerData,
       enqueuedAt: new Date().toISOString(),

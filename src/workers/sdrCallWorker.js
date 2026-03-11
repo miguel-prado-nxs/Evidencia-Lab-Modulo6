@@ -88,7 +88,7 @@ async function updateContactStatus(abTestContactId, status, result = null, calle
  */
 function formatPhoneE164(phone) {
   let formatted = (phone || "").replace(/[\s\-\(\)\.]/g, '');
-  
+
   if (formatted.startsWith('+52')) {
     return formatted;
   } else if (formatted.startsWith('52') && formatted.length === 12) {
@@ -111,6 +111,7 @@ async function executeSDRCall(jobData) {
     abTestContactId,
     agentConfigId,
     elevenLabsAgentId,
+    voiceId,
     establishmentData,
   } = jobData;
 
@@ -120,7 +121,10 @@ async function executeSDRCall(jobData) {
       contactId,
       agentConfigId,
       elevenLabsAgentId: elevenLabsAgentId || config.agents.sdr.agentId || 'default',
+      voiceId: voiceId
     });
+
+    console.log(`[SDR Worker DEBUG] Job data voiceId: ${voiceId}`);
 
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
@@ -134,8 +138,10 @@ async function executeSDRCall(jobData) {
       phone: formattedPhone,
       address: establishmentData?.address || "",
       employee_range: establishmentData?.employeeRange || "0 a 5 personas",
+      prospect_name: jobData.decisionMakerData?.name || "Contacto",
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
+      voice_id: voiceId,
     };
 
     // Si hay un agent_config_id específico de ElevenLabs, pasarlo

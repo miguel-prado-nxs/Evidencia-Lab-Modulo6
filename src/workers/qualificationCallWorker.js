@@ -112,6 +112,7 @@ async function executeQualificationCall(jobData) {
     abTestContactId,
     agentConfigId,
     elevenLabsAgentId,
+    voiceId,
     establishmentData,
     decisionMakerData,
   } = jobData;
@@ -138,6 +139,8 @@ async function executeQualificationCall(jobData) {
       email: decisionMakerData?.email || null,
       // Contexto A/B Testing — elevenlabs-calificacion lo pasa como dynamic variable
       ab_test_contact_id: abTestContactId,
+      agent_config_id: elevenLabsAgentId,
+      voice_id: voiceId,
     };
 
     // Headers para elevenlabs-calificacion

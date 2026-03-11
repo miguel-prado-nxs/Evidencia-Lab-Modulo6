@@ -35,6 +35,7 @@ const agentMetricsRoutes = require("./routes/agentMetrics");
 const abTestsRoutes = require("./routes/abTestsRoutes");
 const testCallRoutes = require("./routes/testCall");
 const webhooksRoutes = require("./routes/webhooks");
+const elevenLabsRoutes = require("./routes/elevenLabsRoutes");
 
 // Crear aplicación Express
 const app = express();
@@ -165,6 +166,7 @@ app.use("/api/v1/agent-metrics", agentMetricsRoutes);
 app.use("/api/v1/ab-tests", abTestsRoutes);
 app.use("/api/v1/test-call", testCallRoutes);
 app.use("/api/v1/webhooks", webhooksRoutes);
+app.use("/api/v1/elevenlabs", elevenLabsRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES

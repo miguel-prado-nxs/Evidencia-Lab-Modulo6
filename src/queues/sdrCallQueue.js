@@ -57,6 +57,7 @@ sdrCallQueue.on("stalled", (jobId) => {
  * @param {string} jobData.contactId - ID del contacto (establishment enrichment).
  * @param {string} jobData.abTestContactId - ID del registro en abTestContact.
  * @param {string} [jobData.agentConfigId] - ElevenLabs Agent ID (o legacy config ID).
+ * @param {string} [jobData.voiceId] - ElevenLabs Voice ID for override.
  * @param {string} [jobData.elevenLabsAgentId] - ElevenLabs Agent ID explícito.
  * @param {object} jobData.establishmentData - Datos del establecimiento para la llamada.
  * @param {object} [options={}] - Opciones adicionales para el job.
@@ -65,7 +66,7 @@ sdrCallQueue.on("stalled", (jobId) => {
  * @returns {Promise<object>} Job encolado con id y metadata.
  */
 async function enqueueSDRCall(jobData, options = {}) {
-  const { contactId, abTestContactId, agentConfigId, elevenLabsAgentId, establishmentData } = jobData;
+  const { contactId, abTestContactId, agentConfigId, elevenLabsAgentId, voiceId, establishmentData } = jobData;
 
   if (!contactId || !abTestContactId) {
     throw new Error(
@@ -80,6 +81,7 @@ async function enqueueSDRCall(jobData, options = {}) {
       abTestContactId,
       agentConfigId: agentConfigId || elevenLabsAgentId,
       elevenLabsAgentId: elevenLabsAgentId || agentConfigId,
+      voiceId,
       establishmentData,
       enqueuedAt: new Date().toISOString(),
     },
