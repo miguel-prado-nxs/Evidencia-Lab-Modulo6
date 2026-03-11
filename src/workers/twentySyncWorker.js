@@ -45,11 +45,11 @@ async function runInitialMigration() {
     }
 
     logger.info("[TwentySyncWorker] Iniciando migración inicial de registros existentes");
-    
+
     // Marcar como iniciada
     await prisma.twentySyncMetadata.update({
       where: { id: 'singleton' },
-      data: { 
+      data: {
         initialMigrationStartedAt: new Date()
       }
     });
@@ -63,7 +63,7 @@ async function runInitialMigration() {
     });
 
     logger.info(`[TwentySyncWorker] ${enrichments.length} registros a migrar`);
-    
+
     let migrated = 0;
     let failed = 0;
 
@@ -73,8 +73,8 @@ async function runInitialMigration() {
 
     for (let i = 0; i < enrichments.length; i += BATCH_SIZE) {
       const batch = enrichments.slice(i, i + BATCH_SIZE);
-      
-      logger.info(`[TwentySyncWorker] Procesando lote ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(enrichments.length/BATCH_SIZE)}`);
+
+      logger.info(`[TwentySyncWorker] Procesando lote ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(enrichments.length / BATCH_SIZE)}`);
 
       for (const enrichment of batch) {
         try {
@@ -104,7 +104,7 @@ async function runInitialMigration() {
           } else {
             // No migrado, buscar/crear en Twenty
             let twentyEstablishment = await twentyService.findEstablecimientoByClaveDenue(establishment.clee);
-            
+
             // Si no existe en Twenty, se creará automáticamente en la primera sync
             // Solo encolamos el job, el sync service se encargará de crear si no existe
             await enqueueSync({
@@ -142,14 +142,14 @@ async function runInitialMigration() {
 
   } catch (error) {
     logger.error("[TwentySyncWorker] Error en migración inicial:", error);
-    
+
     // Guardar error pero no marcar como completada
     await prisma.twentySyncMetadata.update({
       where: { id: 'singleton' },
       data: {
         lastMigrationError: error.message
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }
 }
 
@@ -230,7 +230,7 @@ async function runCycle() {
  */
 async function getStatus() {
   const stats = await getSyncStats();
-  
+
   // Obtener metadata de migración
   const metadata = await prisma.twentySyncMetadata.findUnique({
     where: { id: 'singleton' }

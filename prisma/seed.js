@@ -4,6 +4,7 @@
     // Ejecuta seeds en el orden que necesites:
     await import("./seed-settings.js");
     await import("./seed-email-templates.js");
+    await import("./seed-campaigns.js");
     // await import("./seed-test.js"); // si aplica
 
     console.log(" Seed completed");

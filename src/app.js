@@ -30,6 +30,8 @@ const easyorderRoutes = require("./routes/easyorder");
 const agentMetricsRoutes = require("./routes/agentMetrics");
 const abTestsRoutes = require("./routes/abTestsRoutes");
 const testCallRoutes = require("./routes/testCall");
+const campaignsRoutes = require("./routes/campaigns");
+const couponsRoutes = require("./routes/coupons");
 
 // Crear aplicación Express
 const app = express();
@@ -112,6 +114,8 @@ app.get("/api/v1", (req, res) => {
       analytics: "/api/v1/analytics",
       geo: "/api/v1/geo",
       referrals: "/api/v1/referrals",
+      campaigns: "/api/v1/campaigns",
+      coupons: "/api/v1/coupons",
     },
     authentication: "JWT Bearer token en header Authorization",
     documentation: "Ver README.md",
@@ -142,6 +146,8 @@ app.use("/api/v1/easyorder", easyorderRoutes);
 app.use("/api/v1/agent-metrics", agentMetricsRoutes);
 app.use("/api/v1/ab-tests", abTestsRoutes);
 app.use("/api/v1/test-call", testCallRoutes);
+app.use("/api/v1/campaigns", campaignsRoutes);
+app.use("/api/v1/coupons", couponsRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES

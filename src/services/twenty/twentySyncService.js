@@ -274,7 +274,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
   try {
     // 3. Obtener el clee del establishment desde establishmentData (ya viene incluido)
     const clee = establishmentData.clee || establishmentId;
-    
+
     // 4. SIEMPRE: Upsert Establecimiento (Company) usando clee
     // Pasar también el establishmentId (UUID) como fallback para buscar en BD geo
     twentyIds.establecimientoId = await upsertEstablecimiento(
@@ -288,7 +288,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
 
     // 5. Procesar SOLO el nivel actual (no todos los anteriores)
     // Los registros anteriores se eliminan al avanzar de nivel
-    
+
     if (currentLevel === "CONTACT") {
       // Nivel CONTACT: Solo crear/actualizar Person
       twentyIds.contactoId = await upsertContacto(
@@ -297,7 +297,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
         twentyIds.establecimientoId,
         twentyIds.contactoId
       );
-    } 
+    }
     else if (currentLevel === "PROSPECT") {
       // Nivel PROSPECT: Crear Prospecto y eliminar Contacto anterior
       twentyIds.prospectoId = await upsertProspecto(
@@ -311,7 +311,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
       );
       // El upsertProspecto ya elimina el contacto, solo limpiamos el ID
       twentyIds.contactoId = null;
-    } 
+    }
     else if (currentLevel === "LEAD") {
       // Nivel LEAD: Crear Opportunity y eliminar Prospecto anterior
       twentyIds.opportunityId = await upsertOpportunity(
@@ -324,7 +324,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
       );
       // El upsertOpportunity ya elimina el prospecto, solo limpiamos el ID
       twentyIds.prospectoId = null;
-    } 
+    }
     else if (currentLevel === "CLIENT") {
       // Nivel CLIENT: Crear Cliente y eliminar Opportunity anterior
       twentyIds.clienteId = await upsertCliente(
@@ -422,7 +422,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
     claveDenue: clee,
     establishmentId: establishmentIdUuid,
   });
-  
+
   try {
     // Obtener datos completos del establecimiento de la BD geo
     const establishment = await prismaGeo.establishment.findFirst({
@@ -433,11 +433,11 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
         ]
       }
     });
-    
+
     if (!establishment) {
       throw new Error(`Establecimiento no encontrado en BD geo: clee=${clee}, id=${establishmentIdUuid}`);
     }
-    
+
     // Preparar dirección
     const addressParts = [
       establishment.streetType,
@@ -445,7 +445,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
       establishment.exteriorNum,
       establishment.interiorNum
     ].filter(Boolean);
-    
+
     const addressStreet = addressParts.join(' ') || 'Sin dirección';
     const addressCity = establishment.municipalityName || establishment.stateName || 'Sin ciudad';
 
@@ -454,7 +454,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
       name: establishment.name || 'Sin nombre',
       claveDenue: establishment.clee,
       nivelPipeline: currentLevel,
-      
+
       // Dirección
       address: {
         addressStreet1: addressStreet,
@@ -463,37 +463,37 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
         addressPostcode: establishment.postalCode || '',
         addressCountry: 'México'
       },
-      
+
       // Ubicación
       estado: establishment.stateName,
       municipio: establishment.municipalityName,
       codigoPostal: establishment.postalCode || '',
       latitud: establishment.latitude,
       longitud: establishment.longitude,
-      
+
       // Actividad económica
       giro: establishment.activityName || establishment.activityCode || '',
-      
+
       // Contacto (si existe)
       telefonoDenue: establishment.phone ? {
         primaryPhoneNumber: establishment.phone,
         primaryPhoneCountryCode: 'MX'
       } : undefined,
-      
+
       emailDenue: establishment.email ? {
         primaryEmail: establishment.email
       } : undefined,
-      
+
       websiteDenue: establishment.website ? {
         primaryLinkUrl: establishment.website,
         primaryLinkLabel: establishment.website
       } : undefined,
-      
+
       // Metadata
-      fechaAltaDenue: establishment.addedDate 
+      fechaAltaDenue: establishment.addedDate
         ? (establishment.addedDate.length === 7 ? `${establishment.addedDate}-01T00:00:00.000Z` : establishment.addedDate)
         : new Date().toISOString(),
-      
+
       // Dominio para deduplicación
       dominio: (() => {
         if (establishment.website) {
@@ -510,16 +510,16 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
 
     const response = await twentyService.client.post('/companies?upsert=true', companyData);
     const created = response.data.data?.createCompany || response.data;
-    
+
     logger.info("[TwentySyncService] Establecimiento creado en Twenty desde BD geo", {
       twentyId: created.id,
       claveDenue: establishment.clee,
       name: establishment.name,
       nivelPipeline: currentLevel
     });
-    
+
     return created.id;
-    
+
   } catch (error) {
     logger.error("[TwentySyncService] Error creando establecimiento en Twenty desde BD geo", {
       error: error.response?.data || error.message,
@@ -562,7 +562,7 @@ async function upsertContacto(establishmentData, enrichment, establecimientoId, 
     } else if (!formattedPhone.startsWith("+")) {
       formattedPhone = "+" + formattedPhone;
     }
-    contactoData.telefonoPrincipal = { 
+    contactoData.telefonoPrincipal = {
       primaryPhoneNumber: formattedPhone,
       primaryPhoneCountryCode: "MX",
       primaryPhoneCallingCode: "+52"
@@ -697,7 +697,7 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
     } else if (!phone.startsWith("+")) {
       phone = "+" + phone;
     }
-    prospectoData.tomadorWhatsapp = { 
+    prospectoData.tomadorWhatsapp = {
       primaryPhoneNumber: phone,
       primaryPhoneCountryCode: "MX",
       primaryPhoneCallingCode: "+52"
@@ -714,7 +714,7 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
     } else if (!phone.startsWith("+")) {
       phone = "+" + phone;
     }
-    prospectoData.tomadorTelefonoDirecto = { 
+    prospectoData.tomadorTelefonoDirecto = {
       primaryPhoneNumber: phone,
       primaryPhoneCountryCode: "MX",
       primaryPhoneCallingCode: "+52"
