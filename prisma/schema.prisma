@@ -1183,6 +1183,22 @@ model TwentySyncMetadata {
   @@map("twenty_sync_metadata")
 }
 
+// ========== PERSONALIDADES ELEVENLABS (CATALOGO) ==========
+
+model ElevenLabsPersonality {
+  id        String   @id @default(uuid())
+  name      String   @unique // Ej: "Esteban", "Carlos"
+  voiceId   String   @map("voice_id") // ID de ElevenLabs
+  agentId   String?  @map("agent_id") // Opcional: ID del Agente asociado
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  variants  AbTestVariant[]
+
+  @@map("elevenlabs_personalities")
+}
+
 // ========== A/B TESTING ==========
 
 model AbTest {
@@ -1206,22 +1222,23 @@ model AbTest {
 }
 
 model AbTestVariant {
-  id          String   @id @default(uuid())
-  abTestId    String   @map("ab_test_id")
+  id              String   @id @default(uuid())
+  abTestId        String   @map("ab_test_id")
+  personalityId   String?  @map("personality_id") // Link al catalogo de personalidades
   
-  agentConfigId   String @map("agent_config_id") // ID from demo-form-service
-  agentConfigName String @map("agent_config_name") // Snapshot name
-  voiceId         String @map("voice_id") // Snapshot voice/personality
+  agentConfigId   String?  @map("agent_config_id") // ID from demo-form service (fallback)
+  voiceId         String?  @map("voice_id") // Snapshot/Override voice id
   
-  percentage  Int      // 0-100
+  percentage      Int      // 0-100
   
   // Metrics snapshot
   totalCalls      Int @default(0) @map("total_calls")
   totalConnected  Int @default(0) @map("total_connected")
   totalConverted  Int @default(0) @map("total_converted")
   
-  abTest      AbTest   @relation(fields: [abTestId], references: [id], onDelete: Cascade)
-  contacts    AbTestContact[]
+  abTest          AbTest   @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+  personality     ElevenLabsPersonality? @relation(fields: [personalityId], references: [id])
+  contacts        AbTestContact[]
   
   @@map("ab_test_variants")
 }

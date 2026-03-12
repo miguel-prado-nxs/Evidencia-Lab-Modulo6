@@ -59,6 +59,7 @@ async function getTestProgressDetails(testId) {
             include: {
                 variants: {
                     include: {
+                        personality: true, // Incluir la personalidad del catálogo
                         _count: {
                             select: { contacts: true }
                         }

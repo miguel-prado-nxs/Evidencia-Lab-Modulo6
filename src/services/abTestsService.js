@@ -52,11 +52,16 @@ async function createTest(data) {
         // 2. Create Variants
         const createdVariants = [];
         for (const variant of variants) {
+            // Buscar si la voz existe en nuestro catálogo para linkearla
+            const personality = await tx.elevenLabsPersonality.findFirst({
+                where: { voiceId: variant.voiceId }
+            });
+
             const v = await tx.abTestVariant.create({
                 data: {
                     abTestId: abTest.id,
+                    personalityId: personality?.id || null, // Link opcional al catálogo
                     agentConfigId: variant.agentConfigId,
-                    agentConfigName: variant.agentConfigName,
                     voiceId: variant.voiceId,
                     percentage: variant.percentage
                 }
@@ -309,7 +314,7 @@ async function triggerTestCalls(test) {
         // Con ElevenLabs, agentConfigId es directamente el ElevenLabs Agent ID
         const elevenLabsAgentId = variant.agentConfigId;
 
-        logger.info(`[A/B Test] Variante ${variant.id}: Agent ID ElevenLabs = ${elevenLabsAgentId}, nombre = ${variant.agentConfigName}`);
+        logger.info(`[A/B Test] Variante ${variant.id}: Agent ID ElevenLabs = ${elevenLabsAgentId}`);
 
         for (const contact of variant.contacts) {
             if (contact.status !== "PENDING") continue;
@@ -331,7 +336,7 @@ async function triggerTestCalls(test) {
                     phone: contactDetails.phone,
                     address: contactDetails.address || "",
                     employeeRange: "6 a 10 personas",
-                    agentConfigName: variant.agentConfigName,
+                    // agentConfigName ya no se usa aquí
                 };
 
                 const jobData = {
@@ -380,7 +385,11 @@ async function listTests(userId = null) {
     return await prisma.abTest.findMany({
         where: whereClause,
         include: {
-            variants: true,
+            variants: {
+                include: {
+                    personality: true // Incluir la personalidad vinculada
+                }
+            },
             _count: {
                 select: { variants: true }
             }
@@ -566,6 +575,7 @@ async function resumeTest(id) {
                 }
             }
         }
+
     });
 
     // Re-encolar jobs pendientes si los hay
@@ -575,6 +585,97 @@ async function resumeTest(id) {
 
     return test;
 }
+
+/**
+ * Reconcile stalled contacts: find contacts stuck in CALLED status for too long
+ * and mark them as COMPLETED. This handles the case where the ElevenLabs webhook
+ * (save_all_and_end_call) never fires due to session collision or call issues.
+ * 
+ * Runs periodically (every 3 minutes) and checks contacts stuck for > 5 minutes.
+ */
+async function reconcileStalledContacts() {
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    const cutoffDate = new Date(Date.now() - STALE_THRESHOLD_MS);
+
+    try {
+        // Find contacts stuck in CALLED status for more than 5 minutes
+        const stalledContacts = await prisma.abTestContact.findMany({
+            where: {
+                status: 'CALLED',
+                calledAt: {
+                    lt: cutoffDate  // calledAt is more than 5 minutes ago
+                }
+            },
+            include: {
+                variant: {
+                    include: {
+                        abTest: { select: { id: true, status: true } }
+                    }
+                }
+            }
+        });
+
+        if (stalledContacts.length === 0) return;
+
+        logger.info(`[Reconciliation] Found ${stalledContacts.length} stalled contacts (CALLED > 5 min)`);
+
+        for (const contact of stalledContacts) {
+            // Only reconcile contacts from RUNNING tests
+            if (contact.variant?.abTest?.status !== 'RUNNING') continue;
+
+            // Parse existing result to get conversationId if available
+            let existingResult = {};
+            try {
+                if (contact.result) {
+                    existingResult = JSON.parse(contact.result);
+                }
+            } catch (_) {}
+
+            const result = {
+                ...existingResult,
+                status: 'completed',
+                reconciled: true,
+                reconciledAt: new Date().toISOString(),
+                note: 'Auto-completed by reconciliation (webhook did not fire within 5 minutes)'
+            };
+
+            await prisma.abTestContact.update({
+                where: { id: contact.id },
+                data: {
+                    status: 'COMPLETED',
+                    result: JSON.stringify(result)
+                }
+            });
+
+            logger.info(`[Reconciliation] Auto-completed contact ${contact.contactId} (abTestContact: ${contact.id})`);
+        }
+
+        // Check if any test is now fully completed
+        const testIds = [...new Set(stalledContacts.map(c => c.variant?.abTest?.id).filter(Boolean))];
+        for (const testId of testIds) {
+            const pendingCount = await prisma.abTestContact.count({
+                where: {
+                    variant: { abTestId: testId },
+                    status: { in: ['PENDING', 'CALLED'] }
+                }
+            });
+
+            if (pendingCount === 0) {
+                await prisma.abTest.update({
+                    where: { id: testId },
+                    data: { status: 'COMPLETED', endDate: new Date() }
+                });
+                logger.info(`[Reconciliation] Test ${testId} marked as COMPLETED (all contacts resolved)`);
+            }
+        }
+    } catch (error) {
+        logger.error('[Reconciliation] Error reconciling stalled contacts:', error.message);
+    }
+}
+
+// Start periodic reconciliation (every 3 minutes)
+setInterval(reconcileStalledContacts, 3 * 60 * 1000);
+logger.info('[Reconciliation] Periodic stalled contact reconciliation started (every 3 min)');
 
 module.exports = {
     createTest,
@@ -594,5 +695,7 @@ module.exports = {
     getCandidatesWithSnapshot,
     stopTest,
     pauseTest,
-    resumeTest
+    resumeTest,
+    reconcileStalledContacts
 };
+
