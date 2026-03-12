@@ -158,12 +158,15 @@ async function executeSDRCall(jobData) {
     }
 
     // Ejecutar llamada al servicio elevenlabs-sdr
+    const targetUrl = `${AGENT_URL}/api/sdr/initiate-call`;
+    logger.info(`[SDR Worker] Enviando POST a: ${targetUrl}`, { payload });
+    
     const response = await axios.post(
-      `${AGENT_URL}/api/sdr/initiate-call`,
+      targetUrl,
       payload,
       {
         headers,
-        timeout: 30000, // 30s timeout para iniciar la llamada (ya no esperamos que termine)
+        timeout: 30000, 
       }
     );
 

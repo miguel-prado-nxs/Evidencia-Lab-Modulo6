@@ -653,9 +653,16 @@ async function reconcileStalledContacts() {
         // Check if any test is now fully completed
         const testIds = [...new Set(stalledContacts.map(c => c.variant?.abTest?.id).filter(Boolean))];
         for (const testId of testIds) {
+            // Use a more direct query to avoid complex subqueries that might fail in some DB setups
+            const variants = await prisma.abTestVariant.findMany({
+                where: { abTestId: testId },
+                select: { id: true }
+            });
+            const variantIds = variants.map(v => v.id);
+
             const pendingCount = await prisma.abTestContact.count({
                 where: {
-                    variant: { abTestId: testId },
+                    abTestVariantId: { in: variantIds },
                     status: { in: ['PENDING', 'CALLED'] }
                 }
             });
