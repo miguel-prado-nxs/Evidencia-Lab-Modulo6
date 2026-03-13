@@ -338,6 +338,48 @@ const autoEnrich = async (req, res, next) => {
 
     // Llamar al agente SDR en agentes-crm-sdk
 
+    // Si viene un ab_test_contact_id pero no trae la voz (porque se disparó manual desde frontend),
+    // vamos a buscar la voz de esa variante a la base de datos
+    let finalVoiceId = voiceId;
+    let finalAgentName = agentName || agentConfig?.name;
+    let finalAgentConfigId = requestAgentConfigId || agentConfig?.id;
+
+    if (abTestContactId && !voiceId) {
+      try {
+        const { PrismaClient } = require("@prisma/client");
+        const prisma = new PrismaClient();
+        
+        const abTestContact = await prisma.aBTestContact.findUnique({
+          where: { id: abTestContactId },
+          include: {
+            variant: {
+              include: {
+                personality: true
+              }
+            }
+          }
+        });
+
+        if (abTestContact && abTestContact.variant) {
+          console.log(`[AUTO-ENRICH] Recuperando config A/B Test para variante ${abTestContact.variant.id}`);
+          if (abTestContact.variant.voiceId) {
+            finalVoiceId = abTestContact.variant.voiceId;
+            console.log(`[AUTO-ENRICH] ✅ Voice ID inyectado desde BD: ${finalVoiceId}`);
+          }
+          if (abTestContact.variant.personality?.name) {
+            finalAgentName = abTestContact.variant.personality.name;
+            console.log(`[AUTO-ENRICH] ✅ Agent Name inyectado desde BD: ${finalAgentName}`);
+          }
+          if (abTestContact.variant.agentConfigId) {
+            finalAgentConfigId = abTestContact.variant.agentConfigId;
+          }
+        }
+        await prisma.$disconnect();
+      } catch (err) {
+        console.error("[AUTO-ENRICH] Error buscando voice_id de variante:", err);
+      }
+    }
+
     const sdrPayload = {
       establishment_id: establishmentId || `auto-${Date.now()}`,
       establishment_name: businessName,
@@ -349,10 +391,10 @@ const autoEnrich = async (req, res, next) => {
       user_id: req.salesPartnerId || req.user?.id || null,
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId || null,
-      voice_id: voiceId || null,
+      voice_id: finalVoiceId || null,
       // Manejar ambas formas de configuración de agente
-      agent_config_id: requestAgentConfigId || agentConfig?.id || null,
-      agent_name: agentName || agentConfig?.name || null,
+      agent_config_id: finalAgentConfigId || null,
+      agent_name: finalAgentName || null,
     };
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
