@@ -128,6 +128,8 @@ async function executeQualificationCall(jobData) {
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
 
+    logger.info(`[Qualification Worker DEBUG] agentName from jobData: ${jobData.agentName}`);
+
     const formattedPhone = formatPhoneE164(establishmentData?.phone);
 
     // Payload para elevenlabs-calificacion (formato que su POST /api/qualification/initiate-call espera)

@@ -340,15 +340,30 @@ async function triggerTestCalls(test) {
                     // agentConfigName ya no se usa aquí
                 };
 
+                let agentName = variant.personality?.name;
+
+                // Fallback: si no viene la personalidad pero hay voice_id, buscarla en el catálogo
+                if (!agentName && variant.voiceId) {
+                    const personality = await prisma.elevenLabsPersonality.findFirst({
+                        where: { voiceId: variant.voiceId }
+                    });
+                    if (personality) {
+                        agentName = personality.name;
+                        logger.info(`[A/B Test DEBUG] Dynamic fallback found agentName: ${agentName} for voice ${variant.voiceId}`);
+                    }
+                }
+
                 const jobData = {
                     contactId: contact.contactId,
                     abTestContactId: contact.id,
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
                     voiceId: variant.voiceId,
-                    agentName: variant.personality?.name || null,
+                    agentName: agentName || null,
                     establishmentData,
                 };
+
+                logger.info(`[A/B Test DEBUG] jobData created for ${contact.id}. agentName: ${jobData.agentName}`);
 
                 // Agregar datos del tomador de decisiones si existen (necesario para personalización)
                 if (contactDetails.decisionMakerName || contactDetails.email) {

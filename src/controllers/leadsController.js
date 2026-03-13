@@ -345,6 +345,7 @@ const autoEnrich = async (req, res, next) => {
       user_id: req.salesPartnerId || req.user?.id || null,
       // Agregar agent_config si se obtuvo
       ...(agentConfig && { agent_config: agentConfig }),
+      agent_name: agentConfig?.name || null,
     };
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
@@ -512,6 +513,7 @@ const autoQualify = async (req, res, next) => {
       user_id: req.salesPartnerId || req.user?.id || null,
       // Agregar agent_config_id si se obtuvo
       ...(agentConfigId && { agent_config_id: agentConfigId }),
+      agent_name: null, // Dejamos que el SDR service resuelva el nombre por defecto si no hay contexto A/B
     };
 
     console.log("[AUTO-QUALIFY] Llamando al agente de Qualification:", qualificationAgentUrl + "/api/qualification/initiate-call");
