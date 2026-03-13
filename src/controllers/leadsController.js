@@ -228,9 +228,12 @@ const autoEnrich = async (req, res, next) => {
       employeeRange,
       establishmentId,
       address,
-      agentConfig: requestAgentConfig, // agentConfig enviado desde el frontend
+      agentConfig: requestAgentConfig, // Opcional: objeto de configuración
+      agent_config_id: requestAgentConfigId, // Opcional: ID directo
       ab_test_contact_id: abTestContactId,
       voice_id: voiceId,
+      prospect_name: prospectName,
+      agent_name: agentName,
     } = req.body;
 
     // Validar datos requeridos
@@ -341,14 +344,15 @@ const autoEnrich = async (req, res, next) => {
       phone: businessContact,
       employee_range: employeeRange || "0 a 5 personas",
       address: address || "",
+      prospect_name: prospectName || "Contacto",
       // Pasar userId para asignación de prospecto
       user_id: req.salesPartnerId || req.user?.id || null,
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId || null,
       voice_id: voiceId || null,
-      // Agregar agent_config si se obtuvo
-      ...(agentConfig && { agent_config: agentConfig }),
-      agent_name: agentConfig?.name || null,
+      // Manejar ambas formas de configuración de agente
+      agent_config_id: requestAgentConfigId || agentConfig?.id || null,
+      agent_name: agentName || agentConfig?.name || null,
     };
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
