@@ -228,7 +228,9 @@ const autoEnrich = async (req, res, next) => {
       employeeRange,
       establishmentId,
       address,
-      agentConfig: requestAgentConfig  // agentConfig enviado desde el frontend
+      agentConfig: requestAgentConfig, // agentConfig enviado desde el frontend
+      ab_test_contact_id: abTestContactId,
+      voice_id: voiceId,
     } = req.body;
 
     // Validar datos requeridos
@@ -340,9 +342,10 @@ const autoEnrich = async (req, res, next) => {
       employee_range: employeeRange || "0 a 5 personas",
       address: address || "",
       // Pasar userId para asignación de prospecto
-      // Usar salesPartnerId (ya viene en formato correcto desde middleware)
-      // o user.id si viene de JWT, o null si no hay usuario
       user_id: req.salesPartnerId || req.user?.id || null,
+      // Contexto A/B Testing
+      ab_test_contact_id: abTestContactId || null,
+      voice_id: voiceId || null,
       // Agregar agent_config si se obtuvo
       ...(agentConfig && { agent_config: agentConfig }),
       agent_name: agentConfig?.name || null,

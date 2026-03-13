@@ -141,7 +141,7 @@ async function executeSDRCall(jobData) {
       prospect_name: jobData.decisionMakerData?.name || "Contacto",
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
-      voice_id: voiceId,
+      voice_id: voiceId || null,
       agent_name: agentName || jobData.agentName || "CADENA VACÍA",
     };
 
@@ -150,24 +150,18 @@ async function executeSDRCall(jobData) {
       payload.agent_config_id = elevenLabsAgentId;
     }
 
-    // Headers para elevenlabs-sdr
-    const headers = {
-      "Content-Type": "application/json",
-    };
-    if (AGENT_API_KEY) {
-      headers["X-API-Key"] = AGENT_API_KEY;
-    }
+    console.log(`[SDR Worker] Enviando POST a: ${config.agents.sdr.url}/api/sdr/initiate-call`);
+    console.log(`[SDR Worker DEBUG] Final Payload: ${JSON.stringify(payload)}`);
 
-    // Ejecutar llamada al servicio elevenlabs-sdr
-    const targetUrl = `${AGENT_URL}/api/sdr/initiate-call`;
-    logger.info(`[SDR Worker] Enviando POST a: ${targetUrl}`, { payload });
-    
     const response = await axios.post(
-      targetUrl,
+      `${config.agents.sdr.url}/api/sdr/initiate-call`,
       payload,
       {
-        headers,
-        timeout: 30000, 
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": config.agents.sdr.apiKey
+        },
+        timeout: 30000
       }
     );
 
@@ -199,8 +193,12 @@ async function executeSDRCall(jobData) {
     logger.error("[SDR Worker] Error en llamada ElevenLabs SDR", {
       abTestContactId,
       error: error.message,
-      response: error.response?.data,
+      axiosError: error.response?.data
     });
+
+    if (error.response) {
+        console.error(`[SDR Worker DEBUG] Axios Error Details: ${JSON.stringify(error.response.data)}`);
+    }
 
     const result = {
       success: false,
