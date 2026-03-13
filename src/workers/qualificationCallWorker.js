@@ -141,6 +141,7 @@ async function executeQualificationCall(jobData) {
       ab_test_contact_id: abTestContactId,
       agent_config_id: elevenLabsAgentId,
       voice_id: voiceId,
+      agent_name: jobData.agentName,
     };
 
     // Headers para elevenlabs-calificacion

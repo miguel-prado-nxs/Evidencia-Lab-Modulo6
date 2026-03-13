@@ -234,7 +234,8 @@ async function startTest(id) {
         include: {
             variants: {
                 include: {
-                    contacts: true
+                    contacts: true,
+                    personality: true
                 }
             }
         }
@@ -345,6 +346,7 @@ async function triggerTestCalls(test) {
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
                     voiceId: variant.voiceId,
+                    agentName: variant.personality?.name || null,
                     establishmentData,
                 };
 
@@ -571,7 +573,8 @@ async function resumeTest(id) {
         include: {
             variants: {
                 include: {
-                    contacts: true
+                    contacts: true,
+                    personality: true
                 }
             }
         }

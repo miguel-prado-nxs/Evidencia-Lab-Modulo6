@@ -142,6 +142,7 @@ async function executeSDRCall(jobData) {
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
       voice_id: voiceId,
+      agent_name: jobData.agentName,
     };
 
     // Si hay un agent_config_id específico de ElevenLabs, pasarlo
