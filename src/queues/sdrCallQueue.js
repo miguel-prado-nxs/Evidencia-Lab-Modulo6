@@ -66,7 +66,7 @@ sdrCallQueue.on("stalled", (jobId) => {
  * @returns {Promise<object>} Job encolado con id y metadata.
  */
 async function enqueueSDRCall(jobData, options = {}) {
-  const { contactId, abTestContactId, agentConfigId, elevenLabsAgentId, voiceId, establishmentData } = jobData;
+  const { contactId, abTestContactId, agentConfigId, elevenLabsAgentId, voiceId, agentName, establishmentData, decisionMakerData } = jobData;
 
   if (!contactId || !abTestContactId) {
     throw new Error(
@@ -82,7 +82,9 @@ async function enqueueSDRCall(jobData, options = {}) {
       agentConfigId: agentConfigId || elevenLabsAgentId,
       elevenLabsAgentId: elevenLabsAgentId || agentConfigId,
       voiceId,
+      agentName,
       establishmentData,
+      decisionMakerData,
       enqueuedAt: new Date().toISOString(),
     },
     {

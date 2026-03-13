@@ -129,8 +129,6 @@ async function executeSDRCall(jobData) {
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
 
-    logger.info(`[SDR Worker DEBUG] agentName from jobData: ${jobData.agentName}`);
-
     const formattedPhone = formatPhoneE164(establishmentData?.phone);
 
     // Payload para elevenlabs-sdr (formato que su POST /api/sdr/initiate-call espera)

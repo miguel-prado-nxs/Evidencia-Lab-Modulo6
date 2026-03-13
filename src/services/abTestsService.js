@@ -349,7 +349,6 @@ async function triggerTestCalls(test) {
                     });
                     if (personality) {
                         agentName = personality.name;
-                        logger.info(`[A/B Test DEBUG] Dynamic fallback found agentName: ${agentName} for voice ${variant.voiceId}`);
                     }
                 }
 
@@ -362,8 +361,6 @@ async function triggerTestCalls(test) {
                     agentName: agentName || null,
                     establishmentData,
                 };
-
-                logger.info(`[A/B Test DEBUG] jobData created for ${contact.id}. agentName: ${jobData.agentName}`);
 
                 // Agregar datos del tomador de decisiones si existen (necesario para personalización)
                 if (contactDetails.decisionMakerName || contactDetails.email) {
