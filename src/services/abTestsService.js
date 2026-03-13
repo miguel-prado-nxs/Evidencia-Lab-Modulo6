@@ -336,9 +336,10 @@ async function triggerTestCalls(test) {
                         : 'su negocio',
                     phone: contactDetails.phone,
                     address: contactDetails.address || "",
-                    employeeRange: "6 a 10 personas",
                     // agentConfigName ya no se usa aquí
                 };
+
+                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id}. voiceId: ${variant.voiceId}. Personality: ${variant.personality ? JSON.stringify(variant.personality) : 'null'}`);
 
                 let agentName = variant.personality?.name;
 
@@ -358,10 +359,11 @@ async function triggerTestCalls(test) {
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
                     voiceId: variant.voiceId,
-                    agentName: agentName || null,
+                    agentName: (agentName === undefined || agentName === null) ? "CADENA VACÍA" : agentName,
                     establishmentData,
                 };
 
+                logger.info(`[A/B Test DEBUG] final jobData for ${contact.id}: ${JSON.stringify({ ...jobData, establishmentData: undefined })}`);
                 // Agregar datos del tomador de decisiones si existen (necesario para personalización)
                 if (contactDetails.decisionMakerName || contactDetails.email) {
                     jobData.decisionMakerData = {

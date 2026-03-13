@@ -106,12 +106,13 @@ function formatPhoneE164(phone) {
  * Ya NO hace polling — el webhook de ElevenLabs actualiza el estado final.
  */
 async function executeSDRCall(jobData) {
-  const {
+    const {
     contactId,
     abTestContactId,
     agentConfigId,
     elevenLabsAgentId,
     voiceId,
+    agentName,
     establishmentData,
   } = jobData;
 
@@ -119,12 +120,11 @@ async function executeSDRCall(jobData) {
     logger.info("[SDR Worker] Iniciando llamada ElevenLabs SDR", {
       abTestContactId,
       contactId,
-      agentConfigId,
-      elevenLabsAgentId: elevenLabsAgentId || config.agents.sdr.agentId || 'default',
+      agentName: agentName || jobData.agentName,
       voiceId: voiceId
     });
 
-    console.log(`[SDR Worker DEBUG] Job data voiceId: ${voiceId}`);
+    console.log(`[SDR Worker DEBUG] Incoming jobData: ${JSON.stringify({ ...jobData, establishmentData: undefined })}`);
 
     // Actualizar estado a CALLED antes de ejecutar
     await updateContactStatus(abTestContactId, "CALLED", null, new Date());
@@ -142,7 +142,7 @@ async function executeSDRCall(jobData) {
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
       voice_id: voiceId,
-      agent_name: jobData.agentName,
+      agent_name: agentName || jobData.agentName || "CADENA VACÍA",
     };
 
     // Si hay un agent_config_id específico de ElevenLabs, pasarlo
