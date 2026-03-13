@@ -1228,6 +1228,7 @@ model AbTestVariant {
   
   agentConfigId   String?  @map("agent_config_id") // ID from demo-form service (fallback)
   voiceId         String?  @map("voice_id") // Snapshot/Override voice id
+  voiceName       String?  @map("voice_name") // Nombre de la voz (para agent_name)
   
   percentage      Int      // 0-100
   

@@ -63,6 +63,7 @@ async function createTest(data) {
                     personalityId: personality?.id || null, // Link opcional al catálogo
                     agentConfigId: variant.agentConfigId,
                     voiceId: variant.voiceId,
+                    voiceName: variant.voiceName || personality?.name || null, // Nombre de la voz para agent_name
                     percentage: variant.percentage
                 }
             });
@@ -339,11 +340,12 @@ async function triggerTestCalls(test) {
                     // agentConfigName ya no se usa aquí
                 };
 
-                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id}. voiceId: ${variant.voiceId}. Personality: ${variant.personality ? JSON.stringify(variant.personality) : 'null'}`);
+                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id}. voiceId: ${variant.voiceId}. voiceName: ${variant.voiceName}. Personality: ${variant.personality ? JSON.stringify(variant.personality) : 'null'}`);
 
-                let agentName = variant.personality?.name;
+                // Prioridad: 1) voiceName guardado, 2) personality.name, 3) fallback a catálogo
+                let agentName = variant.voiceName || variant.personality?.name;
 
-                // Fallback: si no viene la personalidad pero hay voice_id, buscarla en el catálogo
+                // Fallback: si no hay voiceName ni personality, buscar en el catálogo
                 if (!agentName && variant.voiceId) {
                     const personality = await prisma.elevenLabsPersonality.findFirst({
                         where: { voiceId: variant.voiceId }
@@ -353,13 +355,19 @@ async function triggerTestCalls(test) {
                     }
                 }
 
+                // Si aún no hay agentName, usar un nombre genérico pero NO "CADENA VACÍA"
+                if (!agentName) {
+                    agentName = "Agente";
+                    logger.warn(`[A/B Test] No se encontró nombre de voz para variant ${variant.id}, usando nombre genérico`);
+                }
+
                 const jobData = {
                     contactId: contact.contactId,
                     abTestContactId: contact.id,
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
                     voiceId: variant.voiceId,
-                    agentName: (agentName === undefined || agentName === null) ? "CADENA VACÍA" : agentName,
+                    agentName,
                     establishmentData,
                 };
 
@@ -646,7 +654,7 @@ async function reconcileStalledContacts() {
                 if (contact.result) {
                     existingResult = JSON.parse(contact.result);
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             const result = {
                 ...existingResult,
