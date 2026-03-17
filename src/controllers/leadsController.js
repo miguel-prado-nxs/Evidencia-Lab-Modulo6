@@ -298,6 +298,7 @@ const autoEnrich = async (req, res, next) => {
     console.log("==================================================");
 
     // Usar la misma configuración que test-call (config.agents.sdr)
+    console.log("[AUTO-ENRICH] config.agents:", JSON.stringify(config.agents, null, 2));
     const sdrAgentUrl = config.agents?.sdr?.url;
     if (!sdrAgentUrl) {
       logger.warn("config.agents.sdr.url no configurado - solo logging datos");
@@ -442,9 +443,12 @@ const autoEnrich = async (req, res, next) => {
     if (finalVoiceId) {
       sdrPayload.voice_id = finalVoiceId;
     }
-    if (finalAgentConfigId) {
-      sdrPayload.agent_config_id = finalAgentConfigId;
-    }
+    // NOTA: agent_config_id es un ID local de la BD, NO es un ID de ElevenLabs
+    // Comentado temporalmente para usar el agente default de ElevenLabs (ELEVENLABS_AGENT_ID)
+    // TODO: Agregar campo elevenlabs_agent_id en la tabla agent_configs y mapear correctamente
+    // if (finalAgentConfigId) {
+    //   sdrPayload.agent_config_id = finalAgentConfigId;
+    // }
     if (finalAgentName) {
       sdrPayload.agent_name = finalAgentName;
     }
