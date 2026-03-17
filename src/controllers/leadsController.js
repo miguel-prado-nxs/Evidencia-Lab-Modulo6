@@ -1,6 +1,7 @@
 const leadService = require("../services/leadService");
 const logger = require("../config/logger");
 const axios = require("axios");
+const config = require("../config/env");
 
 // Listar leads
 const list = async (req, res, next) => {
@@ -296,13 +297,13 @@ const autoEnrich = async (req, res, next) => {
     console.log("Sales Partner ID:", req.salesPartnerId);
     console.log("==================================================");
 
-    // Verificar si SDR_AGENT_URL está configurado
-    const sdrAgentUrl = process.env.SDR_AGENT_URL || process.env.AGENTS_SDK_URL;
+    // Usar la misma configuración que test-call (config.agents.sdr)
+    const sdrAgentUrl = config.agents?.sdr?.url;
     if (!sdrAgentUrl) {
-      logger.warn("SDR_AGENT_URL no configurado - solo logging datos");
+      logger.warn("config.agents.sdr.url no configurado - solo logging datos");
       return res.json({
         success: true,
-        message: "Datos recibidos (SDR_AGENT_URL no configurado)",
+        message: "Datos recibidos (SDR URL no configurado)",
         receivedData: {
           businessName,
           businessContact,
@@ -451,19 +452,13 @@ const autoEnrich = async (req, res, next) => {
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
     console.log("[AUTO-ENRICH] Payload:", JSON.stringify(sdrPayload, null, 2));
 
-    // Obtener API Key para autenticación con agentes-crm-sdk
-    const sdrApiKey = process.env.SDR_API_KEY;
-    if (!sdrApiKey) {
-      logger.warn("[AUTO-ENRICH] SDR_API_KEY no configurada - llamada puede fallar");
-    }
-
+    // Llamar al servicio SDR (igual que test-call, sin X-API-Key)
     const sdrResponse = await axios.post(
       sdrAgentUrl + "/api/sdr/initiate-call",
       sdrPayload,
       {
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": sdrApiKey || "",
         },
         timeout: 30000,
       }
