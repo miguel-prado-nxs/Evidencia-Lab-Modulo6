@@ -219,6 +219,43 @@ const track = async (req, res, next) => {
   }
 };
 
+// Función para normalizar teléfono al formato E.164
+const normalizePhoneToE164 = (phone) => {
+  if (!phone) return null;
+
+  // Limpiar el teléfono de caracteres no numéricos
+  let cleaned = phone.replace(/\D/g, '');
+
+  // Si ya tiene código de país (comienza con 52 para México y tiene 12 dígitos)
+  if (cleaned.startsWith('52') && cleaned.length === 12) {
+    return `+${cleaned}`;
+  }
+
+  // Si es un número de 10 dígitos (formato local mexicano)
+  if (cleaned.length === 10) {
+    return `+52${cleaned}`;
+  }
+
+  // Si tiene 11 dígitos y empieza con 1 (podría ser número de celular con 1 al inicio)
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+52${cleaned.substring(1)}`;
+  }
+
+  // Si ya tiene el formato correcto con +
+  if (phone.startsWith('+') && /^\+[1-9]\d{1,14}$/.test(phone)) {
+    return phone;
+  }
+
+  // Por defecto, asumir México (+52) si es un número de 10 dígitos
+  if (cleaned.length >= 10) {
+    return `+52${cleaned.slice(-10)}`;
+  }
+
+  // Si no se puede normalizar, devolver el original
+  console.warn(`[PHONE NORMALIZATION] No se pudo normalizar el teléfono: ${phone}`);
+  return phone;
+};
+
 // Enriquecer automáticamente un establecimiento
 const autoEnrich = async (req, res, next) => {
   try {
@@ -243,6 +280,10 @@ const autoEnrich = async (req, res, next) => {
         error: "Se requieren: businessName y businessContact",
       });
     }
+
+    // Normalizar teléfono al formato E.164
+    const normalizedPhone = normalizePhoneToE164(businessContact);
+    console.log(`[AUTO-ENRICH] Teléfono original: ${businessContact}, normalizado: ${normalizedPhone}`);
 
     // Registrar los datos recibidos para debugging
     console.log("=== AUTO-ENRICH DATOS RECIBIDOS (PARTNERS API) ===");
@@ -273,7 +314,7 @@ const autoEnrich = async (req, res, next) => {
 
     // Usar agentConfig del request si está presente, sino obtener default
     let agentConfig = null;
-    
+
     if (requestAgentConfig && requestAgentConfig.id) {
       // Usar agentConfig enviado desde el frontend
       agentConfig = {
@@ -348,7 +389,7 @@ const autoEnrich = async (req, res, next) => {
       try {
         const { PrismaClient } = require("@prisma/client");
         const prisma = new PrismaClient();
-        
+
         const abTestContact = await prisma.aBTestContact.findUnique({
           where: { id: abTestContactId },
           include: {
@@ -383,7 +424,7 @@ const autoEnrich = async (req, res, next) => {
     const sdrPayload = {
       establishment_id: establishmentId || `auto-${Date.now()}`,
       establishment_name: businessName,
-      phone: businessContact,
+      phone: normalizedPhone,
       employee_range: employeeRange || "0 a 5 personas",
       address: address || "",
       prospect_name: prospectName || "Contacto",
