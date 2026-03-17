@@ -321,8 +321,9 @@ const autoEnrich = async (req, res, next) => {
       // Usar agentConfig enviado desde el frontend
       agentConfig = {
         id: requestAgentConfig.id,
-        name: requestAgentConfig.name || requestAgentConfig.personality_name,
-        openai_voice: requestAgentConfig.openai_voice || "echo",
+        name: requestAgentConfig.name,
+        personality_name: requestAgentConfig.personality_name, // Nombre de la voz (ej: "Lluvia Barceló")
+        openai_voice: requestAgentConfig.openai_voice || "echo", // ElevenLabs voice ID
         voice_speed: parseFloat(requestAgentConfig.voice_speed) || 1.0,
         voice_temperature: parseFloat(requestAgentConfig.voice_temperature) || 1.0,
         voice_intensity: parseInt(requestAgentConfig.voice_intensity) || 1,
@@ -357,7 +358,8 @@ const autoEnrich = async (req, res, next) => {
           agentConfig = {
             id: data.id,
             name: data.name,
-            openai_voice: data.openai_voice || data.voice || "echo",
+            personality_name: data.personality_name, // Nombre de la voz (ej: "Lluvia Barceló")
+            openai_voice: data.openai_voice || data.voice || "echo", // ElevenLabs voice ID
             voice_speed: data.voice_speed || 1.0,
             voice_temperature: data.voice_temperature || 1.0,
             voice_intensity: data.voice_intensity || 1,
@@ -383,8 +385,9 @@ const autoEnrich = async (req, res, next) => {
 
     // Si viene un ab_test_contact_id pero no trae la voz (porque se disparó manual desde frontend),
     // vamos a buscar la voz de esa variante a la base de datos
-    let finalVoiceId = voiceId;
-    let finalAgentName = agentName || agentConfig?.name;
+    // Usar openai_voice (ElevenLabs voice ID) y personality_name (nombre de la voz)
+    let finalVoiceId = voiceId || agentConfig?.openai_voice;
+    let finalAgentName = agentName || agentConfig?.personality_name || agentConfig?.name;
     let finalAgentConfigId = requestAgentConfigId || agentConfig?.id;
 
     if (abTestContactId && !voiceId) {
