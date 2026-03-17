@@ -421,6 +421,7 @@ const autoEnrich = async (req, res, next) => {
       }
     }
 
+    // Construir payload dinámicamente, omitiendo campos con valor null
     const sdrPayload = {
       establishment_id: establishmentId || `auto-${Date.now()}`,
       establishment_name: businessName,
@@ -428,15 +429,24 @@ const autoEnrich = async (req, res, next) => {
       employee_range: employeeRange || "0 a 5 personas",
       address: address || "",
       prospect_name: prospectName || "Contacto",
-      // Pasar userId para asignación de prospecto
-      user_id: req.salesPartnerId || req.user?.id || null,
-      // Contexto A/B Testing
-      ab_test_contact_id: abTestContactId || null,
-      voice_id: finalVoiceId || null,
-      // Manejar ambas formas de configuración de agente
-      agent_config_id: finalAgentConfigId || null,
-      agent_name: finalAgentName || null,
     };
+
+    // Agregar campos opcionales solo si tienen valor
+    if (req.salesPartnerId || req.user?.id) {
+      sdrPayload.user_id = req.salesPartnerId || req.user.id;
+    }
+    if (abTestContactId) {
+      sdrPayload.ab_test_contact_id = abTestContactId;
+    }
+    if (finalVoiceId) {
+      sdrPayload.voice_id = finalVoiceId;
+    }
+    if (finalAgentConfigId) {
+      sdrPayload.agent_config_id = finalAgentConfigId;
+    }
+    if (finalAgentName) {
+      sdrPayload.agent_name = finalAgentName;
+    }
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
     console.log("[AUTO-ENRICH] Payload:", JSON.stringify(sdrPayload, null, 2));
