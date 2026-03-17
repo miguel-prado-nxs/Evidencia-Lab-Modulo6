@@ -252,6 +252,9 @@ async function generatePartnerReport(req, res, next) {
 }
 
 module.exports = {
+  exportLeads,
+  exportDeals,
+  exportCommissions,
   exportPartners,
   generatePartnerReport,
   exportLeadsForElevenLabs,
