@@ -52,6 +52,47 @@ async function exportLeads(req, res, next) {
 }
 
 /**
+ * GET /export/elevenlabs
+ * Exportar leads para Batch de ElevenLabs
+ */
+async function exportLeadsForElevenLabs(req, res, next) {
+  try {
+    const { partnerId, status, dateFrom, dateTo } = req.query;
+
+    const filterPartnerId =
+      req.user.role === "ADMIN" ? partnerId : req.user.partner?.id;
+
+    if (!filterPartnerId && req.user.role !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        error: "No tienes un perfil de partner asociado",
+      });
+    }
+
+    const result = await exportService.exportLeadsForElevenLabs({
+      partnerId: filterPartnerId,
+      status,
+      dateFrom,
+      dateTo,
+    });
+
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${result.filename}"`
+    );
+    res.send(result.data);
+
+    logger.info(
+      `Leads exported for ElevenLabs by user ${req.user.id} (partner: ${filterPartnerId})`
+    );
+  } catch (error) {
+    logger.error("Error exporting for ElevenLabs:", error);
+    next(error);
+  }
+}
+
+/**
  * GET /export/deals
  * Exportar deals
  */
@@ -211,10 +252,8 @@ async function generatePartnerReport(req, res, next) {
 }
 
 module.exports = {
-  exportLeads,
-  exportDeals,
-  exportCommissions,
   exportPartners,
   generatePartnerReport,
+  exportLeadsForElevenLabs,
 };
 
