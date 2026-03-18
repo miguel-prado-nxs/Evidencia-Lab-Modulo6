@@ -561,9 +561,12 @@ const autoQualify = async (req, res, next) => {
     console.log("===================================================");
 
     // URL del agente de qualification
-    const qualificationAgentUrl = process.env.QUALIFICATION_AGENT_URL || process.env.AGENTS_SDK_URL;
+    const qualificationAgentUrl =
+      process.env.ELEVENLABS_QUALIFICATION_URL ||
+      process.env.QUALIFICATION_AGENT_URL ||
+      process.env.AGENTS_SDK_URL;
     if (!qualificationAgentUrl) {
-      logger.error("[AUTO-QUALIFY] QUALIFICATION_AGENT_URL no configurada");
+      logger.error("[AUTO-QUALIFY] ELEVENLABS_QUALIFICATION_URL no configurada");
       return res.status(500).json({
         success: false,
         error: "Servicio de agentes de calificación no configurado",
