@@ -145,9 +145,10 @@ async function executeQualificationCall(jobData) {
       agent_config_id: elevenLabsAgentId,
     };
 
-    // Solo incluir agent_name si NO es A/B testing con branches
-    // En A/B (skipVoiceOverride=true), la branch usa su nombre por defecto
-    if (!skipVoiceOverride && jobData.agentName) {
+    // Siempre incluir agent_name si está disponible
+    // En A/B (skipVoiceOverride=true): usa nombre del frontend, voz de branch
+    // En flujos normales: usa nombre de Agent Builder, voz override
+    if (jobData.agentName) {
       payload.agent_name = jobData.agentName;
     }
 

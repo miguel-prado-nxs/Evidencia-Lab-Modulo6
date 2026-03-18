@@ -343,14 +343,17 @@ async function triggerTestCalls(test) {
                 logger.info(`[A/B Test DEBUG] Processing variant ${variant.id} for A/B testing with branches`);
 
                 // A/B Testing usa ElevenLabs Branches/Experiments
-                // No enviamos voiceId ni agentName para que ElevenLabs enrute por branches
-                // y cada branch use su nombre por defecto configurado en ElevenLabs
+                // skipVoiceOverride=true: no enviamos voiceId (usa voz de branch)
+                // Pero SÍ enviamos agentName desde variant.name (nombre que dirá el agente)
+                const agentName = variant.name || "Agente";
+
                 const jobData = {
                     contactId: contact.contactId,
                     abTestContactId: contact.id,
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
-                    skipVoiceOverride: true, // Flag para indicar que se use branches en vez de override
+                    skipVoiceOverride: true, // Flag: usa voz de branch, no override
+                    agentName, // Nombre del agente desde el frontend
                     establishmentData,
                 };
 

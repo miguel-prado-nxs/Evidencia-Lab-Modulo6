@@ -144,10 +144,11 @@ async function executeSDRCall(jobData) {
       ab_test_contact_id: abTestContactId,
     };
 
-    // Solo incluir agent_name si NO es A/B testing con branches
-    // En A/B (skipVoiceOverride=true), la branch usa su nombre por defecto
-    if (!skipVoiceOverride) {
-      payload.agent_name = agentName || jobData.agentName || "Agente";
+    // Siempre incluir agent_name si está disponible
+    // En A/B (skipVoiceOverride=true): usa nombre del frontend, voz de branch
+    // En flujos normales: usa nombre de Agent Builder, voz override
+    if (agentName || jobData.agentName) {
+      payload.agent_name = agentName || jobData.agentName;
     }
 
     // Solo incluir voice_id si NO es A/B testing con branches (skipVoiceOverride)

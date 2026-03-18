@@ -30,6 +30,9 @@ router.post('/call-logs/:callLogId/result', abTestsController.logCallResult);
 router.get('/agent-status/:agentConfigId', abTestsController.getAgentRunningStatus);
 router.post('/agents-status/bulk', abTestsController.getAgentsBulkRunningStatus);
 
+// ElevenLabs proxy endpoints
+router.get('/elevenlabs-agents', abTestsController.getElevenLabsAgents);
+
 // Candidates
 router.post('/candidates', abTestsController.addCandidate);
 router.get('/candidates', abTestsController.getCandidates);
