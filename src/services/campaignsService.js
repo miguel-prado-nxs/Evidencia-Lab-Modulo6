@@ -6,10 +6,17 @@ const createCampaign = async (data) => {
   const {
     name,
     description,
+    type,
     centerLat,
     centerLng,
     radiusMeters,
+    activityCodes,
+    employeeRanges,
     filters,
+    agentConfigId,
+    agentConfigName,
+    offer,
+    couponPrefix,
     createdBy,
   } = data;
 
@@ -29,11 +36,18 @@ const createCampaign = async (data) => {
     data: {
       name,
       description,
+      type,
       status: "DRAFT",
       centerLat,
       centerLng,
       radiusMeters,
+      activityCodes: activityCodes || [],
+      employeeRanges: employeeRanges || [],
       filters,
+      agentConfigId,
+      agentConfigName,
+      offer,
+      couponPrefix,
       createdBy,
     },
   });
@@ -343,6 +357,42 @@ const getCampaignStats = async (campaignId) => {
     _count: true,
   });
 
+  // Get conversions by day for the last 7 days
+  const convertedContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "CONVERTED",
+      convertedAt: {
+        not: null,
+      },
+    },
+    select: {
+      convertedAt: true,
+    },
+  });
+
+  // Group conversions by day
+  const conversionsByDay = {};
+  convertedContacts.forEach((contact) => {
+    if (contact.convertedAt) {
+      const date = new Date(contact.convertedAt);
+      const dateKey = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      conversionsByDay[dateKey] = (conversionsByDay[dateKey] || 0) + 1;
+    }
+  });
+
+  // Create array for last 7 days
+  const conversionTimeline = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    const dateKey = date.toISOString().split('T')[0];
+    conversionTimeline.push({
+      date: dateKey,
+      conversions: conversionsByDay[dateKey] || 0,
+    });
+  }
+
   const conversionRate = campaign.totalCalled > 0
     ? (campaign.totalConverted / campaign.totalCalled) * 100
     : 0;
@@ -371,6 +421,7 @@ const getCampaignStats = async (campaignId) => {
       acc[item.status] = item._count;
       return acc;
     }, {}),
+    conversionTimeline,
   };
 };
 

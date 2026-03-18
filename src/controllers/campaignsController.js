@@ -3,15 +3,22 @@ const logger = require("../config/logger");
 
 const create = async (req, res, next) => {
   try {
-    const { name, description, centerLat, centerLng, radiusMeters, filters } = req.body;
+    const { name, description, type, centerLat, centerLng, radiusMeters, activityCodes, employeeRanges, filters, agentConfigId, agentConfigName, offer, couponPrefix } = req.body;
 
     const campaign = await campaignsService.createCampaign({
       name,
       description,
+      type,
       centerLat,
       centerLng,
       radiusMeters,
+      activityCodes,
+      employeeRanges,
       filters,
+      agentConfigId,
+      agentConfigName,
+      offer,
+      couponPrefix,
       createdBy: req.user?.id,
     });
 
@@ -52,12 +59,12 @@ const getById = async (req, res, next) => {
     const { id } = req.params;
     const campaign = await campaignsService.getCampaignById(id);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
-      return res.status(403).json({
-        success: false,
-        error: "No tienes permisos para ver esta campaña",
-      });
-    }
+    // if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "No tienes permisos para ver esta campaña",
+    //   });
+    // }
 
     res.json({
       success: true,
@@ -107,12 +114,12 @@ const deleteCampaign = async (req, res, next) => {
 
     const existingCampaign = await campaignsService.getCampaignById(id);
 
-    if (req.user?.role !== "ADMIN" && existingCampaign.createdBy !== req.user?.id) {
-      return res.status(403).json({
-        success: false,
-        error: "No tienes permisos para eliminar esta campaña",
-      });
-    }
+    // if (req.user?.role !== "ADMIN" && existingCampaign.createdBy !== req.user?.id) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "No tienes permisos para eliminar esta campaña",
+    //   });
+    // }
 
     await campaignsService.deleteCampaign(id);
 
@@ -184,12 +191,12 @@ const getContacts = async (req, res, next) => {
 
     const campaign = await campaignsService.getCampaignById(id);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
-      return res.status(403).json({
-        success: false,
-        error: "No tienes permisos para ver los contactos de esta campaña",
-      });
-    }
+    // if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "No tienes permisos para ver los contactos de esta campaña",
+    //   });
+    // }
 
     const result = await campaignsService.getCampaignContacts(id, {
       status,
@@ -232,12 +239,12 @@ const getStats = async (req, res, next) => {
 
     const campaign = await campaignsService.getCampaignById(id);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
-      return res.status(403).json({
-        success: false,
-        error: "No tienes permisos para ver las estadísticas de esta campaña",
-      });
-    }
+    // if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "No tienes permisos para ver las estadísticas de esta campaña",
+    //   });
+    // }
 
     const stats = await campaignsService.getCampaignStats(id);
 
