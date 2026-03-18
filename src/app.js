@@ -32,6 +32,7 @@ const abTestsRoutes = require("./routes/abTestsRoutes");
 const testCallRoutes = require("./routes/testCall");
 const campaignsRoutes = require("./routes/campaigns");
 const couponsRoutes = require("./routes/coupons");
+const couponTemplatesRoutes = require("./routes/couponTemplates");
 
 // Crear aplicación Express
 const app = express();
@@ -148,6 +149,7 @@ app.use("/api/v1/ab-tests", abTestsRoutes);
 app.use("/api/v1/test-call", testCallRoutes);
 app.use("/api/v1/campaigns", campaignsRoutes);
 app.use("/api/v1/coupons", couponsRoutes);
+app.use("/api/v1/coupon-templates", couponTemplatesRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES

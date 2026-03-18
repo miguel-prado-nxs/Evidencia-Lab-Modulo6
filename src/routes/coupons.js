@@ -39,8 +39,38 @@ const assignToContactSchema = z.object({
   }),
 });
 
+const generateForCallSchema = z.object({
+  body: z.object({
+    phone: z.string().min(1, "phone es requerido"),
+    prospectName: z.string().min(1, "prospectName es requerido"),
+    businessName: z.string().min(1, "businessName es requerido"),
+    scenario: z.string().min(1, "scenario es requerido"),
+    bantScores: z.record(z.any()).optional(),
+    agentId: z.string().min(1, "agentId es requerido"),
+    callId: z.string().min(1, "callId es requerido"),
+    campaignId: z.string().optional(),
+  }),
+});
+
+const redeemCouponSchema = z.object({
+  body: z.object({
+    userData: z.record(z.any()).optional(),
+  }),
+});
+
+const checkEligibilitySchema = z.object({
+  body: z.object({
+    phone: z.string().min(1, "phone es requerido"),
+    couponType: z.string().min(1, "couponType es requerido"),
+  }),
+});
+
+// Rutas públicas con API Key (para landing page y agentes)
 router.post("/:code/visit", authenticateApiKey, validate(trackVisitSchema), couponsController.trackVisit);
 router.post("/:code/convert", authenticateApiKey, validate(markConvertedSchema), couponsController.markAsConverted);
+router.post("/:code/redeem", authenticateApiKey, validate(redeemCouponSchema), couponsController.redeemCoupon);
+router.post("/generate-for-call", authenticateApiKey, validate(generateForCallSchema), couponsController.generateForCall);
+router.post("/check-eligibility", authenticateApiKey, validate(checkEligibilitySchema), couponsController.checkEligibility);
 
 router.use(authenticateJWT);
 

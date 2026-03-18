@@ -107,9 +107,16 @@ CREATE TABLE IF NOT EXISTS "campaign_contacts" (
 -- CreateTable campaign_coupons
 CREATE TABLE IF NOT EXISTS "campaign_coupons" (
     "id" TEXT NOT NULL,
-    "campaign_id" TEXT NOT NULL,
+    "campaign_id" TEXT,
     "code" TEXT NOT NULL,
     "offer" TEXT NOT NULL,
+    
+    -- Configuración Stripe
+    "coupon_type" TEXT,
+    "percent_off" INTEGER,
+    "duration_months" INTEGER,
+    "trial_days" INTEGER,
+    "stripe_promo_id" TEXT,
     
     -- Tracking
     "status" "CouponStatus" NOT NULL DEFAULT 'GENERATED',
@@ -117,6 +124,17 @@ CREATE TABLE IF NOT EXISTS "campaign_coupons" (
     "sent_at" TIMESTAMP(3),
     "visited_at" TIMESTAMP(3),
     "converted_at" TIMESTAMP(3),
+    
+    -- Tracking avanzado
+    "scenario" TEXT,
+    "assigned_phone" TEXT,
+    "assigned_at" TIMESTAMP(3),
+    "expires_at" TIMESTAMP(3),
+    
+    -- Atribución
+    "source" TEXT,
+    "agent_id" TEXT,
+    "call_id" TEXT,
     
     -- Metadata
     "visit_count" INTEGER NOT NULL DEFAULT 0,
@@ -127,6 +145,40 @@ CREATE TABLE IF NOT EXISTS "campaign_coupons" (
     "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "campaign_coupons_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable coupon_templates
+CREATE TABLE IF NOT EXISTS "coupon_templates" (
+    "id" TEXT NOT NULL,
+    "coupon_type" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    
+    -- Escenarios
+    "scenarios" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    
+    -- Configuración Stripe
+    "percent_off" INTEGER,
+    "duration_months" INTEGER,
+    "trial_days" INTEGER,
+    
+    -- Plantilla de mensaje
+    "message_template" TEXT NOT NULL,
+    "media_url" TEXT,
+    
+    -- Reglas
+    "max_per_user" INTEGER NOT NULL DEFAULT 1,
+    "expires_hours" INTEGER NOT NULL DEFAULT 48,
+    "valid_for" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    
+    -- Estado
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "priority" INTEGER NOT NULL DEFAULT 0,
+    
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "coupon_templates_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -148,6 +200,13 @@ CREATE INDEX IF NOT EXISTS "campaign_contacts_sent_at_idx" ON "campaign_contacts
 CREATE INDEX IF NOT EXISTS "campaign_coupons_campaign_id_idx" ON "campaign_coupons"("campaign_id");
 CREATE INDEX IF NOT EXISTS "campaign_coupons_code_idx" ON "campaign_coupons"("code");
 CREATE INDEX IF NOT EXISTS "campaign_coupons_status_idx" ON "campaign_coupons"("status");
+CREATE INDEX IF NOT EXISTS "campaign_coupons_coupon_type_idx" ON "campaign_coupons"("coupon_type");
+CREATE INDEX IF NOT EXISTS "campaign_coupons_assigned_phone_idx" ON "campaign_coupons"("assigned_phone");
+CREATE INDEX IF NOT EXISTS "campaign_coupons_expires_at_idx" ON "campaign_coupons"("expires_at");
+CREATE INDEX IF NOT EXISTS "campaign_coupons_source_idx" ON "campaign_coupons"("source");
+
+CREATE UNIQUE INDEX IF NOT EXISTS "coupon_templates_coupon_type_key" ON "coupon_templates"("coupon_type");
+CREATE INDEX IF NOT EXISTS "coupon_templates_active_idx" ON "coupon_templates"("active");
 
 -- AddForeignKey
 ALTER TABLE "campaign_contacts" ADD CONSTRAINT "campaign_contacts_campaign_id_fkey" 
@@ -156,5 +215,13 @@ FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UP
 ALTER TABLE "campaign_contacts" ADD CONSTRAINT "campaign_contacts_coupon_id_fkey" 
 FOREIGN KEY ("coupon_id") REFERENCES "campaign_coupons"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
-ALTER TABLE "campaign_coupons" ADD CONSTRAINT "campaign_coupons_campaign_id_fkey" 
-FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- Foreign key nullable para cupones ad-hoc sin campaña
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'campaign_coupons_campaign_id_fkey'
+    ) THEN
+        ALTER TABLE "campaign_coupons" ADD CONSTRAINT "campaign_coupons_campaign_id_fkey" 
+        FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;

@@ -1093,13 +1093,20 @@ enum ContactStatus {
 
 model CampaignCoupon {
   id         String   @id @default(uuid())
-  campaignId String   @map("campaign_id")
+  campaignId String?  @map("campaign_id") // Nullable para cupones ad-hoc sin campaña
   
   // Código único del cupón
   code       String   @unique
   
-  // Oferta
+  // Oferta (texto descriptivo)
   offer      String   // "+2 meses gratis", "20% descuento"
+  
+  // Configuración Stripe (nuevos campos)
+  couponType     String?  @map("coupon_type")      // PLUS30, 50OFF, TRIAL14, etc.
+  percentOff     Int?     @map("percent_off")      // 0-100
+  durationMonths Int?     @map("duration_months")  // 1, 2, 3...
+  trialDays      Int?     @map("trial_days")       // Para extensión de trial
+  stripePromoId  String?  @map("stripe_promo_id")  // ID del Promotion Code en Stripe
   
   // Tracking
   status        CouponStatus @default(GENERATED)
@@ -1107,6 +1114,17 @@ model CampaignCoupon {
   sentAt        DateTime?    @map("sent_at")
   visitedAt     DateTime?    @map("visited_at")
   convertedAt   DateTime?    @map("converted_at")
+  
+  // Tracking avanzado (nuevos campos)
+  scenario      String?   // "bant_high", "price_objection", "trial_ending"
+  assignedPhone String?   @map("assigned_phone")  // Teléfono del prospecto
+  assignedAt    DateTime? @map("assigned_at")     // Cuándo se asignó
+  expiresAt     DateTime? @map("expires_at")      // 48h desde asignación
+  
+  // Atribución (nuevos campos)
+  source        String?   // "agent_call", "crm_chat", "campaign"
+  agentId       String?   @map("agent_id")        // ID del agente que lo generó
+  callId        String?   @map("call_id")         // ID de la llamada ElevenLabs
   
   // Metadata
   visitCount    Int      @default(0) @map("visit_count")
@@ -1118,12 +1136,16 @@ model CampaignCoupon {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   
-  campaign    Campaign          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign    Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   contacts    CampaignContact[]
   
   @@index([campaignId])
   @@index([code])
   @@index([status])
+  @@index([couponType])
+  @@index([assignedPhone])
+  @@index([expiresAt])
+  @@index([source])
   @@map("campaign_coupons")
 }
 
@@ -1133,4 +1155,43 @@ enum CouponStatus {
   VISITED
   CONVERTED
   EXPIRED
+}
+
+// ========== PLANTILLAS DE CUPONES ==========
+
+model CouponTemplate {
+  id          String   @id @default(uuid())
+  
+  // Identificación
+  couponType  String   @unique @map("coupon_type")  // PLUS30, 50OFF, TRIAL14, etc.
+  name        String                                 // Nombre descriptivo
+  description String?  @db.Text                      // Descripción del cupón
+  
+  // Escenarios donde aplica
+  scenarios   String[] @default([])                  // ["bant_high", "price_objection", "trial_ending"]
+  
+  // Configuración Stripe
+  percentOff     Int?  @map("percent_off")           // 0-100
+  durationMonths Int?  @map("duration_months")       // 1, 2, 3...
+  trialDays      Int?  @map("trial_days")            // Para extensión de trial
+  
+  // Plantilla de mensaje WhatsApp
+  messageTemplate String  @map("message_template") @db.Text  // Texto con variables {{nombre}}, {{negocio}}, {{codigo}}
+  mediaUrl        String? @map("media_url")                  // URL de imagen/banner opcional
+  
+  // Reglas de uso
+  maxPerUser   Int      @default(1) @map("max_per_user")     // Máximo de cupones por usuario
+  expiresHours Int      @default(48) @map("expires_hours")   // Horas hasta expiración
+  validFor     String[] @default([]) @map("valid_for")       // ["new_users", "upgrade", "retention"]
+  
+  // Estado
+  active      Boolean  @default(true)
+  priority    Int      @default(0)  // Para ordenar templates cuando hay múltiples matches
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([couponType])
+  @@index([active])
+  @@map("coupon_templates")
 }

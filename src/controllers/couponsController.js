@@ -1,4 +1,5 @@
 const couponService = require("../services/couponService");
+const couponGeneratorService = require("../services/couponGeneratorService");
 const campaignsService = require("../services/campaignsService");
 const logger = require("../config/logger");
 
@@ -212,6 +213,92 @@ const getStats = async (req, res, next) => {
   }
 };
 
+const generateForCall = async (req, res, next) => {
+  try {
+    const {
+      phone,
+      prospectName,
+      businessName,
+      scenario,
+      bantScores,
+      agentId,
+      callId,
+      campaignId
+    } = req.body;
+
+    if (!phone || !prospectName || !businessName || !scenario || !agentId || !callId) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: phone, prospectName, businessName, scenario, agentId, callId"
+      });
+    }
+
+    const result = await couponGeneratorService.generateCouponForCall({
+      phone,
+      prospectName,
+      businessName,
+      scenario,
+      bantScores,
+      agentId,
+      callId,
+      campaignId
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        coupon: result.coupon,
+        message: result.message,
+        mediaUrl: result.template.mediaUrl
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const redeemCoupon = async (req, res, next) => {
+  try {
+    const { code } = req.params;
+    const { userData } = req.body;
+
+    const result = await couponGeneratorService.redeemCoupon(code, userData);
+
+    res.json({
+      success: true,
+      data: {
+        coupon: result.coupon,
+        stripeConfig: result.stripeConfig
+      },
+      message: "Cupón redimido exitosamente"
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const checkEligibility = async (req, res, next) => {
+  try {
+    const { phone, couponType } = req.body;
+
+    if (!phone || !couponType) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing required fields: phone, couponType"
+      });
+    }
+
+    const result = await couponGeneratorService.checkEligibility(phone, couponType);
+
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   generateBulk,
@@ -223,4 +310,7 @@ module.exports = {
   assignToContact,
   getAvailable,
   getStats,
+  generateForCall,
+  redeemCoupon,
+  checkEligibility
 };
