@@ -446,12 +446,10 @@ const autoEnrich = async (req, res, next) => {
     if (finalVoiceId) {
       sdrPayload.voice_id = finalVoiceId;
     }
-    // NOTA: agent_config_id es un ID local de la BD, NO es un ID de ElevenLabs
-    // Comentado temporalmente para usar el agente default de ElevenLabs (ELEVENLABS_AGENT_ID)
-    // TODO: Agregar campo elevenlabs_agent_id en la tabla agent_configs y mapear correctamente
-    // if (finalAgentConfigId) {
-    //   sdrPayload.agent_config_id = finalAgentConfigId;
-    // }
+    // Enviar agent_config_id (ID de ElevenLabs Agent)
+    if (finalAgentConfigId) {
+      sdrPayload.agent_config_id = finalAgentConfigId;
+    }
     if (finalAgentName) {
       sdrPayload.agent_name = finalAgentName;
     }
