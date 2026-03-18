@@ -361,12 +361,14 @@ async function triggerTestCalls(test) {
                     logger.warn(`[A/B Test] No se encontró nombre de voz para variant ${variant.id}, usando nombre genérico`);
                 }
 
+                // A/B Testing usa ElevenLabs Branches/Experiments
+                // No enviamos voiceId para que ElevenLabs enrute por branches automáticamente
                 const jobData = {
                     contactId: contact.contactId,
                     abTestContactId: contact.id,
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
-                    voiceId: variant.voiceId,
+                    skipVoiceOverride: true, // Flag para indicar que se use branches en vez de override
                     agentName,
                     establishmentData,
                 };

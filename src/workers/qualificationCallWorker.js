@@ -89,7 +89,7 @@ async function updateContactStatus(abTestContactId, status, result = null, calle
  */
 function formatPhoneE164(phone) {
   let formatted = (phone || "").replace(/[\s\-\(\)\.]/g, '');
-  
+
   if (formatted.startsWith('+52')) {
     return formatted;
   } else if (formatted.startsWith('52') && formatted.length === 12) {
@@ -113,6 +113,7 @@ async function executeQualificationCall(jobData) {
     agentConfigId,
     elevenLabsAgentId,
     voiceId,
+    skipVoiceOverride,
     establishmentData,
     decisionMakerData,
   } = jobData;
@@ -142,9 +143,19 @@ async function executeQualificationCall(jobData) {
       // Contexto A/B Testing — elevenlabs-calificacion lo pasa como dynamic variable
       ab_test_contact_id: abTestContactId,
       agent_config_id: elevenLabsAgentId,
-      voice_id: voiceId,
       agent_name: jobData.agentName,
     };
+
+    // Solo incluir voice_id si NO es A/B testing con branches (skipVoiceOverride)
+    // Flujos normales (Auto-Enrich/Qualify) siguen usando voice override
+    if (!skipVoiceOverride && voiceId) {
+      payload.voice_id = voiceId;
+    }
+
+    // Pasar flag explícito para que el servicio downstream sepa si debe aplicar override
+    if (skipVoiceOverride) {
+      payload.skip_voice_override = true;
+    }
 
     // Headers para elevenlabs-calificacion
     const headers = {

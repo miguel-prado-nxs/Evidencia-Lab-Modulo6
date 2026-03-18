@@ -106,12 +106,13 @@ function formatPhoneE164(phone) {
  * Ya NO hace polling — el webhook de ElevenLabs actualiza el estado final.
  */
 async function executeSDRCall(jobData) {
-    const {
+  const {
     contactId,
     abTestContactId,
     agentConfigId,
     elevenLabsAgentId,
     voiceId,
+    skipVoiceOverride,
     agentName,
     establishmentData,
   } = jobData;
@@ -141,9 +142,19 @@ async function executeSDRCall(jobData) {
       prospect_name: jobData.decisionMakerData?.name || "Contacto",
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
-      voice_id: voiceId || null,
-      agent_name: agentName || jobData.agentName || "CADENA VACÍA",
+      agent_name: agentName || jobData.agentName || "Agente",
     };
+
+    // Solo incluir voice_id si NO es A/B testing con branches (skipVoiceOverride)
+    // Flujos normales (Auto-Enrich/Qualify) siguen usando voice override
+    if (!skipVoiceOverride && voiceId) {
+      payload.voice_id = voiceId;
+    }
+
+    // Pasar flag explícito para que el servicio downstream sepa si debe aplicar override
+    if (skipVoiceOverride) {
+      payload.skip_voice_override = true;
+    }
 
     // Si hay un agent_config_id específico de ElevenLabs, pasarlo
     if (elevenLabsAgentId) {
@@ -197,7 +208,7 @@ async function executeSDRCall(jobData) {
     });
 
     if (error.response) {
-        console.error(`[SDR Worker DEBUG] Axios Error Details: ${JSON.stringify(error.response.data)}`);
+      console.error(`[SDR Worker DEBUG] Axios Error Details: ${JSON.stringify(error.response.data)}`);
     }
 
     const result = {
