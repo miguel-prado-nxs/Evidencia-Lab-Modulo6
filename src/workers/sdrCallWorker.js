@@ -142,8 +142,13 @@ async function executeSDRCall(jobData) {
       prospect_name: jobData.decisionMakerData?.name || "Contacto",
       // Contexto A/B Testing
       ab_test_contact_id: abTestContactId,
-      agent_name: agentName || jobData.agentName || "Agente",
     };
+
+    // Solo incluir agent_name si NO es A/B testing con branches
+    // En A/B (skipVoiceOverride=true), la branch usa su nombre por defecto
+    if (!skipVoiceOverride) {
+      payload.agent_name = agentName || jobData.agentName || "Agente";
+    }
 
     // Solo incluir voice_id si NO es A/B testing con branches (skipVoiceOverride)
     // Flujos normales (Auto-Enrich/Qualify) siguen usando voice override

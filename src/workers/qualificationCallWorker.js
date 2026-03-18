@@ -143,8 +143,13 @@ async function executeQualificationCall(jobData) {
       // Contexto A/B Testing — elevenlabs-calificacion lo pasa como dynamic variable
       ab_test_contact_id: abTestContactId,
       agent_config_id: elevenLabsAgentId,
-      agent_name: jobData.agentName,
     };
+
+    // Solo incluir agent_name si NO es A/B testing con branches
+    // En A/B (skipVoiceOverride=true), la branch usa su nombre por defecto
+    if (!skipVoiceOverride && jobData.agentName) {
+      payload.agent_name = jobData.agentName;
+    }
 
     // Solo incluir voice_id si NO es A/B testing con branches (skipVoiceOverride)
     // Flujos normales (Auto-Enrich/Qualify) siguen usando voice override
