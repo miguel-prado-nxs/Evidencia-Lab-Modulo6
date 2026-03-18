@@ -575,7 +575,7 @@ const autoQualify = async (req, res, next) => {
     }
 
     // Obtener configuración de agente default para QUALIFICATION desde demo-form-service
-    let agentConfigId = null;
+    let agentConfig = null;
     try {
       const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
       const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
@@ -594,8 +594,14 @@ const autoQualify = async (req, res, next) => {
       );
 
       if (configResponse.data?.success && configResponse.data?.data) {
-        agentConfigId = configResponse.data.data.id;
-        console.log("[AUTO-QUALIFY] ✅ Using agent_config_id:", agentConfigId);
+        const data = configResponse.data.data;
+        agentConfig = {
+          id: data.id,
+          name: data.name,
+          personality_name: data.personality_name, // Nombre de la voz (ej: "Esteban")
+          openai_voice: data.openai_voice || data.voice || null, // ElevenLabs voice ID
+        };
+        console.log("[AUTO-QUALIFY] ✅ Using agent_config:", JSON.stringify(agentConfig, null, 2));
       } else {
         console.log("[AUTO-QUALIFY] ⚠️ No default QUALIFICATION config found");
       }
@@ -603,6 +609,10 @@ const autoQualify = async (req, res, next) => {
       console.error("[AUTO-QUALIFY] ❌ Error fetching agent_config:", configError.message);
       logger.warn("[AUTO-QUALIFY] No se pudo obtener agent_config, continuando sin él");
     }
+
+    // Extraer voice_id y agent_name del agentConfig (igual que en autoEnrich)
+    const finalVoiceId = agentConfig?.openai_voice || null;
+    const finalAgentName = agentConfig?.personality_name || agentConfig?.name || null;
 
     // Llamar al agente de Qualification en agentes-crm-sdk
     const qualificationPayload = {
@@ -613,10 +623,18 @@ const autoQualify = async (req, res, next) => {
       email: decisionMakerEmail || null,
       // Pasar userId para asignación
       user_id: req.salesPartnerId || req.user?.id || null,
-      // Agregar agent_config_id si se obtuvo
-      ...(agentConfigId && { agent_config_id: agentConfigId }),
-      agent_name: null, // Dejamos que el SDR service resuelva el nombre por defecto si no hay contexto A/B
     };
+
+    // Agregar voice_id si se obtuvo del agentConfig (ElevenLabs voice ID)
+    if (finalVoiceId) {
+      qualificationPayload.voice_id = finalVoiceId;
+    }
+    // Agregar agent_name si se obtuvo del agentConfig (personality_name)
+    if (finalAgentName) {
+      qualificationPayload.agent_name = finalAgentName;
+    }
+    // NOTA: No enviamos agent_config_id porque es un ID local de BD, no de ElevenLabs
+    // El servicio de calificación usará el agente default configurado en ELEVENLABS_AGENT_ID
 
     console.log("[AUTO-QUALIFY] Llamando al agente de Qualification:", qualificationAgentUrl + "/api/qualification/initiate-call");
     console.log("[AUTO-QUALIFY] Payload:", JSON.stringify(qualificationPayload, null, 2));
