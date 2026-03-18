@@ -1064,6 +1064,13 @@ model CampaignContact {
   // Metadata de envío
   messageId   String?  @map("message_id") // ID del mensaje WhatsApp
   errorReason String?  @map("error_reason")
+
+  // Batch calling fields (NUEVO)
+  providerBatchId   String?   @map("provider_batch_id")
+  conversationId    String?   @map("conversation_id") @unique
+  callDuration      Int?      @map("call_duration")
+  callTranscript    String?   @map("call_transcript")    @db.Text
+  webhookReceivedAt DateTime? @map("webhook_received_at")
   
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
