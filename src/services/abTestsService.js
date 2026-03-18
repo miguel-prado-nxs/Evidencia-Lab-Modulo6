@@ -340,36 +340,17 @@ async function triggerTestCalls(test) {
                     // agentConfigName ya no se usa aquí
                 };
 
-                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id}. voiceId: ${variant.voiceId}. voiceName: ${variant.voiceName}. Personality: ${variant.personality ? JSON.stringify(variant.personality) : 'null'}`);
-
-                // Prioridad: 1) voiceName guardado, 2) personality.name, 3) fallback a catálogo
-                let agentName = variant.voiceName || variant.personality?.name;
-
-                // Fallback: si no hay voiceName ni personality, buscar en el catálogo
-                if (!agentName && variant.voiceId) {
-                    const personality = await prisma.elevenLabsPersonality.findFirst({
-                        where: { voiceId: variant.voiceId }
-                    });
-                    if (personality) {
-                        agentName = personality.name;
-                    }
-                }
-
-                // Si aún no hay agentName, usar un nombre genérico pero NO "CADENA VACÍA"
-                if (!agentName) {
-                    agentName = "Agente";
-                    logger.warn(`[A/B Test] No se encontró nombre de voz para variant ${variant.id}, usando nombre genérico`);
-                }
+                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id} for A/B testing with branches`);
 
                 // A/B Testing usa ElevenLabs Branches/Experiments
-                // No enviamos voiceId para que ElevenLabs enrute por branches automáticamente
+                // No enviamos voiceId ni agentName para que ElevenLabs enrute por branches
+                // y cada branch use su nombre por defecto configurado en ElevenLabs
                 const jobData = {
                     contactId: contact.contactId,
                     abTestContactId: contact.id,
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
                     skipVoiceOverride: true, // Flag para indicar que se use branches en vez de override
-                    agentName,
                     establishmentData,
                 };
 
