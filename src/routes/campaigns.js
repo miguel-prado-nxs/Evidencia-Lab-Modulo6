@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const campaignsController = require("../controllers/campaignsController");
+const campaignWebhookController = require("../controllers/campaignWebhookController");
 const { authenticateJWT } = require("../middleware/auth");
 const { validate } = require("../middleware/validation");
 const { z } = require("zod");
@@ -47,13 +48,25 @@ const assignContactsGeoSchema = z.object({
   }),
 });
 
+const startCampaignSchema = z.object({
+  body: z.object({
+    agentId: z.string().min(1).optional(),
+    targetConcurrencyLimit: z.number().int().positive().optional(),
+    maxRecipientsPerRequest: z.number().int().positive().optional(),
+    scheduledTimeUnix: z.number().int().positive().optional(),
+    agentPhoneNumberId: z.string().min(1).optional(),
+  }).optional().default({}),
+});
+
 const updateContactStatusSchema = z.object({
   body: z.object({
-    status: z.enum(["PENDING", "SENT", "DELIVERED", "VISITED", "CONVERTED", "FAILED"]),
+    status: z.enum(["PENDING", "CALLING", "CALLED", "RESPONDED", "SENT", "DELIVERED", "VISITED", "CONVERTED", "FAILED"]),
     messageId: z.string().optional(),
     errorReason: z.string().optional(),
   }),
 });
+
+router.post("/elevenlabs-webhook", campaignWebhookController.handleElevenLabsWebhook);
 
 // router.use(authenticateJWT);
 
@@ -66,6 +79,7 @@ router.delete("/:id", campaignsController.delete);
 
 router.post("/:id/contacts", validate(assignContactsSchema), campaignsController.assignContacts);
 router.post("/:id/contacts/geo", validate(assignContactsGeoSchema), campaignsController.assignContactsWithGeo);
+router.post("/:id/start", validate(startCampaignSchema), campaignsController.startCampaign);
 router.get("/:id/contacts", campaignsController.getContacts);
 router.patch("/contacts/:contactId/status", validate(updateContactStatusSchema), campaignsController.updateContactStatus);
 

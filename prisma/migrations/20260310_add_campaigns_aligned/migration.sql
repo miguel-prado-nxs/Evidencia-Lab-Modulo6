@@ -197,6 +197,16 @@ CREATE INDEX IF NOT EXISTS "campaign_contacts_establishment_id_idx" ON "campaign
 CREATE INDEX IF NOT EXISTS "campaign_contacts_status_idx" ON "campaign_contacts"("status");
 CREATE INDEX IF NOT EXISTS "campaign_contacts_sent_at_idx" ON "campaign_contacts"("sent_at");
 
+-- Add missing batch-calling columns for existing databases
+ALTER TABLE "campaign_contacts" ADD COLUMN IF NOT EXISTS "provider_batch_id" TEXT;
+ALTER TABLE "campaign_contacts" ADD COLUMN IF NOT EXISTS "conversation_id" TEXT;
+ALTER TABLE "campaign_contacts" ADD COLUMN IF NOT EXISTS "call_duration" INTEGER;
+ALTER TABLE "campaign_contacts" ADD COLUMN IF NOT EXISTS "call_transcript" TEXT;
+ALTER TABLE "campaign_contacts" ADD COLUMN IF NOT EXISTS "webhook_received_at" TIMESTAMP(3);
+
+-- Ensure uniqueness for idempotency by conversation
+CREATE UNIQUE INDEX IF NOT EXISTS "campaign_contacts_conversation_id_key" ON "campaign_contacts"("conversation_id");
+
 CREATE INDEX IF NOT EXISTS "campaign_coupons_campaign_id_idx" ON "campaign_coupons"("campaign_id");
 CREATE INDEX IF NOT EXISTS "campaign_coupons_code_idx" ON "campaign_coupons"("code");
 CREATE INDEX IF NOT EXISTS "campaign_coupons_status_idx" ON "campaign_coupons"("status");
@@ -208,12 +218,26 @@ CREATE INDEX IF NOT EXISTS "campaign_coupons_source_idx" ON "campaign_coupons"("
 CREATE UNIQUE INDEX IF NOT EXISTS "coupon_templates_coupon_type_key" ON "coupon_templates"("coupon_type");
 CREATE INDEX IF NOT EXISTS "coupon_templates_active_idx" ON "coupon_templates"("active");
 
--- AddForeignKey
-ALTER TABLE "campaign_contacts" ADD CONSTRAINT "campaign_contacts_campaign_id_fkey" 
-FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- AddForeignKey (idempotente para evitar errores en entornos ya migrados)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'campaign_contacts_campaign_id_fkey'
+    ) THEN
+        ALTER TABLE "campaign_contacts" ADD CONSTRAINT "campaign_contacts_campaign_id_fkey" 
+        FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    END IF;
+END $$;
 
-ALTER TABLE "campaign_contacts" ADD CONSTRAINT "campaign_contacts_coupon_id_fkey" 
-FOREIGN KEY ("coupon_id") REFERENCES "campaign_coupons"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'campaign_contacts_coupon_id_fkey'
+    ) THEN
+        ALTER TABLE "campaign_contacts" ADD CONSTRAINT "campaign_contacts_coupon_id_fkey" 
+        FOREIGN KEY ("coupon_id") REFERENCES "campaign_coupons"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+    END IF;
+END $$;
 
 -- Foreign key nullable para cupones ad-hoc sin campaña
 DO $$ 

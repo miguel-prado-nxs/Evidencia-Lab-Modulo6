@@ -369,7 +369,67 @@ Content-Type: application/json
 
 ---
 
-### 8. Obtener Contactos de Campaña
+### 8. Iniciar Campaña (Batch Calling)
+
+**POST** `/api/v1/campaigns/:id/start`
+
+Inicia una campaña y despacha sus contactos `PENDING` a ElevenLabs Batch Calling.
+
+**Headers:**
+```
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+```
+
+**Request Body (opcional):**
+```json
+{
+  "agentId": "agent_123",
+  "targetConcurrencyLimit": 10,
+  "maxRecipientsPerRequest": 100,
+  "scheduledTimeUnix": 1763330400,
+  "agentPhoneNumberId": "phone_abc"
+}
+```
+
+**Comportamiento:**
+- Valida permisos del usuario sobre la campaña.
+- Permite iniciar campañas en `DRAFT` o `PAUSED`.
+- Bloquea campañas en `ACTIVE`, `COMPLETED` o `CANCELLED`.
+- Usa `agentId` del body o fallback a `campaign.agentConfigId`.
+- Cambia campaña a `ACTIVE` y setea `startedAt` tras dispatch exitoso.
+- Cambia contactos despachados a `CALLING`.
+- Contactos inválidos (ej. teléfono inválido) se marcan `FAILED` con `errorReason`.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Campaña iniciada exitosamente",
+  "data": {
+    "campaignId": "cm123abc",
+    "status": "ACTIVE",
+    "startedAt": "2026-03-19T12:00:00.000Z",
+    "dispatch": {
+      "success": true,
+      "totalRecipients": 32,
+      "dispatchedRecipients": 30,
+      "skippedRecipients": 2,
+      "providerBatchIds": ["batch_abc123"]
+    }
+  }
+}
+```
+
+**Errores comunes:**
+- `400`: campaña sin contactos `PENDING` o sin `agentId` resolvible
+- `403`: sin permisos para iniciar la campaña
+- `404`: campaña no encontrada
+- `409`: campaña ya activa o no iniciable por estado
+
+---
+
+### 9. Obtener Contactos de Campaña
 
 **GET** `/api/v1/campaigns/:id/contacts`
 
@@ -415,7 +475,7 @@ Authorization: Bearer {jwt_token}
 
 ---
 
-### 9. Actualizar Estado de Contacto
+### 10. Actualizar Estado de Contacto
 
 **PATCH** `/api/v1/campaigns/contacts/:contactId/status`
 
@@ -451,7 +511,7 @@ Content-Type: application/json
 
 ---
 
-### 10. Obtener Estadísticas de Campaña
+### 11. Obtener Estadísticas de Campaña
 
 **GET** `/api/v1/campaigns/:id/stats`
 
