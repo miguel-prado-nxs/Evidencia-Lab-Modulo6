@@ -115,7 +115,22 @@ const listCampaigns = async (filters = {}) => {
 };
 
 const updateCampaign = async (id, data) => {
-  const { name, description, status, centerLat, centerLng, radiusMeters, filters } = data;
+  const {
+    name,
+    description,
+    type,
+    status,
+    centerLat,
+    centerLng,
+    radiusMeters,
+    activityCodes,
+    employeeRanges,
+    filters,
+    agentConfigId,
+    agentConfigName,
+    offer,
+    couponPrefix
+  } = data;
 
   const existingCampaign = await prisma.campaign.findUnique({
     where: { id },
@@ -129,21 +144,33 @@ const updateCampaign = async (id, data) => {
     throw new Error(`Cannot update campaign with status ${existingCampaign.status}`);
   }
 
+  if (existingCampaign.status === "ACTIVE") {
+    throw new Error("Cannot update an active campaign");
+  }
+
   if (radiusMeters && radiusMeters < 0) {
     throw new Error("radiusMeters must be a positive number");
   }
 
+  const updateData = {};
+  if (name !== undefined) updateData.name = name;
+  if (description !== undefined) updateData.description = description;
+  if (type !== undefined) updateData.type = type;
+  if (status !== undefined) updateData.status = status;
+  if (centerLat !== undefined) updateData.centerLat = centerLat;
+  if (centerLng !== undefined) updateData.centerLng = centerLng;
+  if (radiusMeters !== undefined) updateData.radiusMeters = radiusMeters;
+  if (activityCodes !== undefined) updateData.activityCodes = activityCodes;
+  if (employeeRanges !== undefined) updateData.employeeRanges = employeeRanges;
+  if (filters !== undefined) updateData.filters = filters;
+  if (agentConfigId !== undefined) updateData.agentConfigId = agentConfigId;
+  if (agentConfigName !== undefined) updateData.agentConfigName = agentConfigName;
+  if (offer !== undefined) updateData.offer = offer;
+  if (couponPrefix !== undefined) updateData.couponPrefix = couponPrefix;
+
   const campaign = await prisma.campaign.update({
     where: { id },
-    data: {
-      name,
-      description,
-      status,
-      centerLat,
-      centerLng,
-      radiusMeters,
-      filters,
-    },
+    data: updateData,
   });
 
   logger.info(`Campaign updated: ${campaign.id}`, { campaignId: campaign.id });

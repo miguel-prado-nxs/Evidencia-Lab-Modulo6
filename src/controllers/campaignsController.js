@@ -78,25 +78,55 @@ const getById = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, description, status, centerLat, centerLng, radiusMeters, filters } = req.body;
+    const {
+      name,
+      description,
+      type,
+      status,
+      centerLat,
+      centerLng,
+      radiusMeters,
+      activityCodes,
+      employeeRanges,
+      filters,
+      agentConfigId,
+      agentConfigName,
+      offer,
+      couponPrefix
+    } = req.body;
 
     const existingCampaign = await campaignsService.getCampaignById(id);
 
-    if (req.user?.role !== "ADMIN" && existingCampaign.createdBy !== req.user?.id) {
-      return res.status(403).json({
+    // if (req.user?.role !== "ADMIN" && existingCampaign.createdBy !== req.user?.id) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "No tienes permisos para editar esta campaña",
+    //   });
+    // }
+
+    // Prevent editing active campaigns
+    if (existingCampaign.status === "ACTIVE") {
+      return res.status(400).json({
         success: false,
-        error: "No tienes permisos para editar esta campaña",
+        error: "No se puede editar una campaña activa",
       });
     }
 
     const campaign = await campaignsService.updateCampaign(id, {
       name,
       description,
+      type,
       status,
       centerLat,
       centerLng,
       radiusMeters,
+      activityCodes,
+      employeeRanges,
       filters,
+      agentConfigId,
+      agentConfigName,
+      offer,
+      couponPrefix,
     });
 
     res.json({
