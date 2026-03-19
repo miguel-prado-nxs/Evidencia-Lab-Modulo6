@@ -250,6 +250,44 @@ const getStats = async (req, res, next) => {
   }
 };
 
+const startCampaign = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      agentId,
+      targetConcurrencyLimit,
+      maxRecipientsPerRequest,
+      scheduledTimeUnix,
+      agentPhoneNumberId,
+    } = req.body || {};
+
+    const campaign = await campaignsService.getCampaignById(id);
+
+    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+      return res.status(403).json({
+        success: false,
+        error: "No tienes permisos para iniciar esta campaña",
+      });
+    }
+
+    const result = await campaignsService.startCampaign(id, {
+      agentId,
+      targetConcurrencyLimit,
+      maxRecipientsPerRequest,
+      scheduledTimeUnix,
+      agentPhoneNumberId,
+    });
+
+    res.json({
+      success: true,
+      data: result,
+      message: "Campaña iniciada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -258,6 +296,7 @@ module.exports = {
   delete: deleteCampaign,
   assignContacts,
   assignContactsWithGeo,
+  startCampaign,
   getContacts,
   updateContactStatus,
   getStats,

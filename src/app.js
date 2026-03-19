@@ -8,6 +8,7 @@ const logger = require("./config/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const { initSocket } = require("./config/socket");
 const twentySyncWorker = require("./workers/twentySyncWorker");
+const campaignBatchReconciliationWorker = require("./workers/campaignBatchReconciliationWorker");
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
@@ -59,7 +60,16 @@ app.use(
 );
 
 // Parse JSON
-app.use(express.json({ limit: "10mb" }));
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req, res, buffer) => {
+      if (req.originalUrl && req.originalUrl.startsWith("/api/v1/campaigns/elevenlabs-webhook")) {
+        req.rawBody = buffer.toString("utf8");
+      }
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Rate limiting
@@ -177,16 +187,35 @@ server.listen(PORT, () => {
 
   // Iniciar worker de sincronizacion con Twenty CRM
   twentySyncWorker.start();
+  campaignBatchReconciliationWorker.start();
 });
+
+const stopWorkers = () => {
+  try {
+    twentySyncWorker.stop();
+  } catch (error) {
+    logger.error("Error stopping twentySyncWorker", { error: error.message });
+  }
+
+  try {
+    campaignBatchReconciliationWorker.stop();
+  } catch (error) {
+    logger.error("Error stopping campaignBatchReconciliationWorker", {
+      error: error.message,
+    });
+  }
+};
 
 // Manejo de errores no capturados
 process.on("unhandledRejection", (err) => {
   logger.error("Unhandled Rejection:", err);
+  stopWorkers();
   process.exit(1);
 });
 
 process.on("uncaughtException", (err) => {
   logger.error("Uncaught Exception:", err);
+  stopWorkers();
   process.exit(1);
 });
 

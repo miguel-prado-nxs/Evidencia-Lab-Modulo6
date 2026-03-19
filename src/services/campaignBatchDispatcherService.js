@@ -1,0 +1,421 @@
+const axios = require("axios");
+const prisma = require("../config/database");
+const logger = require("../config/logger");
+
+const ELEVENLABS_BATCH_SUBMIT_URL =
+  process.env.ELEVENLABS_BATCH_SUBMIT_URL || "https://api.elevenlabs.io/v1/convai/batch-calling/submit";
+
+const DEFAULT_TIMEOUT_MS = parseInt(process.env.ELEVENLABS_BATCH_TIMEOUT_MS || "15000", 10);
+const DEFAULT_MAX_RECIPIENTS = parseInt(
+  process.env.ELEVENLABS_BATCH_MAX_RECIPIENTS_PER_REQUEST || "100",
+  10
+);
+const DEFAULT_TARGET_CONCURRENCY = parseInt(
+  process.env.ELEVENLABS_BATCH_TARGET_CONCURRENCY || "10",
+  10
+);
+
+const ensurePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return fallback;
+};
+
+const chunkArray = (array, size) => {
+  if (!Array.isArray(array) || array.length === 0) {
+    return [];
+  }
+
+  const chunks = [];
+  for (let index = 0; index < array.length; index += size) {
+    chunks.push(array.slice(index, index + size));
+  }
+
+  return chunks;
+};
+
+const normalizePhoneNumber = (value) => {
+  if (!value || typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  if (hasPlus) {
+    return `+${digits}`;
+  }
+
+  if (digits.length === 10) {
+    return `+52${digits}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith("52")) {
+    return `+${digits}`;
+  }
+
+  if (digits.length >= 11 && digits.length <= 15) {
+    return `+${digits}`;
+  }
+
+  return null;
+};
+
+const extractProviderBatchId = (responseData = {}) => {
+  return (
+    responseData.batch_id ||
+    responseData.batchId ||
+    responseData.id ||
+    responseData.data?.batch_id ||
+    responseData.data?.batchId ||
+    responseData.data?.id ||
+    null
+  );
+};
+
+const sanitizeRecipient = (recipient = {}, campaignId) => {
+  const phoneSource = recipient.phone_number || recipient.phoneNumber || recipient.phone;
+  const normalizedPhone = normalizePhoneNumber(phoneSource);
+
+  const dynamicVariables = {
+    ...(recipient.dynamic_variables || recipient.dynamicVariables || {}),
+    campaignId,
+  };
+
+  delete dynamicVariables.couponCode;
+
+  const campaignContactId =
+    dynamicVariables.campaignContactId ||
+    recipient.campaignContactId ||
+    recipient.contactId ||
+    null;
+
+  if (campaignContactId) {
+    dynamicVariables.campaignContactId = campaignContactId;
+  }
+
+  return {
+    phoneNumber: normalizedPhone,
+    dynamicVariables,
+    campaignContactId,
+  };
+};
+
+const buildRecipientsPayload = (recipients = [], campaignId) => {
+  const validRecipients = [];
+  const invalidRecipients = [];
+
+  for (const recipient of recipients) {
+    const sanitized = sanitizeRecipient(recipient, campaignId);
+    if (!sanitized.phoneNumber || !sanitized.campaignContactId) {
+      invalidRecipients.push({
+        recipient,
+        reason: !sanitized.phoneNumber
+          ? "Invalid or missing phone number"
+          : "Missing campaignContactId",
+      });
+      continue;
+    }
+
+    validRecipients.push(sanitized);
+  }
+
+  return { validRecipients, invalidRecipients };
+};
+
+const persistBatchDispatchResult = async ({
+  campaignId,
+  providerBatchId,
+  rawProviderResponse,
+  recipients,
+}) => {
+  const campaignContactIds = recipients
+    .map((recipient) => recipient.campaignContactId)
+    .filter(Boolean);
+
+  if (campaignContactIds.length === 0) {
+    logger.warn("No campaign contacts to persist batch dispatch result", {
+      campaignId,
+      providerBatchId,
+    });
+    return;
+  }
+
+  const contacts = await prisma.campaignContact.findMany({
+    where: {
+      id: { in: campaignContactIds },
+      campaignId,
+    },
+    select: {
+      id: true,
+      establishmentData: true,
+    },
+  });
+
+  const submittedAt = new Date().toISOString();
+
+  await prisma.$transaction(
+    contacts.map((contact) => {
+      const previousEstablishmentData =
+        contact.establishmentData && typeof contact.establishmentData === "object"
+          ? contact.establishmentData
+          : {};
+
+      const establishmentData = {
+        ...previousEstablishmentData,
+        batchDispatch: {
+          provider: "elevenlabs",
+          providerBatchId,
+          submittedAt,
+          rawProviderResponse,
+        },
+      };
+
+      return prisma.campaignContact.update({
+        where: { id: contact.id },
+        data: {
+          providerBatchId,
+          establishmentData,
+        },
+      });
+    })
+  );
+};
+
+const submitChunkToProvider = async ({
+  campaignId,
+  chunk,
+  agentId,
+  targetConcurrencyLimit,
+  scheduledTimeUnix,
+  callName,
+  agentPhoneNumberId,
+}) => {
+  const payload = {
+    call_name: callName || `campaign-${campaignId}-${Date.now()}`,
+    agent_id: agentId,
+    target_concurrency_limit: targetConcurrencyLimit,
+    recipients: chunk.map((recipient) => ({
+      phone_number: recipient.phoneNumber,
+      dynamic_variables: recipient.dynamicVariables,
+    })),
+  };
+
+  if (scheduledTimeUnix) {
+    payload.scheduled_time_unix = scheduledTimeUnix;
+  }
+
+  if (agentPhoneNumberId) {
+    payload.agent_phone_number_id = agentPhoneNumberId;
+  }
+
+  try {
+    const response = await axios.post(ELEVENLABS_BATCH_SUBMIT_URL, payload, {
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+      },
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+
+    const providerBatchId = extractProviderBatchId(response.data);
+    if (!providerBatchId) {
+      throw new Error("Provider response does not contain batch id");
+    }
+
+    await persistBatchDispatchResult({
+      campaignId,
+      providerBatchId,
+      rawProviderResponse: response.data,
+      recipients: chunk,
+    });
+
+    return {
+      success: true,
+      providerBatchId,
+      contactCount: chunk.length,
+      rawResponse: response.data,
+    };
+  } catch (error) {
+    const status = error.response?.status;
+    const isTimeout = error.code === "ECONNABORTED";
+
+    const errorPayload = {
+      campaignId,
+      status,
+      isTimeout,
+      message: error.message,
+      providerResponse: error.response?.data,
+    };
+
+    if (status === 422) {
+      logger.error("Batch dispatch rejected by provider (422)", errorPayload);
+    } else if (status === 429) {
+      logger.error("Batch dispatch rate limited by provider (429)", errorPayload);
+    } else if (isTimeout) {
+      logger.error("Batch dispatch timeout", errorPayload);
+    } else {
+      logger.error("Batch dispatch failed", errorPayload);
+    }
+
+    const dispatchError = new Error(
+      `Batch dispatch failed (${status || error.code || "UNKNOWN"})`
+    );
+    dispatchError.statusCode = status || 500;
+    dispatchError.details = error.response?.data || { message: error.message };
+    throw dispatchError;
+  }
+};
+
+const submitCampaignBatch = async ({
+  campaignId,
+  recipients,
+  agentId,
+  targetConcurrencyLimit = DEFAULT_TARGET_CONCURRENCY,
+  maxRecipientsPerRequest = DEFAULT_MAX_RECIPIENTS,
+  scheduledTimeUnix,
+  callName,
+  agentPhoneNumberId,
+}) => {
+  if (!campaignId) {
+    throw new Error("campaignId is required");
+  }
+
+  if (!agentId) {
+    throw new Error("agentId is required");
+  }
+
+  if (!process.env.ELEVENLABS_API_KEY) {
+    throw new Error("ELEVENLABS_API_KEY is required");
+  }
+
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    throw new Error("recipients must be a non-empty array");
+  }
+
+  const { validRecipients, invalidRecipients } = buildRecipientsPayload(recipients, campaignId);
+
+  if (validRecipients.length === 0) {
+    throw new Error("No valid recipients found for batch dispatch");
+  }
+
+  const safeMaxRecipientsPerRequest = ensurePositiveInt(maxRecipientsPerRequest, DEFAULT_MAX_RECIPIENTS);
+  const safeTargetConcurrencyLimit = ensurePositiveInt(
+    targetConcurrencyLimit,
+    DEFAULT_TARGET_CONCURRENCY
+  );
+
+  const chunks = chunkArray(validRecipients, safeMaxRecipientsPerRequest);
+  const chunkResults = [];
+
+  logger.info("Submitting campaign batch", {
+    campaignId,
+    totalRecipients: recipients.length,
+    validRecipients: validRecipients.length,
+    invalidRecipients: invalidRecipients.length,
+    chunkCount: chunks.length,
+    targetConcurrencyLimit: safeTargetConcurrencyLimit,
+  });
+
+  for (const [index, chunk] of chunks.entries()) {
+    logger.info("Submitting campaign batch chunk", {
+      campaignId,
+      chunkIndex: index + 1,
+      chunkSize: chunk.length,
+      chunkCount: chunks.length,
+    });
+
+    const chunkResult = await submitChunkToProvider({
+      campaignId,
+      chunk,
+      agentId,
+      targetConcurrencyLimit: safeTargetConcurrencyLimit,
+      scheduledTimeUnix,
+      callName: callName ? `${callName}-chunk-${index + 1}` : undefined,
+      agentPhoneNumberId,
+    });
+
+    chunkResults.push(chunkResult);
+  }
+
+  return {
+    success: true,
+    campaignId,
+    totalRecipients: recipients.length,
+    dispatchedRecipients: validRecipients.length,
+    skippedRecipients: invalidRecipients.length,
+    invalidRecipients,
+    chunkResults,
+    providerBatchIds: chunkResults.map((result) => result.providerBatchId),
+  };
+};
+
+const getCampaignBatchDispatchStats = async (campaignId) => {
+  if (!campaignId) {
+    throw new Error("campaignId is required");
+  }
+
+  const [
+    totalContacts,
+    dispatchedContacts,
+    pendingContacts,
+    batchGroups,
+    statusBreakdown,
+  ] = await Promise.all([
+    prisma.campaignContact.count({ where: { campaignId } }),
+    prisma.campaignContact.count({
+      where: {
+        campaignId,
+        providerBatchId: { not: null },
+      },
+    }),
+    prisma.campaignContact.count({
+      where: {
+        campaignId,
+        providerBatchId: null,
+      },
+    }),
+    prisma.campaignContact.groupBy({
+      by: ["providerBatchId"],
+      where: {
+        campaignId,
+        providerBatchId: { not: null },
+      },
+      _count: { _all: true },
+    }),
+    prisma.campaignContact.groupBy({
+      by: ["status"],
+      where: { campaignId },
+      _count: { _all: true },
+    }),
+  ]);
+
+  return {
+    campaignId,
+    totalContacts,
+    dispatchedContacts,
+    pendingContacts,
+    dispatchRate: totalContacts > 0 ? ((dispatchedContacts / totalContacts) * 100).toFixed(2) : "0.00",
+    totalBatches: batchGroups.length,
+    batches: batchGroups.map((group) => ({
+      providerBatchId: group.providerBatchId,
+      contacts: group._count._all,
+    })),
+    statusBreakdown: statusBreakdown.reduce((accumulator, entry) => {
+      accumulator[entry.status] = entry._count._all;
+      return accumulator;
+    }, {}),
+  };
+};
+
+module.exports = {
+  submitCampaignBatch,
+  getCampaignBatchDispatchStats,
+};

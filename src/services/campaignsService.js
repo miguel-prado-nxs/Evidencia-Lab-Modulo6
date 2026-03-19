@@ -1,6 +1,8 @@
 const prisma = require("../config/database");
+const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 const geoService = require("./geoService");
+const campaignBatchDispatcherService = require("./campaignBatchDispatcherService");
 
 const createCampaign = async (data) => {
   const {
@@ -231,6 +233,215 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
   return assignContactsToCampaign(campaignId, establishmentIds);
 };
 
+const startCampaign = async (campaignId, options = {}) => {
+  const {
+    agentId,
+    targetConcurrencyLimit,
+    maxRecipientsPerRequest,
+    scheduledTimeUnix,
+    agentPhoneNumberId,
+  } = options;
+
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      agentConfigId: true,
+      couponPrefix: true,
+      offer: true,
+    },
+  });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status === "ACTIVE") {
+    const error = new Error("Campaign is already active");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (campaign.status === "COMPLETED" || campaign.status === "CANCELLED") {
+    const error = new Error(`Cannot start campaign with status ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const resolvedAgentId = agentId || campaign.agentConfigId;
+  if (!resolvedAgentId) {
+    const error = new Error("agentId is required to start campaign");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const contacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "PENDING",
+    },
+    select: {
+      id: true,
+      campaignId: true,
+      establishmentId: true,
+      establishmentName: true,
+      establishmentPhone: true,
+      establishmentData: true,
+    },
+  });
+
+  if (contacts.length === 0) {
+    const error = new Error("Campaign has no pending contacts to dispatch");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const establishmentIds = [...new Set(contacts.map((contact) => contact.establishmentId).filter(Boolean))];
+  let establishments = [];
+
+  if (establishmentIds.length > 0) {
+    try {
+      establishments = await prismaGeo.establishment.findMany({
+        where: {
+          id: { in: establishmentIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          businessName: true,
+          phone: true,
+        },
+      });
+    } catch (geoError) {
+      logger.warn("Geo DB lookup failed while starting campaign, using campaign contact snapshot only", {
+        campaignId,
+        error: geoError.message,
+      });
+    }
+  }
+
+  const establishmentById = new Map(establishments.map((establishment) => [establishment.id, establishment]));
+
+  const recipients = contacts.map((contact) => {
+    const establishment = establishmentById.get(contact.establishmentId);
+    const contactData =
+      contact.establishmentData && typeof contact.establishmentData === "object"
+        ? contact.establishmentData
+        : {};
+
+    const businessName =
+      contact.establishmentName ||
+      establishment?.businessName ||
+      establishment?.name ||
+      contactData.businessName ||
+      null;
+
+    const prospectName =
+      contactData.prospectName ||
+      contactData.decisionMakerName ||
+      contactData.contactName ||
+      businessName ||
+      "Prospecto";
+
+    const phoneNumber =
+      contact.establishmentPhone ||
+      establishment?.phone ||
+      contactData.phone ||
+      contactData.whatsapp ||
+      null;
+
+    return {
+      campaignContactId: contact.id,
+      phone_number: phoneNumber,
+      dynamic_variables: {
+        campaignId,
+        campaignContactId: contact.id,
+        prospectName,
+        businessName,
+        couponType: campaign.couponPrefix || contactData.couponType || null,
+        agentConfigId: resolvedAgentId,
+        campaignContext: {
+          campaignName: campaign.name,
+          offer: campaign.offer || null,
+        },
+      },
+    };
+  });
+
+  const dispatchResult = await campaignBatchDispatcherService.submitCampaignBatch({
+    campaignId,
+    recipients,
+    agentId: resolvedAgentId,
+    targetConcurrencyLimit,
+    maxRecipientsPerRequest,
+    scheduledTimeUnix,
+    callName: `campaign-${campaign.name}`,
+    agentPhoneNumberId,
+  });
+
+  const invalidContactReasons = new Map();
+  for (const invalidEntry of dispatchResult.invalidRecipients || []) {
+    const campaignContactId = invalidEntry?.recipient?.dynamic_variables?.campaignContactId;
+    if (!campaignContactId) {
+      continue;
+    }
+    invalidContactReasons.set(campaignContactId, invalidEntry.reason || "Invalid recipient");
+  }
+
+  const dispatchedContactIds = recipients
+    .map((recipient) => recipient.campaignContactId)
+    .filter(Boolean);
+
+  await prisma.$transaction([
+    prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        status: "ACTIVE",
+        startedAt: new Date(),
+      },
+    }),
+    prisma.campaignContact.updateMany({
+      where: {
+        id: { in: dispatchedContactIds },
+        campaignId,
+        providerBatchId: { not: null },
+      },
+      data: {
+        status: "CALLING",
+      },
+    }),
+    ...Array.from(invalidContactReasons.entries()).map(([contactId, reason]) =>
+      prisma.campaignContact.update({
+        where: { id: contactId },
+        data: {
+          status: "FAILED",
+          errorReason: reason,
+        },
+      })
+    ),
+  ]);
+
+  logger.info("Campaign started with batch dispatch", {
+    campaignId,
+    agentId: resolvedAgentId,
+    totalRecipients: recipients.length,
+    dispatchedRecipients: dispatchResult.dispatchedRecipients,
+    skippedRecipients: dispatchResult.skippedRecipients,
+    providerBatchIds: dispatchResult.providerBatchIds,
+  });
+
+  return {
+    campaignId,
+    status: "ACTIVE",
+    startedAt: new Date().toISOString(),
+    dispatch: dispatchResult,
+  };
+};
+
 const getCampaignContacts = async (campaignId, filters = {}) => {
   const { status, page = 1, limit = 50 } = filters;
 
@@ -262,7 +473,17 @@ const getCampaignContacts = async (campaignId, filters = {}) => {
 };
 
 const updateContactStatus = async (contactId, status, metadata = {}) => {
-  const validStatuses = ["PENDING", "SENT", "DELIVERED", "VISITED", "CONVERTED", "FAILED"];
+  const validStatuses = [
+    "PENDING",
+    "CALLING",
+    "CALLED",
+    "RESPONDED",
+    "SENT",
+    "DELIVERED",
+    "VISITED",
+    "CONVERTED",
+    "FAILED",
+  ];
   if (!validStatuses.includes(status)) {
     throw new Error(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
   }
@@ -382,6 +603,7 @@ module.exports = {
   deleteCampaign,
   assignContactsToCampaign,
   assignContactsWithGeoFilter,
+  startCampaign,
   getCampaignContacts,
   updateContactStatus,
   getCampaignStats,
