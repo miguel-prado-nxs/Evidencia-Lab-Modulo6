@@ -277,10 +277,6 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
 const startCampaign = async (campaignId, options = {}) => {
   const {
     agentId,
-    targetConcurrencyLimit,
-    maxRecipientsPerRequest,
-    scheduledTimeUnix,
-    agentPhoneNumberId,
   } = options;
 
   const campaign = await prisma.campaign.findUnique({
