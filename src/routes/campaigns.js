@@ -59,6 +59,7 @@ const updateContactStatusSchema = z.object({
 
 router.post("/", validate(createCampaignSchema), campaignsController.create);
 router.get("/", campaignsController.list);
+router.get("/agents", campaignsController.getAgents);
 router.get("/:id", campaignsController.getById);
 router.patch("/:id", validate(updateCampaignSchema), campaignsController.update);
 router.delete("/:id", campaignsController.delete);

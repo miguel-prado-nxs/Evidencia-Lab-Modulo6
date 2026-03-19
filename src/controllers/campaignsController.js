@@ -1,5 +1,6 @@
 const campaignsService = require("../services/campaignsService");
 const logger = require("../config/logger");
+const axios = require('axios');
 
 const create = async (req, res, next) => {
   try {
@@ -287,6 +288,32 @@ const getStats = async (req, res, next) => {
   }
 };
 
+
+const apiKey = process.env.ELEVENLABS_API_KEY
+
+const getAgents = async (req, res, next) => {
+  try {
+    const response = await axios.get('https://api.elevenlabs.io/v1/convai/agents', {
+      headers: {
+        'xi-api-key': apiKey
+      },
+    });
+
+    const agentsArray = Array.isArray(response.data) ? response.data : response.data.agents || [];
+    const agents = agentsArray.map(agent => ({
+      id: agent.agent_id,
+      name: agent.name
+    }));
+
+    res.json({
+      success: true,
+      data: agents
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -298,4 +325,5 @@ module.exports = {
   getContacts,
   updateContactStatus,
   getStats,
+  getAgents,
 };
