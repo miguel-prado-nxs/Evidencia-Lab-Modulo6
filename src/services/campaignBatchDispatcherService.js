@@ -80,14 +80,48 @@ const extractProviderBatchId = (responseData = {}) => {
   );
 };
 
+const toReadableErrorDetail = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
 const sanitizeRecipient = (recipient = {}, campaignId) => {
   const phoneSource = recipient.phone_number || recipient.phoneNumber || recipient.phone;
   const normalizedPhone = normalizePhoneNumber(phoneSource);
 
-  const dynamicVariables = {
+  const rawDynamicVariables = {
     ...(recipient.dynamic_variables || recipient.dynamicVariables || {}),
     campaignId,
   };
+
+  const dynamicVariables = Object.entries(rawDynamicVariables).reduce((accumulator, [key, value]) => {
+    if (value === null || value === undefined) {
+      return accumulator;
+    }
+
+    if (["string", "number", "boolean"].includes(typeof value)) {
+      accumulator[key] = value;
+      return accumulator;
+    }
+
+    accumulator[key] = String(value);
+    return accumulator;
+  }, {});
 
   delete dynamicVariables.couponCode;
 
@@ -265,8 +299,19 @@ const submitChunkToProvider = async ({
       logger.error("Batch dispatch failed", errorPayload);
     }
 
+    const providerDetail =
+      error.response?.data?.detail ??
+      error.response?.data?.message ??
+      error.response?.data?.error ??
+      error.response?.data ??
+      null;
+
+    const providerDetailText = toReadableErrorDetail(providerDetail);
+
     const dispatchError = new Error(
-      `Batch dispatch failed (${status || error.code || "UNKNOWN"})`
+      providerDetailText
+        ? `Batch dispatch failed (${status || error.code || "UNKNOWN"}): ${providerDetailText}`
+        : `Batch dispatch failed (${status || error.code || "UNKNOWN"})`
     );
     dispatchError.statusCode = status || 500;
     dispatchError.details = error.response?.data || { message: error.message };

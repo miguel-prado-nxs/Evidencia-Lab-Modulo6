@@ -91,6 +91,85 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
 }
 
 /**
+ * Buscar establecimientos en un radio (metros) desde un punto central
+ * Convierte el radio a un bounding box para consulta eficiente en Mapa DB
+ */
+async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, filters = {}) {
+  const latDelta = radiusMeters / 111000;
+  const centerLatRadians = (centerLat * Math.PI) / 180;
+  const lngDelta = radiusMeters / (111000 * Math.max(Math.cos(centerLatRadians), 0.000001));
+
+  const bounds = {
+    north: centerLat + latDelta,
+    south: centerLat - latDelta,
+    east: centerLng + lngDelta,
+    west: centerLng - lngDelta,
+  };
+
+  const where = {
+    latitude: { gte: bounds.south, lte: bounds.north },
+    longitude: { gte: bounds.west, lte: bounds.east },
+  };
+
+  const activityCodes = Array.isArray(filters.activityCodes)
+    ? filters.activityCodes
+    : typeof filters.activityCode === "string"
+      ? filters.activityCode.split(",")
+      : [];
+
+  if (activityCodes.length > 0) {
+    const codes = activityCodes
+      .map((code) => String(code).trim())
+      .filter(Boolean);
+
+    if (codes.length === 1) {
+      where.activityCode = codes[0];
+    } else if (codes.length > 1) {
+      where.activityCode = { in: codes };
+    }
+  }
+
+  if (filters.stateCode) where.stateCode = filters.stateCode;
+  if (filters.municipalityCode) where.municipalityCode = filters.municipalityCode;
+
+  if (Array.isArray(filters.employeeRanges) && filters.employeeRanges.length > 0) {
+    where.employeeRange = { in: filters.employeeRanges };
+  } else if (filters.employeeRange) {
+    where.employeeRange = filters.employeeRange;
+  }
+  if (filters.search) {
+    where.OR = [
+      { name: { contains: filters.search, mode: "insensitive" } },
+      { activityName: { contains: filters.search, mode: "insensitive" } },
+      { neighborhood: { contains: filters.search, mode: "insensitive" } },
+    ];
+  }
+
+  return prismaGeo.establishment.findMany({
+    where,
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      email: true,
+      website: true,
+      latitude: true,
+      longitude: true,
+      activityCode: true,
+      activityName: true,
+      employeeRange: true,
+      stateCode: true,
+      stateName: true,
+      municipalityCode: true,
+      municipalityName: true,
+      neighborhood: true,
+      postalCode: true,
+    },
+    take: 500,
+  });
+}
+
+/**
  * Obtener un establecimiento por ID con todos los detalles
  * Combina datos de Mapa DB (establecimiento) con Partners DB (enriquecimiento/prospectos)
  * 
@@ -959,6 +1038,7 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
 
 module.exports = {
   getEstablishmentsInBounds,
+  findEstablishmentsInRadius,
   getEstablishmentById,
   getClusteredData,
   getHeatmapData,

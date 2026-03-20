@@ -54,6 +54,14 @@ const createCampaign = async (data) => {
     },
   });
 
+  if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
+    await assignContactsWithGeoFilter(campaign.id, {
+      ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+      activityCodes: campaign.activityCodes || [],
+      employeeRanges: campaign.employeeRanges || [],
+    });
+  }
+
   logger.info(`Campaign created: ${campaign.id}`, { campaignId: campaign.id });
   return campaign;
 };
@@ -213,31 +221,88 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
     throw new Error("establishmentIds must be a non-empty array");
   }
 
+  const uniqueEstablishmentIds = [...new Set(establishmentIds.filter(Boolean))];
+  let establishments = [];
+
+  if (uniqueEstablishmentIds.length > 0) {
+    try {
+      establishments = await prismaGeo.establishment.findMany({
+        where: {
+          id: { in: uniqueEstablishmentIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          website: true,
+          activityName: true,
+          latitude: true,
+          longitude: true,
+          municipalityName: true,
+          stateName: true,
+        },
+      });
+    } catch (geoError) {
+      logger.warn("Geo DB lookup failed while assigning campaign contacts", {
+        campaignId,
+        error: geoError.message,
+      });
+    }
+  }
+
+  const establishmentById = new Map(establishments.map((establishment) => [establishment.id, establishment]));
+
   const contacts = await prisma.$transaction(
-    establishmentIds.map((establishmentId) =>
-      prisma.campaignContact.upsert({
+    establishmentIds.map((establishmentId) => {
+      const establishment = establishmentById.get(establishmentId);
+      const establishmentData = establishment
+        ? {
+          name: establishment.name || null,
+          phone: establishment.phone || null,
+          email: establishment.email || null,
+          website: establishment.website || null,
+          activityName: establishment.activityName || null,
+          latitude: establishment.latitude ?? null,
+          longitude: establishment.longitude ?? null,
+          municipalityName: establishment.municipalityName || null,
+          stateName: establishment.stateName || null,
+        }
+        : null;
+
+      return prisma.campaignContact.upsert({
         where: {
           campaignId_establishmentId: {
             campaignId,
             establishmentId,
           },
         },
-        update: {},
+        update: {
+          establishmentName: establishment?.name || null,
+          establishmentPhone: establishment?.phone || null,
+          establishmentData,
+        },
         create: {
           campaignId,
           establishmentId,
+          establishmentName: establishment?.name || null,
+          establishmentPhone: establishment?.phone || null,
+          establishmentData,
           status: "PENDING",
         },
-      })
+      });
+    }
     )
   );
+
+  const totalContacts = await prisma.campaignContact.count({
+    where: { campaignId },
+  });
 
   await prisma.campaign.update({
     where: { id: campaignId },
     data: {
-      totalContacts: {
-        increment: contacts.length,
-      },
+      totalContacts,
     },
   });
 
@@ -258,11 +323,20 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
     throw new Error("Campaign must have geographic coordinates and radius defined");
   }
 
+  const mergedFilters = {
+    ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+    ...options,
+  };
+
+  if (!mergedFilters.activityCode && Array.isArray(campaign.activityCodes) && campaign.activityCodes.length > 0) {
+    mergedFilters.activityCode = campaign.activityCodes.join(",");
+  }
+
   const establishments = await geoService.findEstablishmentsInRadius(
     campaign.centerLat,
     campaign.centerLng,
     campaign.radiusMeters,
-    options
+    mergedFilters
   );
 
   if (establishments.length === 0) {
@@ -277,7 +351,16 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
 const startCampaign = async (campaignId, options = {}) => {
   const {
     agentId,
+    targetConcurrencyLimit,
+    maxRecipientsPerRequest,
+    scheduledTimeUnix,
+    agentPhoneNumberId,
   } = options;
+
+  const resolvedAgentPhoneNumberId =
+    agentPhoneNumberId ||
+    process.env.ELEVENLABS_AGENT_PHONE_NUMBER_ID ||
+    null;
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
@@ -288,6 +371,11 @@ const startCampaign = async (campaignId, options = {}) => {
       agentConfigId: true,
       couponPrefix: true,
       offer: true,
+      centerLat: true,
+      centerLng: true,
+      radiusMeters: true,
+      filters: true,
+      activityCodes: true,
     },
   });
 
@@ -316,7 +404,15 @@ const startCampaign = async (campaignId, options = {}) => {
     throw error;
   }
 
-  const contacts = await prisma.campaignContact.findMany({
+  if (!resolvedAgentPhoneNumberId) {
+    const error = new Error(
+      "agentPhoneNumberId is required to start campaign (or set ELEVENLABS_AGENT_PHONE_NUMBER_ID in .env)"
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  let contacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
       status: "PENDING",
@@ -330,6 +426,25 @@ const startCampaign = async (campaignId, options = {}) => {
       establishmentData: true,
     },
   });
+
+  if (contacts.length === 0) {
+    await assignContactsWithGeoFilter(campaignId, campaign.filters || {});
+
+    contacts = await prisma.campaignContact.findMany({
+      where: {
+        campaignId,
+        status: "PENDING",
+      },
+      select: {
+        id: true,
+        campaignId: true,
+        establishmentId: true,
+        establishmentName: true,
+        establishmentPhone: true,
+        establishmentData: true,
+      },
+    });
+  }
 
   if (contacts.length === 0) {
     const error = new Error("Campaign has no pending contacts to dispatch");
@@ -349,7 +464,6 @@ const startCampaign = async (campaignId, options = {}) => {
         select: {
           id: true,
           name: true,
-          businessName: true,
           phone: true,
         },
       });
@@ -372,8 +486,8 @@ const startCampaign = async (campaignId, options = {}) => {
 
     const businessName =
       contact.establishmentName ||
-      establishment?.businessName ||
       establishment?.name ||
+      contactData.name ||
       contactData.businessName ||
       null;
 
@@ -401,10 +515,8 @@ const startCampaign = async (campaignId, options = {}) => {
         businessName,
         couponType: campaign.couponPrefix || contactData.couponType || null,
         agentConfigId: resolvedAgentId,
-        campaignContext: {
-          campaignName: campaign.name,
-          offer: campaign.offer || null,
-        },
+        campaignName: campaign.name || null,
+        campaignOffer: campaign.offer || null,
       },
     };
   });
@@ -417,7 +529,7 @@ const startCampaign = async (campaignId, options = {}) => {
     maxRecipientsPerRequest,
     scheduledTimeUnix,
     callName: `campaign-${campaign.name}`,
-    agentPhoneNumberId,
+    agentPhoneNumberId: resolvedAgentPhoneNumberId,
   });
 
   const invalidContactReasons = new Map();

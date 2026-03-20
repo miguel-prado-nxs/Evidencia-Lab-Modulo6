@@ -2,7 +2,26 @@ const crypto = require("crypto");
 const prisma = require("../config/database");
 const logger = require("../config/logger");
 
-const EVENT_TYPE_POST_CALL_TRANSCRIPTION = "post_call_transcription";
+const SUPPORTED_EVENT_TYPES = new Set([
+    "post_call_transcription",
+    "post_call_report",
+    "call_ended",
+    "conversation_ended",
+    "conversation.ended",
+]);
+
+const isSupportedCampaignWebhookEvent = (eventType) => {
+    if (!eventType || typeof eventType !== "string") {
+        return false;
+    }
+
+    if (SUPPORTED_EVENT_TYPES.has(eventType)) {
+        return true;
+    }
+
+    const normalized = eventType.toLowerCase();
+    return normalized.includes("post_call") || normalized.includes("ended");
+};
 
 const parseSignatureHeader = (signatureHeader = "") => {
     const parts = signatureHeader
@@ -46,7 +65,12 @@ const verifyElevenLabsSignature = ({ signatureHeader, rawBody, secret }) => {
         return { valid: false, reason: "Invalid elevenlabs-signature header" };
     }
 
-    const bodyString = typeof rawBody === "string" ? rawBody : "";
+    const bodyString =
+        typeof rawBody === "string"
+            ? rawBody
+            : rawBody && typeof rawBody === "object"
+                ? JSON.stringify(rawBody)
+                : "";
     const expectedWithTimestamp = computeHmacHex(secret, `${timestamp}.${bodyString}`);
     const expectedBodyOnly = computeHmacHex(secret, bodyString);
 
@@ -62,8 +86,18 @@ const verifyElevenLabsSignature = ({ signatureHeader, rawBody, secret }) => {
 
 const extractWebhookData = (payload = {}) => {
     const data = payload.data && typeof payload.data === "object" ? payload.data : {};
+    const metadata = data.metadata && typeof data.metadata === "object" ? data.metadata : {};
+    const conversationInitData =
+        data.conversation_initiation_client_data && typeof data.conversation_initiation_client_data === "object"
+            ? data.conversation_initiation_client_data
+            : {};
+
     const customLlmData =
         (data.custom_llm_data && typeof data.custom_llm_data === "object" && data.custom_llm_data) ||
+        (conversationInitData.dynamic_variables &&
+            typeof conversationInitData.dynamic_variables === "object" &&
+            conversationInitData.dynamic_variables) ||
+        (metadata.dynamic_variables && typeof metadata.dynamic_variables === "object" && metadata.dynamic_variables) ||
         (data.dynamic_variables && typeof data.dynamic_variables === "object" && data.dynamic_variables) ||
         {};
 
@@ -79,13 +113,20 @@ const extractWebhookData = (payload = {}) => {
         customLlmData.couponGenerated || customLlmData.coupon_generated || data.couponGenerated || null;
 
     return {
-        eventType: payload.type || null,
+        eventType: payload.type || payload.event_type || data.type || null,
         campaignId,
         campaignContactId,
         conversationId,
-        callSuccessful: data.analysis?.call_successful === true,
+        callSuccessful:
+            data.analysis?.call_successful === true ||
+            data.analysis?.call_successful === "true" ||
+            data.analysis?.success === true,
         transcriptSummary: data.analysis?.transcript_summary || null,
-        failureReason: data.analysis?.failure_reason || null,
+        failureReason:
+            data.analysis?.failure_reason ||
+            data.analysis?.termination_reason ||
+            data.analysis?.reason ||
+            null,
         callDuration:
             typeof data.metadata?.call_duration_secs === "number" ? data.metadata.call_duration_secs : null,
         couponGenerated,
@@ -169,7 +210,10 @@ const handleElevenLabsWebhook = async (req, res, next) => {
 
         const webhookData = extractWebhookData(req.body);
 
-        if (webhookData.eventType !== EVENT_TYPE_POST_CALL_TRANSCRIPTION) {
+        if (!isSupportedCampaignWebhookEvent(webhookData.eventType)) {
+            logger.info("[CampaignWebhook] Webhook ignored (unsupported event type)", {
+                eventType: webhookData.eventType,
+            });
             return res.status(200).json({
                 success: true,
                 message: "Webhook ignored (unsupported event type)",

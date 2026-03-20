@@ -64,7 +64,7 @@ app.use(
   express.json({
     limit: "10mb",
     verify: (req, res, buffer) => {
-      if (req.originalUrl && req.originalUrl.startsWith("/api/v1/campaigns/elevenlabs-webhook")) {
+      if (req.originalUrl && req.originalUrl.includes("/campaigns/elevenlabs-webhook")) {
         req.rawBody = buffer.toString("utf8");
       }
     },

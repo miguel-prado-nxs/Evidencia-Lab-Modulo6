@@ -336,6 +336,10 @@ const startCampaign = async (req, res, next) => {
 
     const result = await campaignsService.startCampaign(id, {
       agentId,
+      targetConcurrencyLimit,
+      maxRecipientsPerRequest,
+      scheduledTimeUnix,
+      agentPhoneNumberId,
     });
 
     res.json({
