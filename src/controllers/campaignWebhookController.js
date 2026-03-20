@@ -188,8 +188,28 @@ const recalculateCampaignMetrics = async (campaignId) => {
     });
 };
 
+const resolveClosedStatusFromContact = (contact) => {
+    if (!contact || typeof contact !== "object") {
+        return "CALLED";
+    }
+
+    if (contact.errorReason) {
+        return "FAILED";
+    }
+
+    return "CALLED";
+};
+
 const handleElevenLabsWebhook = async (req, res, next) => {
     try {
+        logger.info("[CampaignWebhook] Webhook received", {
+            url: req.originalUrl,
+            method: req.method,
+            bodySize: req.body ? JSON.stringify(req.body).length : 0,
+            hasRawBody: !!req.rawBody,
+            hasSignatureHeader: !!req.get("elevenlabs-signature"),
+        });
+
         const signatureHeader = req.get("elevenlabs-signature") || "";
         const verification = verifyElevenLabsSignature({
             signatureHeader,
@@ -200,6 +220,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         if (!verification.valid) {
             logger.warn("[CampaignWebhook] Invalid ElevenLabs signature", {
                 reason: verification.reason,
+                hasSecret: !!process.env.ELEVENLABS_WEBHOOK_SECRET,
+                signatureHeader: signatureHeader.substring(0, 50),
             });
 
             return res.status(401).json({
@@ -208,11 +230,26 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             });
         }
 
+        logger.debug("[CampaignWebhook] Signature verified", {
+            rawBodyLength: req.rawBody ? req.rawBody.length : 0,
+        });
+
         const webhookData = extractWebhookData(req.body);
+
+        logger.info("[CampaignWebhook] Extracted webhook data", {
+            eventType: webhookData.eventType,
+            campaignContactId: webhookData.campaignContactId,
+            conversationId: webhookData.conversationId,
+            campaignId: webhookData.campaignId,
+            callSuccessful: webhookData.callSuccessful,
+            failureReason: webhookData.failureReason,
+            payload: JSON.stringify(req.body).substring(0, 200),
+        });
 
         if (!isSupportedCampaignWebhookEvent(webhookData.eventType)) {
             logger.info("[CampaignWebhook] Webhook ignored (unsupported event type)", {
                 eventType: webhookData.eventType,
+                supportedTypes: Array.from(SUPPORTED_EVENT_TYPES),
             });
             return res.status(200).json({
                 success: true,
@@ -223,6 +260,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         if (!webhookData.campaignContactId && !webhookData.conversationId) {
             logger.warn("[CampaignWebhook] Missing identifiers in webhook payload", {
                 eventType: webhookData.eventType,
+                payloadKeys: Object.keys(req.body),
             });
             return res.status(200).json({
                 success: true,
@@ -235,11 +273,19 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             contact = await prisma.campaignContact.findUnique({
                 where: { id: webhookData.campaignContactId },
             });
+            logger.debug("[CampaignWebhook] Lookup by campaignContactId", {
+                campaignContactId: webhookData.campaignContactId,
+                found: !!contact,
+            });
         }
 
         if (!contact && webhookData.conversationId) {
             contact = await prisma.campaignContact.findUnique({
                 where: { conversationId: webhookData.conversationId },
+            });
+            logger.debug("[CampaignWebhook] Lookup by conversationId", {
+                conversationId: webhookData.conversationId,
+                found: !!contact,
             });
         }
 
@@ -247,6 +293,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             logger.warn("[CampaignWebhook] Contact not found for webhook", {
                 campaignContactId: webhookData.campaignContactId,
                 conversationId: webhookData.conversationId,
+                availableContactIds: "N/A",
             });
 
             return res.status(200).json({
@@ -255,11 +302,48 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             });
         }
 
+        logger.info("[CampaignWebhook] Contact found", {
+            contactId: contact.id,
+            currentStatus: contact.status,
+            currentConversationId: contact.conversationId,
+        });
+
         if (contact.webhookReceivedAt && contact.conversationId === webhookData.conversationId) {
+            if (contact.status === "CALLING") {
+                const healedStatus = resolveClosedStatusFromContact(contact);
+
+                await prisma.campaignContact.update({
+                    where: { id: contact.id },
+                    data: {
+                        status: healedStatus,
+                    },
+                });
+
+                logger.warn("[CampaignWebhook] Healed inconsistent CALLING state on idempotent webhook", {
+                    campaignId: contact.campaignId,
+                    contactId: contact.id,
+                    conversationId: webhookData.conversationId,
+                    previousStatus: "CALLING",
+                    newStatus: healedStatus,
+                    webhookReceivedAt: contact.webhookReceivedAt,
+                });
+
+                setImmediate(() => {
+                    recalculateCampaignMetrics(contact.campaignId).catch((error) => {
+                        logger.error("[CampaignWebhook] Failed to recalculate campaign metrics after idempotent heal", {
+                            campaignId: contact.campaignId,
+                            contactId: contact.id,
+                            error: error.message,
+                        });
+                    });
+                });
+            }
+
             logger.info("[CampaignWebhook] Idempotent webhook (same contact/conversation)", {
                 campaignId: contact.campaignId,
                 contactId: contact.id,
                 conversationId: webhookData.conversationId,
+                alreadyReceivedAt: contact.webhookReceivedAt,
             });
 
             return res.status(200).json({
@@ -284,6 +368,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                 logger.info("[CampaignWebhook] Idempotent webhook (conversation already processed)", {
                     campaignId: alreadyProcessed.campaignId,
                     contactId: alreadyProcessed.id,
+                    thisContactId: contact.id,
                     conversationId: webhookData.conversationId,
                 });
 
@@ -303,6 +388,13 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             webhookReceivedAt: new Date(),
         };
 
+        logger.info("[CampaignWebhook] Preparing contact update", {
+            contactId: contact.id,
+            currentStatus: contact.status,
+            newStatus: status,
+            callDuration: webhookData.callDuration,
+        });
+
         if (!webhookData.callSuccessful) {
             updateData.errorReason =
                 webhookData.failureReason || webhookData.transcriptSummary || "Call completed without success";
@@ -319,6 +411,10 @@ const handleElevenLabsWebhook = async (req, res, next) => {
 
             if (coupon) {
                 updateData.couponId = coupon.id;
+                logger.debug("[CampaignWebhook] Coupon found and linked", {
+                    couponCode: webhookData.couponGenerated,
+                    couponId: coupon.id,
+                });
             } else {
                 logger.warn("[CampaignWebhook] couponGenerated not found in campaign", {
                     campaignId: contact.campaignId,
@@ -327,6 +423,11 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                 });
             }
         }
+
+        logger.debug("[CampaignWebhook] About to update contact in DB", {
+            contactId: contact.id,
+            updateDataKeys: Object.keys(updateData),
+        });
 
         const updatedContact = await prisma.campaignContact.update({
             where: { id: contact.id },
@@ -337,6 +438,12 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                 conversationId: true,
                 status: true,
             },
+        });
+
+        logger.info("[CampaignWebhook] Contact updated successfully", {
+            contactId: updatedContact.id,
+            newStatus: updatedContact.status,
+            conversationId: updatedContact.conversationId,
         });
 
         setImmediate(() => {

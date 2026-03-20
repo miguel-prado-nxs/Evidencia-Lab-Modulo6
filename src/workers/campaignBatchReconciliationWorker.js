@@ -115,6 +115,18 @@ const isAlreadyProcessedByConversation = async (contact) => {
     });
 };
 
+const resolveClosedStatusFromContact = (contact) => {
+    if (!contact || typeof contact !== "object") {
+        return "CALLED";
+    }
+
+    if (contact.errorReason) {
+        return "FAILED";
+    }
+
+    return "CALLED";
+};
+
 const reconcileContact = async (contact, orphanThreshold) => {
     const context = {
         campaignId: contact.campaignId,
@@ -125,6 +137,29 @@ const reconcileContact = async (contact, orphanThreshold) => {
 
     const processedByConversation = await isAlreadyProcessedByConversation(contact);
     if (processedByConversation) {
+        if (processedByConversation.id === contact.id && contact.status === "CALLING") {
+            const resolvedStatus = resolveClosedStatusFromContact(contact);
+
+            await prisma.campaignContact.update({
+                where: { id: contact.id },
+                data: {
+                    status: resolvedStatus,
+                },
+            });
+
+            logger.warn("[CampaignReconciliationWorker] Contact healed from inconsistent state", {
+                ...context,
+                conversationId: contact.conversationId,
+                webhookReceivedAt: processedByConversation.webhookReceivedAt,
+                processedContactId: processedByConversation.id,
+                action: "healed_closed_contact_state",
+                previousStatus: "CALLING",
+                newStatus: resolvedStatus,
+            });
+
+            return { updated: true, reason: "healed_inconsistent_state" };
+        }
+
         logger.info("[CampaignReconciliationWorker] Contact skipped (already closed by webhook)", {
             ...context,
             conversationId: contact.conversationId,
@@ -218,6 +253,7 @@ const runCycle = async () => {
                         campaignId: true,
                         providerBatchId: true,
                         status: true,
+                        errorReason: true,
                         conversationId: true,
                         webhookReceivedAt: true,
                         createdAt: true,
