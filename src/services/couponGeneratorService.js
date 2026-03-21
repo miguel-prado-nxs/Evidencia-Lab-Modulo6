@@ -1,0 +1,336 @@
+const prisma = require("../config/database");
+const logger = require("../config/logger");
+const crypto = require("crypto");
+
+/**
+ * Genera un código de cupón único con formato: BASE-SUFFIX
+ * @param {string} base - Base del código (ej: "EASY-PLUS30")
+ * @returns {string} Código único (ej: "EASY-PLUS30-A3F2X9")
+ */
+const generateUniqueCode = (base) => {
+  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `${base}-${suffix}`;
+};
+
+/**
+ * Renderiza una plantilla de mensaje con variables
+ * @param {string} template - Plantilla con variables {{variable}}
+ * @param {object} data - Datos para reemplazar
+ * @returns {string} Mensaje renderizado
+ */
+const renderTemplate = (template, data) => {
+  let rendered = template;
+  
+  Object.keys(data).forEach(key => {
+    const regex = new RegExp(`{{${key}}}`, 'g');
+    rendered = rendered.replace(regex, data[key] || '');
+  });
+  
+  return rendered;
+};
+
+/**
+ * Verifica si un usuario puede recibir un cupón
+ * @param {string} phone - Teléfono del usuario
+ * @param {string} couponType - Tipo de cupón
+ * @returns {Promise<{eligible: boolean, reason?: string}>}
+ */
+const checkEligibility = async (phone, couponType) => {
+  // Obtener template para verificar reglas
+  const template = await prisma.couponTemplate.findUnique({
+    where: { couponType }
+  });
+
+  if (!template) {
+    return { eligible: false, reason: "Template not found" };
+  }
+
+  // Verificar si ya recibió un cupón de este tipo
+  const existingCoupons = await prisma.campaignCoupon.count({
+    where: {
+      assignedPhone: phone,
+      couponType: couponType
+    }
+  });
+
+  if (existingCoupons >= template.maxPerUser) {
+    return { 
+      eligible: false, 
+      reason: `User already received ${existingCoupons} coupon(s) of type ${couponType}` 
+    };
+  }
+
+  return { eligible: true };
+};
+
+/**
+ * Selecciona el template apropiado basado en el escenario
+ * @param {string} scenario - Escenario (ej: "bant_high", "price_objection")
+ * @param {object} bantScores - Puntajes BANT opcionales
+ * @returns {Promise<object>} Template seleccionado
+ */
+const selectTemplateByScenario = async (scenario, bantScores = {}) => {
+  // Buscar templates que incluyan este escenario
+  const templates = await prisma.couponTemplate.findMany({
+    where: {
+      active: true,
+      scenarios: {
+        has: scenario
+      }
+    },
+    orderBy: {
+      priority: 'desc'
+    }
+  });
+
+  if (templates.length === 0) {
+    throw new Error(`No active template found for scenario: ${scenario}`);
+  }
+
+  // Por ahora retornamos el de mayor prioridad
+  // En el futuro se puede agregar lógica más compleja basada en BANT
+  return templates[0];
+};
+
+/**
+ * Genera un cupón para una llamada de agente
+ * @param {object} params - Parámetros de generación
+ * @param {string} params.phone - Teléfono del prospecto
+ * @param {string} params.prospectName - Nombre del prospecto
+ * @param {string} params.businessName - Nombre del negocio
+ * @param {string} params.scenario - Escenario que dispara el cupón
+ * @param {object} params.bantScores - Puntajes BANT (opcional)
+ * @param {string} params.agentId - ID del agente que genera el cupón
+ * @param {string} params.callId - ID de la llamada
+ * @param {string} params.campaignId - ID de campaña (opcional)
+ * @returns {Promise<{coupon: object, message: string, template: object}>}
+ */
+const generateCouponForCall = async ({
+  phone,
+  prospectName,
+  businessName,
+  scenario,
+  bantScores = {},
+  agentId,
+  callId,
+  campaignId = null
+}) => {
+  // 1. Seleccionar template por escenario
+  const template = await selectTemplateByScenario(scenario, bantScores);
+  
+  // 2. Verificar elegibilidad
+  const eligibility = await checkEligibility(phone, template.couponType);
+  if (!eligibility.eligible) {
+    throw new Error(eligibility.reason);
+  }
+  
+  // 3. Generar código único
+  const baseCode = `EASY-${template.couponType}`;
+  let code;
+  let isUnique = false;
+  let attempts = 0;
+  
+  while (!isUnique && attempts < 10) {
+    code = generateUniqueCode(baseCode);
+    const existing = await prisma.campaignCoupon.findUnique({
+      where: { code }
+    });
+    if (!existing) {
+      isUnique = true;
+    }
+    attempts++;
+  }
+  
+  if (!isUnique) {
+    throw new Error("Failed to generate unique coupon code");
+  }
+  
+  // 4. Calcular fecha de expiración
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + template.expiresHours);
+  
+  // 5. Crear cupón
+  const coupon = await prisma.campaignCoupon.create({
+    data: {
+      code,
+      campaignId,
+      couponType: template.couponType,
+      offer: template.description || `${template.name}`,
+      percentOff: template.percentOff,
+      durationMonths: template.durationMonths,
+      trialDays: template.trialDays,
+      scenario,
+      assignedPhone: phone,
+      assignedAt: new Date(),
+      expiresAt,
+      source: 'agent_call',
+      agentId,
+      callId,
+      status: 'GENERATED'
+    }
+  });
+  
+  // 6. Personalizar mensaje con datos del prospecto
+  const message = renderTemplate(template.messageTemplate, {
+    nombre: prospectName,
+    negocio: businessName,
+    codigo: code,
+    beneficio: template.description || template.name
+  });
+  
+  logger.info(`Coupon generated for call`, {
+    couponId: coupon.id,
+    code: coupon.code,
+    phone,
+    scenario,
+    agentId,
+    callId
+  });
+  
+  return {
+    coupon,
+    message,
+    template: {
+      mediaUrl: template.mediaUrl
+    }
+  };
+};
+
+/**
+ * Genera cupones en bulk para una campaña
+ * @param {string} campaignId - ID de la campaña
+ * @param {string} couponType - Tipo de cupón
+ * @param {number} count - Cantidad a generar
+ * @returns {Promise<Array>} Cupones generados
+ */
+const generateBulkCouponsForCampaign = async (campaignId, couponType, count) => {
+  if (count < 1 || count > 1000) {
+    throw new Error("Count must be between 1 and 1000");
+  }
+
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId }
+  });
+
+  if (!campaign) {
+    throw new Error("Campaign not found");
+  }
+
+  const template = await prisma.couponTemplate.findUnique({
+    where: { couponType }
+  });
+
+  if (!template) {
+    throw new Error(`Template not found for type: ${couponType}`);
+  }
+
+  const coupons = [];
+  const baseCode = `EASY-${couponType}`;
+
+  for (let i = 0; i < count; i++) {
+    let attempts = 0;
+    let code;
+    let isUnique = false;
+
+    while (!isUnique && attempts < 10) {
+      code = generateUniqueCode(baseCode);
+      const existing = await prisma.campaignCoupon.findUnique({
+        where: { code }
+      });
+      if (!existing) {
+        isUnique = true;
+      }
+      attempts++;
+    }
+
+    if (!isUnique) {
+      throw new Error(`Failed to generate unique coupon code after ${attempts} attempts`);
+    }
+
+    const coupon = await prisma.campaignCoupon.create({
+      data: {
+        campaignId,
+        code,
+        couponType: template.couponType,
+        offer: template.description || template.name,
+        percentOff: template.percentOff,
+        durationMonths: template.durationMonths,
+        trialDays: template.trialDays,
+        source: 'campaign',
+        status: 'GENERATED'
+      }
+    });
+
+    coupons.push(coupon);
+  }
+
+  logger.info(`Generated ${coupons.length} coupons for campaign ${campaignId}`);
+  return coupons;
+};
+
+/**
+ * Valida y redime un cupón
+ * @param {string} code - Código del cupón
+ * @param {object} userData - Datos del usuario que redime
+ * @returns {Promise<object>} Cupón redimido con configuración Stripe
+ */
+const redeemCoupon = async (code, userData = {}) => {
+  const coupon = await prisma.campaignCoupon.findUnique({
+    where: { code }
+  });
+
+  if (!coupon) {
+    throw new Error("Coupon not found");
+  }
+
+  if (coupon.status === 'CONVERTED') {
+    throw new Error("Coupon already redeemed");
+  }
+
+  if (coupon.status === 'EXPIRED') {
+    throw new Error("Coupon expired");
+  }
+
+  // Verificar expiración
+  if (coupon.expiresAt && new Date() > coupon.expiresAt) {
+    await prisma.campaignCoupon.update({
+      where: { id: coupon.id },
+      data: { status: 'EXPIRED' }
+    });
+    throw new Error("Coupon expired");
+  }
+
+  // Marcar como convertido
+  const updatedCoupon = await prisma.campaignCoupon.update({
+    where: { id: coupon.id },
+    data: {
+      status: 'CONVERTED',
+      convertedAt: new Date(),
+      conversionData: userData
+    }
+  });
+
+  logger.info(`Coupon redeemed: ${code}`, {
+    couponId: coupon.id,
+    userData
+  });
+
+  // Retornar configuración para Stripe
+  return {
+    coupon: updatedCoupon,
+    stripeConfig: {
+      percentOff: coupon.percentOff,
+      durationMonths: coupon.durationMonths,
+      trialDays: coupon.trialDays
+    }
+  };
+};
+
+module.exports = {
+  generateCouponForCall,
+  generateBulkCouponsForCampaign,
+  redeemCoupon,
+  checkEligibility,
+  selectTemplateByScenario,
+  renderTemplate
+};
