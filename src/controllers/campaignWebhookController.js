@@ -129,6 +129,53 @@ const parseDuration = (...values) => {
     return null;
 };
 
+const parseBoolean = (value) => {
+    if (value === true || value === false) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "true") {
+            return true;
+        }
+        if (normalized === "false") {
+            return false;
+        }
+    }
+
+    return null;
+};
+
+const hasMeaningfulFailureReason = (reason) => {
+    if (typeof reason !== "string") {
+        return false;
+    }
+
+    const normalized = reason.trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return normalized !== "summary couldn't be generated for this call.";
+};
+
+const resolveFinalContactStatus = ({ callSuccessful, failureReason }) => {
+    if (callSuccessful === true) {
+        return "CALLED";
+    }
+
+    if (callSuccessful === false) {
+        return "FAILED";
+    }
+
+    if (hasMeaningfulFailureReason(failureReason)) {
+        return "FAILED";
+    }
+
+    return "CALLED";
+};
+
 const normalizePhoneForLookup = (value) => {
     if (typeof value !== "string") {
         return null;
@@ -226,6 +273,18 @@ const extractWebhookData = (payload = {}) => {
         customLlmData.provider_batch_id,
     );
 
+    const parsedCallSuccessful = parseBoolean(
+        firstNonEmpty(
+            data.analysis?.call_successful,
+            data.analysis?.is_successful,
+            data.analysis?.success,
+            data.call_successful,
+            data.success,
+            metadata.call_successful,
+            metadata.success,
+        ),
+    );
+
     return {
         eventType: payload.type || payload.event_type || data.type || null,
         campaignId,
@@ -233,11 +292,7 @@ const extractWebhookData = (payload = {}) => {
         conversationId,
         phoneNumber,
         providerBatchId,
-        callSuccessful:
-            data.analysis?.call_successful === true ||
-            data.analysis?.call_successful === "true" ||
-            data.analysis?.is_successful === true ||
-            data.analysis?.success === true,
+        callSuccessful: parsedCallSuccessful,
         transcriptSummary: firstNonEmpty(
             data.analysis?.transcript_summary,
             data.analysis?.summary,
@@ -580,7 +635,10 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             }
         }
 
-        const status = webhookData.callSuccessful ? "CALLED" : "FAILED";
+        const status = resolveFinalContactStatus({
+            callSuccessful: webhookData.callSuccessful,
+            failureReason: webhookData.failureReason,
+        });
         const updateData = {
             status,
             conversationId: webhookData.conversationId || contact.conversationId,
@@ -596,9 +654,11 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             callDuration: webhookData.callDuration,
         });
 
-        if (!webhookData.callSuccessful) {
+        if (status === "FAILED") {
             updateData.errorReason =
                 webhookData.failureReason || webhookData.transcriptSummary || "Call completed without success";
+        } else {
+            updateData.errorReason = null;
         }
 
         if (webhookData.couponGenerated) {
