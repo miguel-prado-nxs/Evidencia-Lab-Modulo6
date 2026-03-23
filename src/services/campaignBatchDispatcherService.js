@@ -113,7 +113,9 @@ const pickFirstNonEmptyString = (...values) => {
   return null;
 };
 
-const ensureRequiredDynamicVariables = (dynamicVariables = {}) => {
+const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => {
+  const { campaignContactId, campaignId, establishmentId: establishmentIdFromOptions } = options;
+
   const establishmentName =
     pickFirstNonEmptyString(
       dynamicVariables.establishmentName,
@@ -142,6 +144,23 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}) => {
       dynamicVariables.agent_name
     ) || "Asesor EasyOrder";
 
+  const sessionId =
+    pickFirstNonEmptyString(
+      dynamicVariables.session_id,
+      dynamicVariables.sessionId,
+      campaignContactId,
+      dynamicVariables.campaignContactId
+    ) || `${campaignId || "campaign"}-session`;
+
+  const establishmentId =
+    pickFirstNonEmptyString(
+      dynamicVariables.establishmentId,
+      dynamicVariables.establishment_id,
+      establishmentIdFromOptions,
+      campaignContactId,
+      dynamicVariables.campaignContactId
+    ) || `${campaignId || "campaign"}-establishment`;
+
   return {
     ...dynamicVariables,
     establishmentName,
@@ -158,6 +177,10 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}) => {
     lead_name: dynamicVariables.lead_name || decisionMakerName,
     agentName,
     agent_name: agentName,
+    session_id: sessionId,
+    sessionId: sessionId,
+    establishmentId,
+    establishment_id: establishmentId,
   };
 };
 
@@ -184,15 +207,26 @@ const sanitizeRecipient = (recipient = {}, campaignId) => {
     return accumulator;
   }, {});
 
-  const enforcedDynamicVariables = ensureRequiredDynamicVariables(dynamicVariables);
-
-  delete enforcedDynamicVariables.couponCode;
-
   const campaignContactId =
-    enforcedDynamicVariables.campaignContactId ||
+    dynamicVariables.campaignContactId ||
     recipient.campaignContactId ||
     recipient.contactId ||
     null;
+
+  const establishmentId =
+    dynamicVariables.establishmentId ||
+    dynamicVariables.establishment_id ||
+    recipient.establishmentId ||
+    recipient.establishment_id ||
+    null;
+
+  const enforcedDynamicVariables = ensureRequiredDynamicVariables(dynamicVariables, {
+    campaignContactId,
+    campaignId,
+    establishmentId,
+  });
+
+  delete enforcedDynamicVariables.couponCode;
 
   if (campaignContactId) {
     enforcedDynamicVariables.campaignContactId = campaignContactId;
