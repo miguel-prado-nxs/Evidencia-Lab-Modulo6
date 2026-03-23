@@ -84,6 +84,32 @@ const verifyElevenLabsSignature = ({ signatureHeader, rawBody, secret }) => {
     return { valid: true };
 };
 
+const firstNonEmpty = (...values) => {
+    for (const value of values) {
+        if (value !== null && value !== undefined && value !== "") {
+            return value;
+        }
+    }
+    return null;
+};
+
+const parseDuration = (...values) => {
+    for (const value of values) {
+        if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+            return value;
+        }
+
+        if (typeof value === "string") {
+            const parsed = Number.parseInt(value, 10);
+            if (Number.isFinite(parsed) && parsed >= 0) {
+                return parsed;
+            }
+        }
+    }
+
+    return null;
+};
+
 const extractWebhookData = (payload = {}) => {
     const data = payload.data && typeof payload.data === "object" ? payload.data : {};
     const metadata = data.metadata && typeof data.metadata === "object" ? data.metadata : {};
@@ -94,6 +120,9 @@ const extractWebhookData = (payload = {}) => {
 
     const customLlmData =
         (data.custom_llm_data && typeof data.custom_llm_data === "object" && data.custom_llm_data) ||
+        (conversationInitData.custom_llm_data &&
+            typeof conversationInitData.custom_llm_data === "object" &&
+            conversationInitData.custom_llm_data) ||
         (conversationInitData.dynamic_variables &&
             typeof conversationInitData.dynamic_variables === "object" &&
             conversationInitData.dynamic_variables) ||
@@ -101,16 +130,42 @@ const extractWebhookData = (payload = {}) => {
         (data.dynamic_variables && typeof data.dynamic_variables === "object" && data.dynamic_variables) ||
         {};
 
-    const conversationId = data.conversation_id || data.conversationId || null;
-    const campaignContactId =
-        customLlmData.campaignContactId ||
-        customLlmData.campaign_contact_id ||
-        data.campaignContactId ||
-        data.campaign_contact_id ||
-        null;
-    const campaignId = customLlmData.campaignId || customLlmData.campaign_id || data.campaignId || null;
-    const couponGenerated =
-        customLlmData.couponGenerated || customLlmData.coupon_generated || data.couponGenerated || null;
+    const conversationId = firstNonEmpty(
+        data.conversation_id,
+        data.conversationId,
+        data.conversation?.id,
+        metadata.conversation_id,
+        metadata.conversationId,
+        payload.conversation_id,
+        payload.conversationId,
+    );
+
+    const campaignContactId = firstNonEmpty(
+        customLlmData.campaignContactId,
+        customLlmData.campaign_contact_id,
+        customLlmData.contactId,
+        customLlmData.contact_id,
+        data.campaignContactId,
+        data.campaign_contact_id,
+        metadata.campaignContactId,
+        metadata.campaign_contact_id,
+    );
+
+    const campaignId = firstNonEmpty(
+        customLlmData.campaignId,
+        customLlmData.campaign_id,
+        data.campaignId,
+        data.campaign_id,
+        metadata.campaignId,
+        metadata.campaign_id,
+    );
+
+    const couponGenerated = firstNonEmpty(
+        customLlmData.couponGenerated,
+        customLlmData.coupon_generated,
+        data.couponGenerated,
+        data.coupon_generated,
+    );
 
     return {
         eventType: payload.type || payload.event_type || data.type || null,
@@ -120,15 +175,32 @@ const extractWebhookData = (payload = {}) => {
         callSuccessful:
             data.analysis?.call_successful === true ||
             data.analysis?.call_successful === "true" ||
+            data.analysis?.is_successful === true ||
             data.analysis?.success === true,
-        transcriptSummary: data.analysis?.transcript_summary || null,
+        transcriptSummary: firstNonEmpty(
+            data.analysis?.transcript_summary,
+            data.analysis?.summary,
+            data.transcript_summary,
+            data.transcript,
+            metadata.transcript_summary,
+        ),
         failureReason:
-            data.analysis?.failure_reason ||
-            data.analysis?.termination_reason ||
-            data.analysis?.reason ||
-            null,
-        callDuration:
-            typeof data.metadata?.call_duration_secs === "number" ? data.metadata.call_duration_secs : null,
+            firstNonEmpty(
+                data.analysis?.failure_reason,
+                data.analysis?.termination_reason,
+                data.analysis?.reason,
+                data.reason,
+                metadata.reason,
+            ),
+        callDuration: parseDuration(
+            data.metadata?.call_duration_secs,
+            data.metadata?.call_duration_seconds,
+            data.metadata?.call_duration,
+            data.call_duration_secs,
+            data.call_duration,
+            metadata.call_duration_secs,
+            metadata.call_duration,
+        ),
         couponGenerated,
     };
 };

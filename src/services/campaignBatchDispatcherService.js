@@ -239,6 +239,9 @@ const submitChunkToProvider = async ({
     recipients: chunk.map((recipient) => ({
       phone_number: recipient.phoneNumber,
       dynamic_variables: recipient.dynamicVariables,
+      conversation_initiation_client_data: {
+        dynamic_variables: recipient.dynamicVariables,
+      },
     })),
   };
 
