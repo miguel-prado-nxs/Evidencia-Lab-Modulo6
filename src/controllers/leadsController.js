@@ -453,7 +453,7 @@ const autoEnrich = async (req, res, next) => {
     //   sdrPayload.agent_config_id = finalAgentConfigId;
     // }
     if (finalAgentName) {
-      sdrPayload.agent_name = finalAgentName;
+      sdrPayload.personality_name = finalAgentName;
     }
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
@@ -632,9 +632,9 @@ const autoQualify = async (req, res, next) => {
     if (finalVoiceId) {
       qualificationPayload.voice_id = finalVoiceId;
     }
-    // Agregar agent_name si se obtuvo del agentConfig (personality_name)
+    // Agregar personality_name si se obtuvo del agentConfig
     if (finalAgentName) {
-      qualificationPayload.agent_name = finalAgentName;
+      qualificationPayload.personality_name = finalAgentName;
     }
     // NOTA: No enviamos agent_config_id porque es un ID local de BD, no de ElevenLabs
     // El servicio de calificación usará el agente default configurado en ELEVENLABS_AGENT_ID
