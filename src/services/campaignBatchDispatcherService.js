@@ -100,6 +100,67 @@ const toReadableErrorDetail = (value) => {
   }
 };
 
+const pickFirstNonEmptyString = (...values) => {
+  for (const value of values) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+};
+
+const ensureRequiredDynamicVariables = (dynamicVariables = {}) => {
+  const establishmentName =
+    pickFirstNonEmptyString(
+      dynamicVariables.establishmentName,
+      dynamicVariables.establishment_name,
+      dynamicVariables.businessName,
+      dynamicVariables.business_name,
+      dynamicVariables.companyName,
+      dynamicVariables.company_name
+    ) || "Establecimiento";
+
+  const decisionMakerName =
+    pickFirstNonEmptyString(
+      dynamicVariables.decisionMakerName,
+      dynamicVariables.decision_maker_name,
+      dynamicVariables.prospectName,
+      dynamicVariables.prospect_name,
+      dynamicVariables.contactName,
+      dynamicVariables.contact_name,
+      dynamicVariables.leadName,
+      dynamicVariables.lead_name
+    ) || "Prospecto";
+
+  const agentName =
+    pickFirstNonEmptyString(
+      dynamicVariables.agentName,
+      dynamicVariables.agent_name
+    ) || "Asesor EasyOrder";
+
+  return {
+    ...dynamicVariables,
+    establishmentName,
+    establishment_name: establishmentName,
+    businessName: dynamicVariables.businessName || establishmentName,
+    companyName: dynamicVariables.companyName || establishmentName,
+    company_name: dynamicVariables.company_name || establishmentName,
+    decisionMakerName,
+    decision_maker_name: decisionMakerName,
+    prospectName: dynamicVariables.prospectName || decisionMakerName,
+    contactName: dynamicVariables.contactName || decisionMakerName,
+    contact_name: dynamicVariables.contact_name || decisionMakerName,
+    leadName: dynamicVariables.leadName || decisionMakerName,
+    lead_name: dynamicVariables.lead_name || decisionMakerName,
+    agentName,
+    agent_name: agentName,
+  };
+};
+
 const sanitizeRecipient = (recipient = {}, campaignId) => {
   const phoneSource = recipient.phone_number || recipient.phoneNumber || recipient.phone;
   const normalizedPhone = normalizePhoneNumber(phoneSource);
@@ -123,21 +184,23 @@ const sanitizeRecipient = (recipient = {}, campaignId) => {
     return accumulator;
   }, {});
 
-  delete dynamicVariables.couponCode;
+  const enforcedDynamicVariables = ensureRequiredDynamicVariables(dynamicVariables);
+
+  delete enforcedDynamicVariables.couponCode;
 
   const campaignContactId =
-    dynamicVariables.campaignContactId ||
+    enforcedDynamicVariables.campaignContactId ||
     recipient.campaignContactId ||
     recipient.contactId ||
     null;
 
   if (campaignContactId) {
-    dynamicVariables.campaignContactId = campaignContactId;
+    enforcedDynamicVariables.campaignContactId = campaignContactId;
   }
 
   return {
     phoneNumber: normalizedPhone,
-    dynamicVariables,
+    dynamicVariables: enforcedDynamicVariables,
     campaignContactId,
   };
 };
