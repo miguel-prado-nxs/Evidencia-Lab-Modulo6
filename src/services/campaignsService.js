@@ -7,6 +7,10 @@ const campaignBatchDispatcherService = require("./campaignBatchDispatcherService
 
 const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
 
+const extractAgentNameFromAgent = (agent = {}) => {
+  return agent.name || agent.agent_name || null;
+};
+
 const extractVoiceNameFromAgent = (agent = {}) => {
   return (
     agent.voice_name ||
@@ -18,9 +22,12 @@ const extractVoiceNameFromAgent = (agent = {}) => {
   );
 };
 
-const fetchAgentVoiceName = async (agentId) => {
+const fetchAgentProfile = async (agentId) => {
   if (!agentId || !process.env.ELEVENLABS_API_KEY) {
-    return null;
+    return {
+      agentName: null,
+      voiceName: null,
+    };
   }
 
   try {
@@ -34,13 +41,26 @@ const fetchAgentVoiceName = async (agentId) => {
     const agentsArray = Array.isArray(response.data) ? response.data : response.data.agents || [];
     const selectedAgent = agentsArray.find((agent) => agent.agent_id === agentId || agent.id === agentId);
 
-    return selectedAgent ? extractVoiceNameFromAgent(selectedAgent) : null;
+    if (!selectedAgent) {
+      return {
+        agentName: null,
+        voiceName: null,
+      };
+    }
+
+    return {
+      agentName: extractAgentNameFromAgent(selectedAgent),
+      voiceName: extractVoiceNameFromAgent(selectedAgent),
+    };
   } catch (error) {
-    logger.warn("Failed to resolve ElevenLabs voice name for agent", {
+    logger.warn("Failed to resolve ElevenLabs agent profile", {
       agentId,
       error: error.message,
     });
-    return null;
+    return {
+      agentName: null,
+      voiceName: null,
+    };
   }
 };
 
@@ -453,7 +473,7 @@ const startCampaign = async (campaignId, options = {}) => {
     throw error;
   }
 
-  const resolvedAgentVoiceName = await fetchAgentVoiceName(resolvedAgentId);
+  const resolvedAgentProfile = await fetchAgentProfile(resolvedAgentId);
 
   let contacts = await prisma.campaignContact.findMany({
     where: {
@@ -550,7 +570,7 @@ const startCampaign = async (campaignId, options = {}) => {
       "Prospecto";
     const agentName =
       contactData.agentName ||
-      resolvedAgentVoiceName ||
+      resolvedAgentProfile.agentName ||
       campaign.agentConfigName ||
       "Asesor EasyOrder";
 
@@ -572,8 +592,8 @@ const startCampaign = async (campaignId, options = {}) => {
         establishmentName,
         decisionMakerName,
         agentName,
-        voiceName: resolvedAgentVoiceName || null,
-        voice_name: resolvedAgentVoiceName || null,
+        voiceName: resolvedAgentProfile.voiceName || null,
+        voice_name: resolvedAgentProfile.voiceName || null,
         establishment_name: establishmentName,
         decision_maker_name: decisionMakerName,
         agent_name: agentName,
