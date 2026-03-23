@@ -113,6 +113,32 @@ const pickFirstNonEmptyString = (...values) => {
   return null;
 };
 
+const removeDuplicateAliases = (dynamicVariables = {}) => {
+  const cleaned = { ...dynamicVariables };
+
+  const aliasPairs = [
+    ["establishmentName", "establishment_name"],
+    ["decisionMakerName", "decision_maker_name"],
+    ["agentName", "agent_name"],
+    ["companyName", "company_name"],
+    ["contactName", "contact_name"],
+    ["leadName", "lead_name"],
+    ["personalityName", "personality_name"],
+    ["sessionId", "session_id"],
+    ["establishmentId", "establishment_id"],
+    ["voiceName", "voice_name"],
+    ["voiceId", "voice_id"],
+  ];
+
+  for (const [camelKey, snakeKey] of aliasPairs) {
+    if (cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "") {
+      delete cleaned[camelKey];
+    }
+  }
+
+  return cleaned;
+};
+
 const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => {
   const { campaignContactId, campaignId, establishmentId: establishmentIdFromOptions } = options;
 
@@ -174,7 +200,7 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       dynamicVariables.campaignContactId
     ) || `${campaignId || "campaign"}-establishment`;
 
-  return {
+  const normalized = {
     ...dynamicVariables,
     establishmentName,
     establishment_name: establishmentName,
@@ -197,6 +223,8 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
     establishmentId,
     establishment_id: establishmentId,
   };
+
+  return removeDuplicateAliases(normalized);
 };
 
 const sanitizeRecipient = (recipient = {}, campaignId) => {
