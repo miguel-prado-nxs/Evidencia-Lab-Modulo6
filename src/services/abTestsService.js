@@ -37,6 +37,13 @@ async function createTest(data) {
         throw new Error(`Total percentage must be 100, got ${totalPercentage}`);
     }
 
+    // Validate all variants have valid voiceId
+    for (const variant of variants) {
+        if (!variant.voiceId || variant.voiceId === 'elevenlabs') {
+            throw new Error(`Variant must have a valid voiceId. Received: ${variant.voiceId || 'empty'}`);
+        }
+    }
+
     return await prisma.$transaction(async (tx) => {
         // 1. Create Test
         const abTest = await tx.abTest.create({
@@ -357,6 +364,17 @@ async function triggerTestCalls(test) {
                     voiceId = variant.personality.voiceId;
                     agentName = variant.personality.name || agentName;
                     logger.info(`[A/B Test] Using voice from DB: ${agentName} (${voiceId})`);
+                }
+
+                // Validar que voiceId no esté vacío o sea 'elevenlabs' (placeholder)
+                if (!voiceId || voiceId === 'elevenlabs') {
+                    logger.error(`[A/B Test] Variant ${variant.id} has no valid voiceId. Skipping call for contact ${contact.contactId}`);
+                    await updateCallResult(contact.contactId, variant.id, {
+                        status: "FAILED",
+                        result: "Voz no configurada en la variante"
+                    });
+                    jobsFailed++;
+                    continue;
                 }
 
                 const jobData = {
