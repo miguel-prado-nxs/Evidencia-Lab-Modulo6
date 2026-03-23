@@ -369,6 +369,7 @@ const startCampaign = async (campaignId, options = {}) => {
       name: true,
       status: true,
       agentConfigId: true,
+      agentConfigName: true,
       couponPrefix: true,
       offer: true,
       centerLat: true,
@@ -498,6 +499,18 @@ const startCampaign = async (campaignId, options = {}) => {
       businessName ||
       "Prospecto";
 
+    const establishmentName = businessName || "Establecimiento";
+    const decisionMakerName =
+      contactData.decisionMakerName ||
+      contactData.prospectName ||
+      contactData.contactName ||
+      prospectName ||
+      "Prospecto";
+    const agentName =
+      contactData.agentName ||
+      campaign.agentConfigName ||
+      "Asesor EasyOrder";
+
     const phoneNumber =
       contact.establishmentPhone ||
       establishment?.phone ||
@@ -513,6 +526,9 @@ const startCampaign = async (campaignId, options = {}) => {
         campaignContactId: contact.id,
         prospectName,
         businessName,
+        establishmentName,
+        decisionMakerName,
+        agentName,
         couponType: campaign.couponPrefix || contactData.couponType || null,
         agentConfigId: resolvedAgentId,
         campaignName: campaign.name || null,
