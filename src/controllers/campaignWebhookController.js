@@ -84,6 +84,25 @@ const verifyElevenLabsSignature = ({ signatureHeader, rawBody, secret }) => {
     return { valid: true };
 };
 
+const getWebhookSecrets = () => {
+    const fromSingle = (process.env.ELEVENLABS_WEBHOOK_SECRET || "").trim();
+    const fromList = (process.env.ELEVENLABS_WEBHOOK_SECRETS || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+    return Array.from(new Set([fromSingle, ...fromList].filter(Boolean)));
+};
+
+const isTruthyEnv = (value) => {
+    if (typeof value !== "string") {
+        return false;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+};
+
 const firstNonEmpty = (...values) => {
     for (const value of values) {
         if (value !== null && value !== undefined && value !== "") {
@@ -108,6 +127,24 @@ const parseDuration = (...values) => {
     }
 
     return null;
+};
+
+const normalizePhoneForLookup = (value) => {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const digits = trimmed.replace(/\D/g, "");
+    if (!digits) {
+        return null;
+    }
+
+    return trimmed.startsWith("+") ? `+${digits}` : digits;
 };
 
 const extractWebhookData = (payload = {}) => {
@@ -167,11 +204,35 @@ const extractWebhookData = (payload = {}) => {
         data.coupon_generated,
     );
 
+    const phoneNumber = firstNonEmpty(
+        data.phone_number,
+        data.phoneNumber,
+        data.to_number,
+        data.toNumber,
+        data.recipient?.phone_number,
+        data.recipient?.phoneNumber,
+        metadata.phone_number,
+        metadata.phoneNumber,
+        customLlmData.phone_number,
+        customLlmData.phoneNumber,
+    );
+
+    const providerBatchId = firstNonEmpty(
+        data.batch_id,
+        data.batchId,
+        metadata.batch_id,
+        metadata.batchId,
+        customLlmData.providerBatchId,
+        customLlmData.provider_batch_id,
+    );
+
     return {
         eventType: payload.type || payload.event_type || data.type || null,
         campaignId,
         campaignContactId,
         conversationId,
+        phoneNumber,
+        providerBatchId,
         callSuccessful:
             data.analysis?.call_successful === true ||
             data.analysis?.call_successful === "true" ||
@@ -283,16 +344,32 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         });
 
         const signatureHeader = req.get("elevenlabs-signature") || "";
-        const verification = verifyElevenLabsSignature({
-            signatureHeader,
-            rawBody: req.rawBody,
-            secret: process.env.ELEVENLABS_WEBHOOK_SECRET,
-        });
+        const webhookSecrets = getWebhookSecrets();
+        const allowUnverified = isTruthyEnv(process.env.ALLOW_UNVERIFIED_ELEVENLABS_WEBHOOKS);
 
-        if (!verification.valid) {
+        let verified = false;
+        let verificationReason = "No webhook secrets configured";
+
+        for (const secret of webhookSecrets) {
+            const verification = verifyElevenLabsSignature({
+                signatureHeader,
+                rawBody: req.rawBody,
+                secret,
+            });
+
+            if (verification.valid) {
+                verified = true;
+                verificationReason = "ok";
+                break;
+            }
+
+            verificationReason = verification.reason;
+        }
+
+        if (!verified && !allowUnverified) {
             logger.warn("[CampaignWebhook] Invalid ElevenLabs signature", {
-                reason: verification.reason,
-                hasSecret: !!process.env.ELEVENLABS_WEBHOOK_SECRET,
+                reason: verificationReason,
+                configuredSecrets: webhookSecrets.length,
                 signatureHeader: signatureHeader.substring(0, 50),
             });
 
@@ -302,8 +379,17 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             });
         }
 
+        if (!verified && allowUnverified) {
+            logger.warn("[CampaignWebhook] Processing webhook without valid signature (dev override enabled)", {
+                reason: verificationReason,
+                configuredSecrets: webhookSecrets.length,
+            });
+        }
+
         logger.debug("[CampaignWebhook] Signature verified", {
             rawBodyLength: req.rawBody ? req.rawBody.length : 0,
+            configuredSecrets: webhookSecrets.length,
+            verified,
         });
 
         const webhookData = extractWebhookData(req.body);
@@ -313,6 +399,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             campaignContactId: webhookData.campaignContactId,
             conversationId: webhookData.conversationId,
             campaignId: webhookData.campaignId,
+            providerBatchId: webhookData.providerBatchId,
+            phoneNumber: webhookData.phoneNumber,
             callSuccessful: webhookData.callSuccessful,
             failureReason: webhookData.failureReason,
             payload: JSON.stringify(req.body).substring(0, 200),
@@ -357,6 +445,47 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             });
             logger.debug("[CampaignWebhook] Lookup by conversationId", {
                 conversationId: webhookData.conversationId,
+                found: !!contact,
+            });
+        }
+
+        if (!contact && webhookData.providerBatchId) {
+            const normalizedPhone = normalizePhoneForLookup(webhookData.phoneNumber);
+            const phoneCandidates = [webhookData.phoneNumber, normalizedPhone].filter(Boolean);
+
+            if (phoneCandidates.length > 0) {
+                contact = await prisma.campaignContact.findFirst({
+                    where: {
+                        providerBatchId: webhookData.providerBatchId,
+                        webhookReceivedAt: null,
+                        OR: phoneCandidates.map((phone) => ({ establishmentPhone: phone })),
+                    },
+                    orderBy: [{ updatedAt: "desc" }],
+                });
+
+                logger.debug("[CampaignWebhook] Lookup by providerBatchId + phone", {
+                    providerBatchId: webhookData.providerBatchId,
+                    phoneCandidates,
+                    found: !!contact,
+                });
+            }
+        }
+
+        if (!contact && webhookData.phoneNumber) {
+            const normalizedPhone = normalizePhoneForLookup(webhookData.phoneNumber);
+            const phoneCandidates = [webhookData.phoneNumber, normalizedPhone].filter(Boolean);
+
+            contact = await prisma.campaignContact.findFirst({
+                where: {
+                    status: "CALLING",
+                    webhookReceivedAt: null,
+                    OR: phoneCandidates.map((phone) => ({ establishmentPhone: phone })),
+                },
+                orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
+            });
+
+            logger.debug("[CampaignWebhook] Lookup by phone fallback", {
+                phoneCandidates,
                 found: !!contact,
             });
         }
