@@ -52,18 +52,24 @@ async function createTest(data) {
         // 2. Create Variants
         const createdVariants = [];
         for (const variant of variants) {
-            // Buscar si la voz existe en nuestro catálogo para linkearla
-            const personality = await tx.elevenLabsPersonality.findFirst({
-                where: { voiceId: variant.voiceId }
-            });
+            // Usar personalityId desde el frontend si está disponible
+            let personalityId = variant.personalityId || null;
+
+            // Si no viene personalityId, buscar por voiceId (fallback)
+            if (!personalityId && variant.voiceId) {
+                const personality = await tx.elevenLabsPersonality.findFirst({
+                    where: { voiceId: variant.voiceId }
+                });
+                personalityId = personality?.id || null;
+            }
 
             const v = await tx.abTestVariant.create({
                 data: {
                     abTestId: abTest.id,
-                    personalityId: personality?.id || null, // Link opcional al catálogo
+                    personalityId, // ID de elevenlabs_personalities
                     agentConfigId: variant.agentConfigId,
                     voiceId: variant.voiceId,
-                    voiceName: variant.voiceName || personality?.name || null, // Nombre de la voz para agent_name
+                    voiceName: variant.voiceName || null,
                     percentage: variant.percentage
                 }
             });
@@ -340,20 +346,27 @@ async function triggerTestCalls(test) {
                     // agentConfigName ya no se usa aquí
                 };
 
-                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id} for A/B testing with branches`);
+                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id} for A/B testing with voice from DB`);
 
-                // A/B Testing usa ElevenLabs Branches/Experiments
-                // skipVoiceOverride=true: no enviamos voiceId (usa voz de branch)
-                // Pero SÍ enviamos agentName desde variant.name (nombre que dirá el agente)
-                const agentName = variant.name || "Agente";
+                // Obtener voice_id desde elevenlabs_personalities si está linkeado
+                let voiceId = variant.voiceId; // Fallback al voiceId directo
+                let agentName = variant.voiceName || "Agente";
+
+                if (variant.personality) {
+                    // Usar voz desde la tabla elevenlabs_personalities
+                    voiceId = variant.personality.voiceId;
+                    agentName = variant.personality.name || agentName;
+                    logger.info(`[A/B Test] Using voice from DB: ${agentName} (${voiceId})`);
+                }
 
                 const jobData = {
                     contactId: contact.contactId,
                     abTestContactId: contact.id,
                     agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
                     elevenLabsAgentId, // Explicit para los workers
-                    skipVoiceOverride: true, // Flag: usa voz de branch, no override
-                    agentName, // Nombre del agente desde el frontend
+                    voiceId, // Voice ID desde elevenlabs_personalities
+                    skipVoiceOverride: false, // Aplicar override con la voz de BD
+                    agentName, // Nombre del agente desde elevenlabs_personalities
                     establishmentData,
                 };
 

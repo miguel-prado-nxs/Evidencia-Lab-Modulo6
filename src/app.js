@@ -36,6 +36,7 @@ const abTestsRoutes = require("./routes/abTestsRoutes");
 const testCallRoutes = require("./routes/testCall");
 const webhooksRoutes = require("./routes/webhooks");
 const elevenLabsRoutes = require("./routes/elevenLabsRoutes");
+const voicesRoutes = require("./routes/voices");
 
 // Crear aplicación Express
 const app = express();
@@ -167,6 +168,7 @@ app.use("/api/v1/ab-tests", abTestsRoutes);
 app.use("/api/v1/test-call", testCallRoutes);
 app.use("/api/v1/webhooks", webhooksRoutes);
 app.use("/api/v1/elevenlabs", elevenLabsRoutes);
+app.use("/api/v1/voices", voicesRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES

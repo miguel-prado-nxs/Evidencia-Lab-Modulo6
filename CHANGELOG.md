@@ -2,14 +2,27 @@
 
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 
-## [Unreleased] - 2026-03-13
+## [Unreleased] - 2026-03-20
 
 ### Agregado
-- **Interpolación Inteligente de Voces A/B**: Implementación de lógica en `leadsController.js` para recuperar automáticamente `voice_id` y nombres de agentes desde la base de datos cuando se dispara una llamada manual desde la UI para un contacto perteneciente a un test A/B.
+- **Interpolación Inteligente de Voces A/B**: 
+  - Implementación de lógica en `leadsController.js` para recuperar automáticamente `voice_id` y nombres de agentes desde la base de datos.
+  - Soporte para llamadas manuales desde UI que respetan configuración de tests A/B activos.
+  - Recuperación automática de variantes asignadas por contacto.
+- **Endpoint de Auto-Calificación**:
+  - Nuevo endpoint `/leads/auto-qualify` para iniciar proceso de calificación automática.
+  - Validación de datos de tomador de decisiones (nombre, teléfono, email, posición).
+  - Integración con servicios de calificación de ElevenLabs.
 
 ### Cambiado
-- **Unificación de Payloads SDR**: Refactorización del flujo de `autoEnrich` para enviar un payload aplanado y estandarizado, eliminando el objeto `agentConfig` anidado que causaba inconsistencias en las voces.
-- **Propagación de Nombres**: Mejora en la captura de `prospect_name` desde los datos de enriquecimiento para personalizar el inicio de la conversación del agente.
+- **Unificación de Payloads SDR**: 
+  - Refactorización del flujo de `autoEnrich` para enviar un payload aplanado y estandarizado.
+  - Eliminación del objeto `agentConfig` anidado que causaba inconsistencias en las voces.
+  - Estructura de datos simplificada para mejor compatibilidad con agentes de ElevenLabs.
+- **Propagación de Nombres**: 
+  - Mejora en la captura de `prospect_name` desde los datos de enriquecimiento.
+  - Personalización del inicio de la conversación del agente con nombre del prospecto.
+  - Soporte para `dynamic_variables` en llamadas salientes.
 
 ## [1.2.1] - 2026-03-12
 
