@@ -22,11 +22,23 @@ const extractVoiceNameFromAgent = (agent = {}) => {
   );
 };
 
+const extractVoiceIdFromAgent = (agent = {}) => {
+  return (
+    agent.voice_id ||
+    agent.voiceId ||
+    agent.conversation_config?.tts?.voice_id ||
+    agent.conversation_config?.voice?.voice_id ||
+    agent.conversation_config?.voice?.id ||
+    null
+  );
+};
+
 const fetchAgentProfile = async (agentId) => {
   if (!agentId || !process.env.ELEVENLABS_API_KEY) {
     return {
       agentName: null,
       voiceName: null,
+      voiceId: null,
     };
   }
 
@@ -45,12 +57,14 @@ const fetchAgentProfile = async (agentId) => {
       return {
         agentName: null,
         voiceName: null,
+        voiceId: null,
       };
     }
 
     return {
       agentName: extractAgentNameFromAgent(selectedAgent),
       voiceName: extractVoiceNameFromAgent(selectedAgent),
+      voiceId: extractVoiceIdFromAgent(selectedAgent),
     };
   } catch (error) {
     logger.warn("Failed to resolve ElevenLabs agent profile", {
@@ -60,6 +74,7 @@ const fetchAgentProfile = async (agentId) => {
     return {
       agentName: null,
       voiceName: null,
+      voiceId: null,
     };
   }
 };
@@ -475,6 +490,14 @@ const startCampaign = async (campaignId, options = {}) => {
 
   const resolvedAgentProfile = await fetchAgentProfile(resolvedAgentId);
 
+  logger.info("[CampaignStart] Resolved ElevenLabs agent profile", {
+    campaignId,
+    agentId: resolvedAgentId,
+    agentName: resolvedAgentProfile.agentName,
+    voiceName: resolvedAgentProfile.voiceName,
+    voiceId: resolvedAgentProfile.voiceId,
+  });
+
   let contacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
@@ -573,6 +596,11 @@ const startCampaign = async (campaignId, options = {}) => {
       resolvedAgentProfile.agentName ||
       campaign.agentConfigName ||
       "Asesor EasyOrder";
+    const personalityName =
+      resolvedAgentProfile.voiceId ||
+      contactData.personality_name ||
+      contactData.personalityName ||
+      agentName;
 
     const phoneNumber =
       contact.establishmentPhone ||
@@ -594,6 +622,8 @@ const startCampaign = async (campaignId, options = {}) => {
         agentName,
         voiceName: resolvedAgentProfile.voiceName || null,
         voice_name: resolvedAgentProfile.voiceName || null,
+        voiceId: resolvedAgentProfile.voiceId || null,
+        voice_id: resolvedAgentProfile.voiceId || null,
         establishment_name: establishmentName,
         decision_maker_name: decisionMakerName,
         agent_name: agentName,
@@ -607,8 +637,24 @@ const startCampaign = async (campaignId, options = {}) => {
         agentConfigId: resolvedAgentId,
         campaignName: campaign.name || null,
         campaignOffer: campaign.offer || null,
+        personality_name: personalityName,
+        personalityName: personalityName,
       },
     };
+  });
+
+  logger.info("[CampaignStart] Dynamic variables preview", {
+    campaignId,
+    agentId: resolvedAgentId,
+    firstRecipient: recipients[0]
+      ? {
+        campaignContactId: recipients[0].campaignContactId,
+        phoneNumber: recipients[0].phone_number,
+        agent_name: recipients[0].dynamic_variables?.agent_name,
+        voice_id: recipients[0].dynamic_variables?.voice_id,
+        personality_name: recipients[0].dynamic_variables?.personality_name,
+      }
+      : null,
   });
 
   const dispatchResult = await campaignBatchDispatcherService.submitCampaignBatch({
