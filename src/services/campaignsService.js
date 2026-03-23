@@ -1,8 +1,48 @@
 const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
+const axios = require("axios");
 const geoService = require("./geoService");
 const campaignBatchDispatcherService = require("./campaignBatchDispatcherService");
+
+const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
+
+const extractVoiceNameFromAgent = (agent = {}) => {
+  return (
+    agent.voice_name ||
+    agent.voiceName ||
+    agent.conversation_config?.tts?.voice_name ||
+    agent.conversation_config?.voice?.voice_name ||
+    agent.conversation_config?.voice?.name ||
+    null
+  );
+};
+
+const fetchAgentVoiceName = async (agentId) => {
+  if (!agentId || !process.env.ELEVENLABS_API_KEY) {
+    return null;
+  }
+
+  try {
+    const response = await axios.get(ELEVENLABS_AGENTS_URL, {
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+      },
+      timeout: 10000,
+    });
+
+    const agentsArray = Array.isArray(response.data) ? response.data : response.data.agents || [];
+    const selectedAgent = agentsArray.find((agent) => agent.agent_id === agentId || agent.id === agentId);
+
+    return selectedAgent ? extractVoiceNameFromAgent(selectedAgent) : null;
+  } catch (error) {
+    logger.warn("Failed to resolve ElevenLabs voice name for agent", {
+      agentId,
+      error: error.message,
+    });
+    return null;
+  }
+};
 
 const createCampaign = async (data) => {
   const {
@@ -413,6 +453,8 @@ const startCampaign = async (campaignId, options = {}) => {
     throw error;
   }
 
+  const resolvedAgentVoiceName = await fetchAgentVoiceName(resolvedAgentId);
+
   let contacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
@@ -508,6 +550,7 @@ const startCampaign = async (campaignId, options = {}) => {
       "Prospecto";
     const agentName =
       contactData.agentName ||
+      resolvedAgentVoiceName ||
       campaign.agentConfigName ||
       "Asesor EasyOrder";
 
@@ -529,6 +572,8 @@ const startCampaign = async (campaignId, options = {}) => {
         establishmentName,
         decisionMakerName,
         agentName,
+        voiceName: resolvedAgentVoiceName || null,
+        voice_name: resolvedAgentVoiceName || null,
         establishment_name: establishmentName,
         decision_maker_name: decisionMakerName,
         agent_name: agentName,
