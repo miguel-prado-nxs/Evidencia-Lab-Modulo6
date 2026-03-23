@@ -160,9 +160,22 @@ const hasMeaningfulFailureReason = (reason) => {
     return normalized !== "summary couldn't be generated for this call.";
 };
 
-const resolveFinalContactStatus = ({ callSuccessful, failureReason }) => {
+const hasConversationEvidence = ({ callDuration, transcriptSummary }) => {
+    if (typeof callDuration === "number" && Number.isFinite(callDuration) && callDuration > 0) {
+        return true;
+    }
+
+    if (typeof transcriptSummary === "string" && transcriptSummary.trim().length > 0) {
+        const normalized = transcriptSummary.trim().toLowerCase();
+        return normalized !== "summary couldn't be generated for this call.";
+    }
+
+    return false;
+};
+
+const resolveFinalContactStatus = ({ callSuccessful, failureReason, callDuration, transcriptSummary }) => {
     if (callSuccessful === true) {
-        return "CALLED";
+        return hasConversationEvidence({ callDuration, transcriptSummary }) ? "RESPONDED" : "CALLED";
     }
 
     if (callSuccessful === false) {
@@ -173,7 +186,7 @@ const resolveFinalContactStatus = ({ callSuccessful, failureReason }) => {
         return "FAILED";
     }
 
-    return "CALLED";
+    return hasConversationEvidence({ callDuration, transcriptSummary }) ? "RESPONDED" : "CALLED";
 };
 
 const normalizePhoneForLookup = (value) => {
@@ -638,6 +651,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         const status = resolveFinalContactStatus({
             callSuccessful: webhookData.callSuccessful,
             failureReason: webhookData.failureReason,
+            callDuration: webhookData.callDuration,
+            transcriptSummary: webhookData.transcriptSummary,
         });
         const updateData = {
             status,
