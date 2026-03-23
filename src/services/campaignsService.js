@@ -597,6 +597,7 @@ const startCampaign = async (campaignId, options = {}) => {
       campaign.agentConfigName ||
       "Asesor EasyOrder";
     const personalityName =
+      resolvedAgentProfile.voiceName ||
       resolvedAgentProfile.voiceId ||
       contactData.personality_name ||
       contactData.personalityName ||

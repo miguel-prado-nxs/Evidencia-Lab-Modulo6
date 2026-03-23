@@ -148,6 +148,8 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
     pickFirstNonEmptyString(
       dynamicVariables.personality_name,
       dynamicVariables.personalityName,
+      dynamicVariables.voice_name,
+      dynamicVariables.voiceName,
       dynamicVariables.voice_id,
       dynamicVariables.voiceId,
       dynamicVariables.agent_name,
