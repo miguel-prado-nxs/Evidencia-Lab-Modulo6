@@ -160,6 +160,67 @@ const hasMeaningfulFailureReason = (reason) => {
     return normalized !== "summary couldn't be generated for this call.";
 };
 
+const NEGATIVE_OUTCOME_KEYWORDS = [
+    "reject",
+    "rejected",
+    "declined",
+    "decline",
+    "no answer",
+    "did not answer",
+    "unanswered",
+    "busy",
+    "voicemail",
+    "voice mail",
+    "answering machine",
+    "hung up",
+    "hang up",
+    "disconnected",
+    "disconnect",
+    "dropped",
+    "rechaz",
+    "rechazo",
+    "rechazada",
+    "rechazado",
+    "no contest",
+    "no contesta",
+    "ocupado",
+    "buzon",
+    "buzón",
+    "colgo",
+    "colgó",
+    "corto",
+    "cortó",
+    "contestador",
+    "spam",
+    "bloque",
+    "bloqueó",
+];
+
+const normalizeText = (value) => {
+    if (typeof value !== "string") {
+        return "";
+    }
+
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+};
+
+const hasNegativeOutcomeEvidence = ({ failureReason, transcriptSummary }) => {
+    const mergedText = [failureReason, transcriptSummary]
+        .map(normalizeText)
+        .filter(Boolean)
+        .join(" ");
+
+    if (!mergedText) {
+        return false;
+    }
+
+    return NEGATIVE_OUTCOME_KEYWORDS.some((keyword) => mergedText.includes(normalizeText(keyword)));
+};
+
 const hasConversationEvidence = ({ callDuration, transcriptSummary }) => {
     if (typeof callDuration === "number" && Number.isFinite(callDuration) && callDuration > 0) {
         return true;
@@ -174,6 +235,10 @@ const hasConversationEvidence = ({ callDuration, transcriptSummary }) => {
 };
 
 const resolveFinalContactStatus = ({ callSuccessful, failureReason, callDuration, transcriptSummary }) => {
+    if (hasNegativeOutcomeEvidence({ failureReason, transcriptSummary })) {
+        return "FAILED";
+    }
+
     if (callSuccessful === true) {
         return hasConversationEvidence({ callDuration, transcriptSummary }) ? "RESPONDED" : "CALLED";
     }
