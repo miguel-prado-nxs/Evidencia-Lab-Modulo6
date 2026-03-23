@@ -144,6 +144,15 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       dynamicVariables.agent_name
     ) || "Asesor EasyOrder";
 
+  const personalityName =
+    pickFirstNonEmptyString(
+      dynamicVariables.personality_name,
+      dynamicVariables.personalityName,
+      dynamicVariables.agent_name,
+      dynamicVariables.agentName,
+      agentName
+    ) || "Asesor EasyOrder";
+
   const sessionId =
     pickFirstNonEmptyString(
       dynamicVariables.session_id,
@@ -177,6 +186,8 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
     lead_name: dynamicVariables.lead_name || decisionMakerName,
     agentName,
     agent_name: agentName,
+    personality_name: personalityName,
+    personalityName: personalityName,
     session_id: sessionId,
     sessionId: sessionId,
     establishmentId,
