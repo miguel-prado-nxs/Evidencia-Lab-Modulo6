@@ -239,6 +239,9 @@ const submitChunkToProvider = async ({
     recipients: chunk.map((recipient) => ({
       phone_number: recipient.phoneNumber,
       dynamic_variables: recipient.dynamicVariables,
+      conversation_initiation_client_data: {
+        dynamic_variables: recipient.dynamicVariables,
+      },
     })),
   };
 
@@ -251,12 +254,31 @@ const submitChunkToProvider = async ({
   }
 
   try {
+    logger.info("[BatchDispatcher] About to submit batch to ElevenLabs", {
+      campaignId,
+      agentId,
+      recipientCount: chunk.length,
+      callName: payload.call_name,
+      agentPhoneNumberId,
+      firstRecipient: chunk[0] ? {
+        phoneNumber: chunk[0].phoneNumber,
+        dynamicVariables: chunk[0].dynamicVariables,
+      } : null,
+    });
+
     const response = await axios.post(ELEVENLABS_BATCH_SUBMIT_URL, payload, {
       headers: {
         "xi-api-key": process.env.ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
       },
       timeout: DEFAULT_TIMEOUT_MS,
+    });
+
+    logger.info("[BatchDispatcher] Batch submitted successfully", {
+      campaignId,
+      status: response.status,
+      batchId: extractProviderBatchId(response.data),
+      responseKeys: Object.keys(response.data),
     });
 
     const providerBatchId = extractProviderBatchId(response.data);
