@@ -1,6 +1,7 @@
 const couponService = require("../services/couponService");
 const couponGeneratorService = require("../services/couponGeneratorService");
 const campaignsService = require("../services/campaignsService");
+const { sendWhatsAppMessage } = require("../services/whatsappService");
 const logger = require("../config/logger");
 
 const create = async (req, res, next) => {
@@ -223,15 +224,40 @@ const generateForCall = async (req, res, next) => {
       bantScores,
       agentId,
       callId,
-      campaignId
+      campaignId,
+      campaignContext
     } = req.body;
 
-    if (!phone || !prospectName || !businessName || !scenario || !agentId || !callId) {
+    // Extraer valores de campaignContext si existe
+    const effectiveCampaignId = campaignContext?.campaignId || campaignId;
+    const campaignContactId = campaignContext?.campaignContactId || null;
+    const couponType = campaignContext?.couponType || null;
+
+    // Validar: debe venir scenario O couponType
+    if (!phone || !prospectName || !businessName || !agentId || !callId) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields: phone, prospectName, businessName, scenario, agentId, callId"
+        error: "Missing required fields: phone, prospectName, businessName, agentId, callId"
       });
     }
+
+    if (!scenario && !couponType) {
+      return res.status(400).json({
+        success: false,
+        error: "Either scenario or campaignContext.couponType is required"
+      });
+    }
+
+    logger.info("Generating coupon for call", {
+      phone,
+      agentId,
+      callId,
+      campaignId: effectiveCampaignId,
+      campaignContactId,
+      couponType,
+      scenario,
+      hasCampaignContext: !!campaignContext
+    });
 
     const result = await couponGeneratorService.generateCouponForCall({
       phone,
@@ -241,18 +267,66 @@ const generateForCall = async (req, res, next) => {
       bantScores,
       agentId,
       callId,
-      campaignId
+      campaignId: effectiveCampaignId,
+      campaignContactId,
+      couponType
     });
+
+    logger.info("Coupon generated successfully", {
+      couponId: result.coupon.id,
+      code: result.coupon.code,
+      campaignContactId,
+      callId
+    });
+
+    // ── Enviar cupón por WhatsApp vía Baileys ──
+    let whatsappSent = false;
+    try {
+      const whatsappResult = await sendWhatsAppMessage({
+        to: phone,
+        message: result.message,
+        mediaUrl: result.template.mediaUrl || null,
+        mediaType: result.template.mediaUrl ? "image" : undefined,
+      });
+      whatsappSent = whatsappResult.success;
+
+      if (whatsappSent) {
+        logger.info("WhatsApp coupon message sent", {
+          phone,
+          couponCode: result.coupon.code,
+          callId,
+        });
+      } else {
+        logger.warn("WhatsApp coupon message failed (non-blocking)", {
+          phone,
+          error: whatsappResult.error,
+          callId,
+        });
+      }
+    } catch (waError) {
+      logger.error("WhatsApp send threw exception (non-blocking)", {
+        error: waError.message,
+        phone,
+        callId,
+      });
+    }
 
     res.status(201).json({
       success: true,
       data: {
         coupon: result.coupon,
         message: result.message,
-        mediaUrl: result.template.mediaUrl
+        mediaUrl: result.template.mediaUrl,
+        whatsappSent,
       }
     });
   } catch (error) {
+    logger.error("Error generating coupon for call", {
+      error: error.message,
+      phone: req.body?.phone,
+      callId: req.body?.callId,
+      campaignContext: req.body?.campaignContext
+    });
     next(error);
   }
 };

@@ -39,16 +39,23 @@ const assignToContactSchema = z.object({
   }),
 });
 
+const campaignContextSchema = z.object({
+  campaignId: z.string().optional(),
+  campaignContactId: z.string().optional(),
+  couponType: z.string().optional(),
+}).optional();
+
 const generateForCallSchema = z.object({
   body: z.object({
     phone: z.string().min(1, "phone es requerido"),
     prospectName: z.string().min(1, "prospectName es requerido"),
     businessName: z.string().min(1, "businessName es requerido"),
-    scenario: z.string().min(1, "scenario es requerido"),
+    scenario: z.string().optional(), // Opcional si viene campaignContext.couponType
     bantScores: z.record(z.any()).optional(),
     agentId: z.string().min(1, "agentId es requerido"),
     callId: z.string().min(1, "callId es requerido"),
     campaignId: z.string().optional(),
+    campaignContext: campaignContextSchema, // Contexto opcional de campaña
   }),
 });
 
