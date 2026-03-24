@@ -1,6 +1,7 @@
 const couponService = require("../services/couponService");
 const couponGeneratorService = require("../services/couponGeneratorService");
 const campaignsService = require("../services/campaignsService");
+const { sendWhatsAppMessage } = require("../services/whatsappService");
 const logger = require("../config/logger");
 
 const create = async (req, res, next) => {
@@ -278,12 +279,45 @@ const generateForCall = async (req, res, next) => {
       callId
     });
 
+    // ── Enviar cupón por WhatsApp vía Baileys ──
+    let whatsappSent = false;
+    try {
+      const whatsappResult = await sendWhatsAppMessage({
+        to: phone,
+        message: result.message,
+        mediaUrl: result.template.mediaUrl || null,
+        mediaType: result.template.mediaUrl ? "image" : undefined,
+      });
+      whatsappSent = whatsappResult.success;
+
+      if (whatsappSent) {
+        logger.info("WhatsApp coupon message sent", {
+          phone,
+          couponCode: result.coupon.code,
+          callId,
+        });
+      } else {
+        logger.warn("WhatsApp coupon message failed (non-blocking)", {
+          phone,
+          error: whatsappResult.error,
+          callId,
+        });
+      }
+    } catch (waError) {
+      logger.error("WhatsApp send threw exception (non-blocking)", {
+        error: waError.message,
+        phone,
+        callId,
+      });
+    }
+
     res.status(201).json({
       success: true,
       data: {
         coupon: result.coupon,
         message: result.message,
-        mediaUrl: result.template.mediaUrl
+        mediaUrl: result.template.mediaUrl,
+        whatsappSent,
       }
     });
   } catch (error) {
