@@ -115,12 +115,6 @@ const pickFirstNonEmptyString = (...values) => {
 
 const removeDuplicateAliases = (dynamicVariables = {}) => {
   const cleaned = { ...dynamicVariables };
-  const keepBothAliases = new Set([
-    "establishmentName",
-    "decisionMakerName",
-    "agentName",
-    "personalityName",
-  ]);
 
   const aliasPairs = [
     ["establishmentName", "establishment_name"],
@@ -139,10 +133,6 @@ const removeDuplicateAliases = (dynamicVariables = {}) => {
   for (const [camelKey, snakeKey] of aliasPairs) {
     const hasCamel = cleaned[camelKey] !== undefined && cleaned[camelKey] !== null && cleaned[camelKey] !== "";
     const hasSnake = cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "";
-
-    if (keepBothAliases.has(camelKey)) {
-      continue;
-    }
 
     if (hasCamel && hasSnake) {
       delete cleaned[camelKey];
