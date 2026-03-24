@@ -404,7 +404,11 @@ const recalculateCampaignMetrics = async (campaignId) => {
         return;
     }
 
-    const [statusGroups, couponGroups] = await Promise.all([
+    const [campaign, statusGroups, couponGroups] = await Promise.all([
+        prisma.campaign.findUnique({
+            where: { id: campaignId },
+            select: { status: true, completedAt: true },
+        }),
         prisma.campaignContact.groupBy({
             by: ["status"],
             where: { campaignId },
@@ -438,19 +442,28 @@ const recalculateCampaignMetrics = async (campaignId) => {
     const totalFailed = statusCount.FAILED || 0;
     const couponsVisited = statusCount.VISITED || 0;
     const couponsConverted = statusCount.CONVERTED || 0;
+    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0);
+    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0;
+
+    const campaignUpdateData = {
+        totalContacts,
+        totalCalled,
+        totalResponded,
+        totalConverted,
+        totalFailed,
+        couponsSent: couponGroups,
+        couponsVisited,
+        couponsConverted,
+    };
+
+    if (campaign && campaign.status === "ACTIVE" && shouldMarkCompleted) {
+        campaignUpdateData.status = "COMPLETED";
+        campaignUpdateData.completedAt = campaign.completedAt || new Date();
+    }
 
     await prisma.campaign.update({
         where: { id: campaignId },
-        data: {
-            totalContacts,
-            totalCalled,
-            totalResponded,
-            totalConverted,
-            totalFailed,
-            couponsSent: couponGroups,
-            couponsVisited,
-            couponsConverted,
-        },
+        data: campaignUpdateData,
     });
 };
 
