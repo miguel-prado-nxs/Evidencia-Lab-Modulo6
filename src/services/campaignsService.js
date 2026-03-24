@@ -78,6 +78,7 @@ const getCampaignById = async (id) => {
         take: 10,
         orderBy: { createdAt: "desc" },
       },
+      couponTemplate: true,
     },
   });
 
@@ -108,6 +109,7 @@ const listCampaigns = async (filters = {}) => {
             coupons: true,
           },
         },
+        couponTemplate: true,
       },
     }),
     prisma.campaign.count({ where }),
