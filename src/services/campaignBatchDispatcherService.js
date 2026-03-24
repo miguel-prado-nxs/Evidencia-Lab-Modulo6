@@ -115,6 +115,7 @@ const pickFirstNonEmptyString = (...values) => {
 
 const removeDuplicateAliases = (dynamicVariables = {}) => {
   const cleaned = { ...dynamicVariables };
+  const keepBothAliases = new Set(["establishmentId"]);
 
   const aliasPairs = [
     ["establishmentName", "establishment_name"],
@@ -130,14 +131,18 @@ const removeDuplicateAliases = (dynamicVariables = {}) => {
     ["voiceId", "voice_id"],
   ];
 
-  // Comentado para evitar que ElevenLabs falle por falta de variables camelCase
-  /*
   for (const [camelKey, snakeKey] of aliasPairs) {
-    if (cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "") {
+    const hasCamel = cleaned[camelKey] !== undefined && cleaned[camelKey] !== null && cleaned[camelKey] !== "";
+    const hasSnake = cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "";
+
+    if (keepBothAliases.has(camelKey)) {
+      continue;
+    }
+
+    if (hasCamel && hasSnake) {
       delete cleaned[camelKey];
     }
   }
-  */
 
   return cleaned;
 };
@@ -381,7 +386,7 @@ const submitChunkToProvider = async ({
     target_concurrency_limit: targetConcurrencyLimit,
     recipients: chunk.map((recipient) => {
       const voiceId = recipient.dynamicVariables?.voice_id || recipient.dynamicVariables?.voiceId;
-      
+
       const recipientData = {
         phone_number: recipient.phoneNumber,
         dynamic_variables: recipient.dynamicVariables,
@@ -395,7 +400,7 @@ const submitChunkToProvider = async ({
       if (voiceId) {
         // 1. Root level
         recipientData.voice_id = voiceId;
-        
+
         // 2. Inside conversation_initiation_client_data (SDR Microservice style)
         recipientData.conversation_initiation_client_data.voice_id = voiceId;
         recipientData.conversation_initiation_client_data.conversation_config_override = {
