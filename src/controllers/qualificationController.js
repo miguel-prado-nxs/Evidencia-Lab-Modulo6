@@ -31,6 +31,9 @@ async function handleCallResult(req, res, next) {
         const establishmentId = body.establishmentId || body.establishment_id;
         const callLeadId = body.callLeadId || body.call_lead_id;
         const twilioCallSid = body.twilioCallSid || body.twilio_call_sid;
+        
+        // A/B Testing Context
+        const abTestContactId = body.abTestContactId || body.ab_test_contact_id;
 
         // Datos del prospecto
         const fullName = body.fullName || body.full_name;
@@ -314,11 +317,23 @@ async function handleCallResult(req, res, next) {
                     }
                 }
 
+
+                // Campos de llamada (para tracking de estado)
+                const enrichmentStatus = body.enrichmentStatus || body.enrichment_status;
+                const callAttemptsValue = body.callAttempts || body.call_attempts;
+
                 // Guardar datos de calificación (usando valores extraídos de qualification_details)
                 if (intentValue) enrichmentUpdate.intent = intentValue;
                 if (fear) enrichmentUpdate.fear = fear;
                 if (painValue) enrichmentUpdate.pain = painValue;
                 if (desireValue) enrichmentUpdate.desire = desireValue;
+
+                // Campos de llamada en establishment_enrichments
+                if (callStatus) enrichmentUpdate.callStatus = callStatus;
+                if (enrichmentStatus) enrichmentUpdate.enrichmentStatus = enrichmentStatus;
+                if (callDurationSeconds !== undefined) enrichmentUpdate.callDurationSeconds = parseInt(callDurationSeconds);
+                if (callAttemptsValue !== undefined) enrichmentUpdate.callAttempts = parseInt(callAttemptsValue);
+
                 // Nota: qualificationScore NO existe en EstablishmentEnrichment, está en CallLead
                 if (callSummary) enrichmentUpdate.callSummary = callSummary;
 
@@ -409,13 +424,47 @@ async function handleCallResult(req, res, next) {
                             ...meetingData,
                         },
                     });
-                    logger.info(`[Qualification] ✅ Demo guardada en establishment_meetings para ${establishmentId}: ${demoDate}`);
+                    logger.info(`[Qualification] Demo guardada en establishment_meetings para ${establishmentId}: ${demoDate}`);
                 } catch (meetingError) {
-                    logger.error(`[Qualification] ❌ Error guardando meeting:`, meetingError.message);
+                    logger.error(`[Qualification] Error guardando meeting:`, meetingError.message);
                     console.error(meetingError);
                 }
             } else {
-                console.log(`[Qualification] ⚠️ No se guardó meeting - demoScheduled: ${demoScheduled}, demoDate: ${demoDate}, userId: ${meetingUserId}`);
+                console.log(`[Qualification] No se guardó meeting - demoScheduled: ${demoScheduled}, demoDate: ${demoDate}, userId: ${meetingUserId}`);
+            }
+        }
+
+        // =========================================
+        // 5. ACTUALIZAR A/B TEST CONTACT (si aplica)
+        // =========================================
+        if (abTestContactId) {
+            try {
+                const callResult = {
+                    success: true,
+                    status: callStatus,
+                    twilioCallSid,
+                    callSummary,
+                    callDurationSeconds,
+                    qualificationScore,
+                    intentScore,
+                    qualificationCompleted,
+                    demoScheduled,
+                    completedAt: new Date().toISOString(),
+                };
+
+                await prisma.abTestContact.update({
+                    where: { id: abTestContactId },
+                    data: {
+                        status: "COMPLETED",
+                        result: JSON.stringify(callResult),
+                        completedAt: new Date(),
+                    },
+                });
+
+                logger.info(`[Qualification] A/B Test Contact actualizado: ${abTestContactId} → COMPLETED`);
+            } catch (abTestError) {
+                logger.error(`[Qualification] Error actualizando abTestContact ${abTestContactId}:`, abTestError.message);
+                // No fallar todo el flujo si hay error actualizando A/B test
             }
         }
 
@@ -433,6 +482,164 @@ async function handleCallResult(req, res, next) {
         });
     } catch (error) {
         logger.error("[Qualification] Error procesando resultado:", error.message);
+        next(error);
+    }
+}
+
+/**
+ * PUT /api/v1/qualification/call-record/:id
+ * Actualiza un registro de llamada existente en establishment_enrichments
+ * 
+ * @route PUT /api/v1/qualification/call-record/:id
+ * @access Privado (requiere X-Enrichment-Agent-Key)
+ */
+async function updateCallRecord(req, res, next) {
+    try {
+        const { id } = req.params;
+        const body = req.body;
+
+        logger.info(`[Qualification] Actualizando call record: ${id}`);
+
+        // Normalizar campos
+        const callStatus = body.callStatus || body.call_status;
+        const enrichmentStatus = body.enrichmentStatus || body.enrichment_status;
+        const callDurationSeconds = body.callDurationSeconds || body.call_duration_seconds;
+        const callSummary = body.callSummary || body.call_summary;
+        const callAttemptsValue = body.callAttempts || body.call_attempts;
+
+        // BANT Scores
+        const needScore = body.needScore || body.need_score;
+        const authorityScore = body.authorityScore || body.authority_score;
+        const budgetScore = body.budgetScore || body.budget_score;
+        const timelineScore = body.timelineScore || body.timeline_score;
+        const overallScore = body.overallScore || body.overall_score;
+
+        // FPDI
+        const intent = body.intent;
+        const fear = body.fear;
+        const pain = body.pain;
+        const desire = body.desire;
+
+        // Qualification metadata
+        const qualificationNotes = body.qualificationNotes || body.qualification_notes;
+        const qualificationCompleted = body.qualificationCompleted || body.qualification_completed;
+        const confidenceLevel = body.confidenceLevel || body.confidence_level;
+
+        // Demo info
+        const demoScheduled = body.demoScheduled || body.demo_scheduled;
+        const demoDatetime = body.demoDatetime || body.demo_datetime;
+        const calendlyEventUri = body.calendlyEventUri || body.calendly_event_uri;
+
+        // Decision maker info
+        const decisionMaker = body.decisionMaker || body.decision_maker;
+
+        // Buscar el enrichment por ID (puede ser el enrichment ID o establishment ID)
+        let enrichment = await prisma.establishmentEnrichment.findUnique({
+            where: { id },
+        });
+
+        if (!enrichment) {
+            // Intentar buscar por establishment_id
+            enrichment = await prisma.establishmentEnrichment.findUnique({
+                where: { establishmentId: id },
+            });
+        }
+
+        if (!enrichment) {
+            return res.status(404).json({
+                success: false,
+                error: `Call record no encontrado: ${id}`,
+            });
+        }
+
+        // Preparar datos de actualización
+        const updateData = {};
+
+        // Campos de llamada
+        if (callStatus) updateData.callStatus = callStatus;
+        if (enrichmentStatus) updateData.enrichmentStatus = enrichmentStatus;
+        if (callDurationSeconds !== undefined) updateData.callDurationSeconds = parseInt(callDurationSeconds);
+        if (callSummary) updateData.callSummary = callSummary;
+        if (callAttemptsValue !== undefined) updateData.callAttempts = parseInt(callAttemptsValue);
+
+        // BANT Scores
+        if (needScore !== undefined) updateData.needScore = parseInt(needScore);
+        if (authorityScore !== undefined) updateData.authorityScore = parseInt(authorityScore);
+        if (budgetScore !== undefined) updateData.budgetScore = parseInt(budgetScore);
+        if (timelineScore !== undefined) updateData.timelineScore = parseInt(timelineScore);
+        if (overallScore !== undefined) updateData.overallScore = parseInt(overallScore);
+
+        // FPDI
+        if (intent) updateData.intent = intent;
+        if (fear) updateData.fear = fear;
+        if (pain) updateData.pain = pain;
+        if (desire) updateData.desire = desire;
+
+        // Qualification metadata
+        if (qualificationNotes) updateData.qualificationNotes = qualificationNotes;
+        if (qualificationCompleted !== undefined) updateData.qualificationCompleted = qualificationCompleted;
+        if (confidenceLevel) updateData.confidenceLevel = confidenceLevel;
+
+        // Decision maker info
+        if (decisionMaker) {
+            if (decisionMaker.name) updateData.decisionMakerName = decisionMaker.name;
+            if (decisionMaker.position) updateData.decisionMakerPosition = decisionMaker.position;
+            if (decisionMaker.phone) updateData.decisionMakerPhone = decisionMaker.phone;
+            if (decisionMaker.whatsapp) updateData.decisionMakerWhatsApp = decisionMaker.whatsapp;
+            if (decisionMaker.email) updateData.decisionMakerEmail = decisionMaker.email;
+        }
+
+        // Actualizar enrichment
+        const updatedEnrichment = await prisma.establishmentEnrichment.update({
+            where: { id: enrichment.id },
+            data: updateData,
+        });
+
+        logger.info(`[Qualification] Call record actualizado: ${enrichment.id} (establishment: ${enrichment.establishmentId})`);
+
+        // Si se agendó demo, crear/actualizar meeting
+        if (demoScheduled && demoDatetime && enrichment.enrichedBy) {
+            try {
+                await prisma.establishmentMeeting.upsert({
+                    where: {
+                        establishmentId_partnerId: {
+                            establishmentId: enrichment.establishmentId,
+                            partnerId: enrichment.enrichedBy,
+                        },
+                    },
+                    create: {
+                        establishmentId: enrichment.establishmentId,
+                        partnerId: enrichment.enrichedBy,
+                        meetingScheduled: true,
+                        meetingDate: new Date(demoDatetime),
+                        calendlyEventUri: calendlyEventUri || null,
+                        notes: "Demo agendada por agente de calificación",
+                    },
+                    update: {
+                        meetingScheduled: true,
+                        meetingDate: new Date(demoDatetime),
+                        calendlyEventUri: calendlyEventUri || null,
+                        updatedAt: new Date(),
+                    },
+                });
+                logger.info(`[Qualification] Meeting actualizado para ${enrichment.establishmentId}`);
+            } catch (meetingError) {
+                logger.error(`[Qualification] Error actualizando meeting:`, meetingError.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            message: "Call record actualizado exitosamente",
+            data: {
+                id: updatedEnrichment.id,
+                establishmentId: updatedEnrichment.establishmentId,
+                callStatus: updatedEnrichment.callStatus,
+                enrichmentStatus: updatedEnrichment.enrichmentStatus,
+            },
+        });
+    } catch (error) {
+        logger.error("[Qualification] Error actualizando call record:", error.message);
         next(error);
     }
 }
@@ -495,6 +702,7 @@ async function getStats(req, res, next) {
 
 module.exports = {
     handleCallResult,
+    updateCallRecord,
     getStats,
 };
 

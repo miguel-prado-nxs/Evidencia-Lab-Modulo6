@@ -80,16 +80,178 @@ const extractProviderBatchId = (responseData = {}) => {
   );
 };
 
+const toReadableErrorDetail = (value) => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const pickFirstNonEmptyString = (...values) => {
+  for (const value of values) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+  }
+
+  return null;
+};
+
+const removeDuplicateAliases = (dynamicVariables = {}) => {
+  const cleaned = { ...dynamicVariables };
+
+  const aliasPairs = [
+    ["establishmentName", "establishment_name"],
+    ["decisionMakerName", "decision_maker_name"],
+    ["agentName", "agent_name"],
+    ["companyName", "company_name"],
+    ["contactName", "contact_name"],
+    ["leadName", "lead_name"],
+    ["personalityName", "personality_name"],
+    ["sessionId", "session_id"],
+    ["establishmentId", "establishment_id"],
+    ["voiceName", "voice_name"],
+    ["voiceId", "voice_id"],
+  ];
+
+  // Comentado para evitar que ElevenLabs falle por falta de variables camelCase
+  /*
+  for (const [camelKey, snakeKey] of aliasPairs) {
+    if (cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "") {
+      delete cleaned[camelKey];
+    }
+  }
+  */
+
+  return cleaned;
+};
+
+const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => {
+  const { campaignContactId, campaignId, establishmentId: establishmentIdFromOptions } = options;
+
+  const establishmentName =
+    pickFirstNonEmptyString(
+      dynamicVariables.establishmentName,
+      dynamicVariables.establishment_name,
+      dynamicVariables.businessName,
+      dynamicVariables.business_name,
+      dynamicVariables.companyName,
+      dynamicVariables.company_name
+    ) || "Establecimiento";
+
+  const decisionMakerName =
+    pickFirstNonEmptyString(
+      dynamicVariables.decisionMakerName,
+      dynamicVariables.decision_maker_name,
+      dynamicVariables.prospectName,
+      dynamicVariables.prospect_name,
+      dynamicVariables.contactName,
+      dynamicVariables.contact_name,
+      dynamicVariables.leadName,
+      dynamicVariables.lead_name
+    ) || "Prospecto";
+
+  const agentName =
+    pickFirstNonEmptyString(
+      dynamicVariables.agentName,
+      dynamicVariables.agent_name
+    ) || "Asesor EasyOrder";
+
+  const personalityName =
+    pickFirstNonEmptyString(
+      dynamicVariables.personality_name,
+      dynamicVariables.personalityName,
+      dynamicVariables.voice_name,
+      dynamicVariables.voiceName,
+      dynamicVariables.voice_id,
+      dynamicVariables.voiceId,
+      dynamicVariables.agent_name,
+      dynamicVariables.agentName,
+      agentName
+    ) || "Asesor EasyOrder";
+
+  const sessionId =
+    pickFirstNonEmptyString(
+      dynamicVariables.session_id,
+      dynamicVariables.sessionId,
+      campaignContactId,
+      dynamicVariables.campaignContactId
+    ) || `${campaignId || "campaign"}-session`;
+
+  const establishmentId =
+    pickFirstNonEmptyString(
+      dynamicVariables.establishmentId,
+      dynamicVariables.establishment_id,
+      establishmentIdFromOptions,
+      campaignContactId,
+      dynamicVariables.campaignContactId
+    ) || `${campaignId || "campaign"}-establishment`;
+
+  const normalized = {
+    ...dynamicVariables,
+    establishmentName,
+    establishment_name: establishmentName,
+    businessName: dynamicVariables.businessName || establishmentName,
+    companyName: dynamicVariables.companyName || establishmentName,
+    company_name: dynamicVariables.company_name || establishmentName,
+    decisionMakerName,
+    decision_maker_name: decisionMakerName,
+    prospectName: dynamicVariables.prospectName || decisionMakerName,
+    contactName: dynamicVariables.contactName || decisionMakerName,
+    contact_name: dynamicVariables.contact_name || decisionMakerName,
+    leadName: dynamicVariables.leadName || decisionMakerName,
+    lead_name: dynamicVariables.lead_name || decisionMakerName,
+    agentName,
+    agent_name: agentName,
+    personality_name: personalityName,
+    personalityName: personalityName,
+    session_id: sessionId,
+    sessionId: sessionId,
+    establishmentId,
+    establishment_id: establishmentId,
+  };
+
+  return removeDuplicateAliases(normalized);
+};
+
 const sanitizeRecipient = (recipient = {}, campaignId) => {
   const phoneSource = recipient.phone_number || recipient.phoneNumber || recipient.phone;
   const normalizedPhone = normalizePhoneNumber(phoneSource);
 
-  const dynamicVariables = {
+  const rawDynamicVariables = {
     ...(recipient.dynamic_variables || recipient.dynamicVariables || {}),
     campaignId,
   };
 
-  delete dynamicVariables.couponCode;
+  const dynamicVariables = Object.entries(rawDynamicVariables).reduce((accumulator, [key, value]) => {
+    if (value === null || value === undefined) {
+      return accumulator;
+    }
+
+    if (["string", "number", "boolean"].includes(typeof value)) {
+      accumulator[key] = value;
+      return accumulator;
+    }
+
+    accumulator[key] = String(value);
+    return accumulator;
+  }, {});
 
   const campaignContactId =
     dynamicVariables.campaignContactId ||
@@ -97,13 +259,28 @@ const sanitizeRecipient = (recipient = {}, campaignId) => {
     recipient.contactId ||
     null;
 
+  const establishmentId =
+    dynamicVariables.establishmentId ||
+    dynamicVariables.establishment_id ||
+    recipient.establishmentId ||
+    recipient.establishment_id ||
+    null;
+
+  const enforcedDynamicVariables = ensureRequiredDynamicVariables(dynamicVariables, {
+    campaignContactId,
+    campaignId,
+    establishmentId,
+  });
+
+  delete enforcedDynamicVariables.couponCode;
+
   if (campaignContactId) {
-    dynamicVariables.campaignContactId = campaignContactId;
+    enforcedDynamicVariables.campaignContactId = campaignContactId;
   }
 
   return {
     phoneNumber: normalizedPhone,
-    dynamicVariables,
+    dynamicVariables: enforcedDynamicVariables,
     campaignContactId,
   };
 };
@@ -202,10 +379,41 @@ const submitChunkToProvider = async ({
     call_name: callName || `campaign-${campaignId}-${Date.now()}`,
     agent_id: agentId,
     target_concurrency_limit: targetConcurrencyLimit,
-    recipients: chunk.map((recipient) => ({
-      phone_number: recipient.phoneNumber,
-      dynamic_variables: recipient.dynamicVariables,
-    })),
+    recipients: chunk.map((recipient) => {
+      const voiceId = recipient.dynamicVariables?.voice_id || recipient.dynamicVariables?.voiceId;
+      
+      const recipientData = {
+        phone_number: recipient.phoneNumber,
+        dynamic_variables: recipient.dynamicVariables,
+        conversation_initiation_client_data: {
+          dynamic_variables: recipient.dynamicVariables,
+        },
+      };
+
+      // Si hay un voice_id específico, incluirlo en múltiples lugares (Shotgun approach) 
+      // para asegurar que ElevenLabs lo tome independientemente de la versión de la API
+      if (voiceId) {
+        // 1. Root level
+        recipientData.voice_id = voiceId;
+        
+        // 2. Inside conversation_initiation_client_data (SDR Microservice style)
+        recipientData.conversation_initiation_client_data.voice_id = voiceId;
+        recipientData.conversation_initiation_client_data.conversation_config_override = {
+          tts: {
+            voice_id: voiceId
+          }
+        };
+
+        // 3. Outside conversation_initiation_client_data (Batch API root level style)
+        recipientData.conversation_config_override = {
+          tts: {
+            voice_id: voiceId
+          }
+        };
+      }
+
+      return recipientData;
+    }),
   };
 
   if (scheduledTimeUnix) {
@@ -217,12 +425,34 @@ const submitChunkToProvider = async ({
   }
 
   try {
+    logger.info("[BatchDispatcher] About to submit batch to ElevenLabs", {
+      campaignId,
+      agentId,
+      recipientCount: chunk.length,
+      callName: payload.call_name,
+      agentPhoneNumberId,
+      firstRecipient: payload.recipients[0] ? {
+        phoneNumber: payload.recipients[0].phone_number,
+        dynamicVariables: payload.recipients[0].dynamic_variables,
+        voiceId: payload.recipients[0].voice_id,
+        configOverride: payload.recipients[0].conversation_config_override,
+        clientData: payload.recipients[0].conversation_initiation_client_data,
+      } : null,
+    });
+
     const response = await axios.post(ELEVENLABS_BATCH_SUBMIT_URL, payload, {
       headers: {
         "xi-api-key": process.env.ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
       },
       timeout: DEFAULT_TIMEOUT_MS,
+    });
+
+    logger.info("[BatchDispatcher] Batch submitted successfully", {
+      campaignId,
+      status: response.status,
+      batchId: extractProviderBatchId(response.data),
+      responseKeys: Object.keys(response.data),
     });
 
     const providerBatchId = extractProviderBatchId(response.data);
@@ -265,8 +495,19 @@ const submitChunkToProvider = async ({
       logger.error("Batch dispatch failed", errorPayload);
     }
 
+    const providerDetail =
+      error.response?.data?.detail ??
+      error.response?.data?.message ??
+      error.response?.data?.error ??
+      error.response?.data ??
+      null;
+
+    const providerDetailText = toReadableErrorDetail(providerDetail);
+
     const dispatchError = new Error(
-      `Batch dispatch failed (${status || error.code || "UNKNOWN"})`
+      providerDetailText
+        ? `Batch dispatch failed (${status || error.code || "UNKNOWN"}): ${providerDetailText}`
+        : `Batch dispatch failed (${status || error.code || "UNKNOWN"})`
     );
     dispatchError.statusCode = status || 500;
     dispatchError.details = error.response?.data || { message: error.message };

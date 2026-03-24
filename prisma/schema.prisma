@@ -772,6 +772,18 @@ model TwentySyncMetadata {
   @@map("twenty_sync_metadata")
 }
 
+model ElevenLabsPersonality {
+  id        String          @id @default(uuid())
+  name      String          @unique
+  voiceId   String          @map("voice_id")
+  agentId   String?         @map("agent_id")
+  isActive  Boolean         @default(true) @map("is_active")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  variants  AbTestVariant[]
+
+  @@map("elevenlabs_personalities")
+}
 model AbTest {
   id          String          @id @default(uuid())
   name        String
@@ -790,17 +802,20 @@ model AbTest {
 }
 
 model AbTestVariant {
-  id              String          @id @default(uuid())
-  abTestId        String          @map("ab_test_id")
-  agentConfigId   String          @map("agent_config_id")
-  agentConfigName String          @map("agent_config_name")
-  voiceId         String          @map("voice_id")
+  id              String                 @id @default(uuid())
+  abTestId        String                 @map("ab_test_id")
+  agentConfigId   String?                @map("agent_config_id")
+  agentConfigName String?                @map("agent_config_name")
+  voiceId         String?                @map("voice_id")
+  voiceName       String?                @map("voice_name")
+  personalityId   String?                @map("personality_id")
   percentage      Int
-  totalCalls      Int             @default(0) @map("total_calls")
-  totalConnected  Int             @default(0) @map("total_connected")
-  totalConverted  Int             @default(0) @map("total_converted")
+  totalCalls      Int                    @default(0) @map("total_calls")
+  totalConnected  Int                    @default(0) @map("total_connected")
+  totalConverted  Int                    @default(0) @map("total_converted")
   contacts        AbTestContact[]
-  abTest          AbTest          @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+  abTest          AbTest                 @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+  personality     ElevenLabsPersonality? @relation(fields: [personalityId], references: [id])
 
   @@map("ab_test_variants")
 }
@@ -831,6 +846,25 @@ model AbTestCandidate {
   @@map("ab_test_candidates")
 }
 
+model OnboardingInteraction {
+  id               String   @id @default(uuid())
+  establishmentId  String   @map("establishment_id")
+  agentId          String?  @map("agent_id")
+  conversationId   String?  @map("conversation_id")
+  customerName     String?  @map("customer_name")
+  businessName     String?  @map("business_name")
+  phone            String?
+  currentStep      String?  @map("current_step")
+  issueDescription String?  @map("issue_description")
+  callStatus       String?  @map("call_status")
+  summary          String?
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([establishmentId])
+  @@index([conversationId])
+  @@map("onboarding_interactions")
+}
 enum UserRole {
   ADMIN
   PARTNER
@@ -1017,6 +1051,8 @@ model Campaign {
   // Relaciones
   contacts    CampaignContact[]
   coupons     CampaignCoupon[]
+
+  couponTemplate CouponTemplate? @relation(fields: [couponPrefix], references: [id], onDelete: SetNull)
   
   @@index([status])
   @@index([type])
@@ -1201,4 +1237,6 @@ model CouponTemplate {
   @@index([couponType])
   @@index([active])
   @@map("coupon_templates")
+
+  campaigns    Campaign[]
 }

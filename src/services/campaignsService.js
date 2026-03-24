@@ -1,8 +1,83 @@
 const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
+const axios = require("axios");
 const geoService = require("./geoService");
 const campaignBatchDispatcherService = require("./campaignBatchDispatcherService");
+
+const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
+
+const extractAgentNameFromAgent = (agent = {}) => {
+  return agent.name || agent.agent_name || null;
+};
+
+const extractVoiceNameFromAgent = (agent = {}) => {
+  return (
+    agent.voice_name ||
+    agent.voiceName ||
+    agent.conversation_config?.tts?.voice_name ||
+    agent.conversation_config?.voice?.voice_name ||
+    agent.conversation_config?.voice?.name ||
+    null
+  );
+};
+
+const extractVoiceIdFromAgent = (agent = {}) => {
+  return (
+    agent.voice_id ||
+    agent.voiceId ||
+    agent.conversation_config?.tts?.voice_id ||
+    agent.conversation_config?.voice?.voice_id ||
+    agent.conversation_config?.voice?.id ||
+    null
+  );
+};
+
+const fetchAgentProfile = async (agentId) => {
+  if (!agentId || !process.env.ELEVENLABS_API_KEY) {
+    return {
+      agentName: null,
+      voiceName: null,
+      voiceId: null,
+    };
+  }
+
+  try {
+    const response = await axios.get(ELEVENLABS_AGENTS_URL, {
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+      },
+      timeout: 10000,
+    });
+
+    const agentsArray = Array.isArray(response.data) ? response.data : response.data.agents || [];
+    const selectedAgent = agentsArray.find((agent) => agent.agent_id === agentId || agent.id === agentId);
+
+    if (!selectedAgent) {
+      return {
+        agentName: null,
+        voiceName: null,
+        voiceId: null,
+      };
+    }
+
+    return {
+      agentName: extractAgentNameFromAgent(selectedAgent),
+      voiceName: extractVoiceNameFromAgent(selectedAgent),
+      voiceId: extractVoiceIdFromAgent(selectedAgent),
+    };
+  } catch (error) {
+    logger.warn("Failed to resolve ElevenLabs agent profile", {
+      agentId,
+      error: error.message,
+    });
+    return {
+      agentName: null,
+      voiceName: null,
+      voiceId: null,
+    };
+  }
+};
 
 const createCampaign = async (data) => {
   const {
@@ -54,6 +129,14 @@ const createCampaign = async (data) => {
     },
   });
 
+  if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
+    await assignContactsWithGeoFilter(campaign.id, {
+      ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+      activityCodes: campaign.activityCodes || [],
+      employeeRanges: campaign.employeeRanges || [],
+    });
+  }
+
   logger.info(`Campaign created: ${campaign.id}`, { campaignId: campaign.id });
   return campaign;
 };
@@ -70,6 +153,7 @@ const getCampaignById = async (id) => {
         take: 10,
         orderBy: { createdAt: "desc" },
       },
+      couponTemplate: true,
     },
   });
 
@@ -100,6 +184,7 @@ const listCampaigns = async (filters = {}) => {
             coupons: true,
           },
         },
+        couponTemplate: true,
       },
     }),
     prisma.campaign.count({ where }),
@@ -175,6 +260,23 @@ const updateCampaign = async (id, data) => {
     data: updateData,
   });
 
+  // Eliminar contactos existentes y reasignar nuevos si hay parámetros geográficos
+  if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
+    // Eliminar todos los contactos existentes de la campaña
+    await prisma.campaignContact.deleteMany({
+      where: { campaignId: id },
+    });
+
+    // Reasignar contactos con los nuevos filtros
+    await assignContactsWithGeoFilter(campaign.id, {
+      ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+      activityCodes: campaign.activityCodes || [],
+      employeeRanges: campaign.employeeRanges || [],
+    });
+
+    logger.info(`Campaign contacts refreshed: ${campaign.id}`, { campaignId: campaign.id });
+  }
+
   logger.info(`Campaign updated: ${campaign.id}`, { campaignId: campaign.id });
   return campaign;
 };
@@ -213,31 +315,88 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
     throw new Error("establishmentIds must be a non-empty array");
   }
 
+  const uniqueEstablishmentIds = [...new Set(establishmentIds.filter(Boolean))];
+  let establishments = [];
+
+  if (uniqueEstablishmentIds.length > 0) {
+    try {
+      establishments = await prismaGeo.establishment.findMany({
+        where: {
+          id: { in: uniqueEstablishmentIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          email: true,
+          website: true,
+          activityName: true,
+          latitude: true,
+          longitude: true,
+          municipalityName: true,
+          stateName: true,
+        },
+      });
+    } catch (geoError) {
+      logger.warn("Geo DB lookup failed while assigning campaign contacts", {
+        campaignId,
+        error: geoError.message,
+      });
+    }
+  }
+
+  const establishmentById = new Map(establishments.map((establishment) => [establishment.id, establishment]));
+
   const contacts = await prisma.$transaction(
-    establishmentIds.map((establishmentId) =>
-      prisma.campaignContact.upsert({
+    establishmentIds.map((establishmentId) => {
+      const establishment = establishmentById.get(establishmentId);
+      const establishmentData = establishment
+        ? {
+          name: establishment.name || null,
+          phone: establishment.phone || null,
+          email: establishment.email || null,
+          website: establishment.website || null,
+          activityName: establishment.activityName || null,
+          latitude: establishment.latitude ?? null,
+          longitude: establishment.longitude ?? null,
+          municipalityName: establishment.municipalityName || null,
+          stateName: establishment.stateName || null,
+        }
+        : null;
+
+      return prisma.campaignContact.upsert({
         where: {
           campaignId_establishmentId: {
             campaignId,
             establishmentId,
           },
         },
-        update: {},
+        update: {
+          establishmentName: establishment?.name || null,
+          establishmentPhone: establishment?.phone || null,
+          establishmentData,
+        },
         create: {
           campaignId,
           establishmentId,
+          establishmentName: establishment?.name || null,
+          establishmentPhone: establishment?.phone || null,
+          establishmentData,
           status: "PENDING",
         },
-      })
+      });
+    }
     )
   );
+
+  const totalContacts = await prisma.campaignContact.count({
+    where: { campaignId },
+  });
 
   await prisma.campaign.update({
     where: { id: campaignId },
     data: {
-      totalContacts: {
-        increment: contacts.length,
-      },
+      totalContacts,
     },
   });
 
@@ -258,11 +417,20 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
     throw new Error("Campaign must have geographic coordinates and radius defined");
   }
 
+  const mergedFilters = {
+    ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+    ...options,
+  };
+
+  if (!mergedFilters.activityCode && Array.isArray(campaign.activityCodes) && campaign.activityCodes.length > 0) {
+    mergedFilters.activityCode = campaign.activityCodes.join(",");
+  }
+
   const establishments = await geoService.findEstablishmentsInRadius(
     campaign.centerLat,
     campaign.centerLng,
     campaign.radiusMeters,
-    options
+    mergedFilters
   );
 
   if (establishments.length === 0) {
@@ -277,7 +445,16 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
 const startCampaign = async (campaignId, options = {}) => {
   const {
     agentId,
+    targetConcurrencyLimit,
+    maxRecipientsPerRequest,
+    scheduledTimeUnix,
+    agentPhoneNumberId,
   } = options;
+
+  const resolvedAgentPhoneNumberId =
+    agentPhoneNumberId ||
+    process.env.ELEVENLABS_AGENT_PHONE_NUMBER_ID ||
+    null;
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
@@ -286,8 +463,14 @@ const startCampaign = async (campaignId, options = {}) => {
       name: true,
       status: true,
       agentConfigId: true,
+      agentConfigName: true,
       couponPrefix: true,
       offer: true,
+      centerLat: true,
+      centerLng: true,
+      radiusMeters: true,
+      filters: true,
+      activityCodes: true,
     },
   });
 
@@ -316,7 +499,65 @@ const startCampaign = async (campaignId, options = {}) => {
     throw error;
   }
 
-  const contacts = await prisma.campaignContact.findMany({
+  if (!resolvedAgentPhoneNumberId) {
+    const error = new Error(
+      "agentPhoneNumberId is required to start campaign (or set ELEVENLABS_AGENT_PHONE_NUMBER_ID in .env)"
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const resolvedAgentProfile = await fetchAgentProfile(resolvedAgentId);
+
+  logger.info("[CampaignStart] Resolved ElevenLabs agent profile", {
+    campaignId,
+    agentId: resolvedAgentId,
+    agentName: resolvedAgentProfile.agentName,
+    voiceName: resolvedAgentProfile.voiceName,
+    voiceId: resolvedAgentProfile.voiceId,
+  });
+
+  // Obtener configuración de voz del Agent Builder (demo-form-service) para sobrescribir la de ElevenLabs
+  let agentBuilderVoiceId = null;
+  let agentBuilderPersonalityName = null;
+  
+  try {
+    const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
+    const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
+    
+    // Determinar si es SDR o Calificación basado en el agentId de la campaña
+    const sdrAgentId = process.env.ELEVENLABS_SDR_AGENT_ID;
+    const qualificationAgentId = process.env.ELEVENLABS_QUALIFICATION_AGENT_ID;
+    
+    let configType = "SDR"; // Default a SDR
+    if (resolvedAgentId === qualificationAgentId) {
+      configType = "QUALIFICATION";
+    }
+    
+    const configUrl = `${demoFormUrl}/agent-configs/default/${configType}`;
+    logger.info(`[CampaignStart] Detectado tipo de agente: ${configType}. Consultando config en: ${configUrl}`);
+    
+    const configResponse = await axios.get(configUrl, {
+      headers: { "X-API-Key": agentsConfigKey || "" },
+      timeout: 5000,
+    });
+    
+    if (configResponse.data?.success && configResponse.data?.data) {
+      const data = configResponse.data.data;
+      agentBuilderVoiceId = data.openai_voice || data.voice || null;
+      agentBuilderPersonalityName = data.personality_name || null;
+      logger.info(`[CampaignStart] Usando configuración de voz por defecto de Agent Builder (${configType})`, {
+        voiceId: agentBuilderVoiceId,
+        personalityName: agentBuilderPersonalityName
+      });
+    } else {
+      logger.warn(`[CampaignStart] La respuesta del Agent Builder (${configType}) no contenía data válida`);
+    }
+  } catch (error) {
+    logger.warn("[CampaignStart] No se pudo obtener la configuración por defecto de Agent Builder. Se usará la de ElevenLabs.", { error: error.message });
+  }
+
+  let contacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
       status: "PENDING",
@@ -330,6 +571,25 @@ const startCampaign = async (campaignId, options = {}) => {
       establishmentData: true,
     },
   });
+
+  if (contacts.length === 0) {
+    await assignContactsWithGeoFilter(campaignId, campaign.filters || {});
+
+    contacts = await prisma.campaignContact.findMany({
+      where: {
+        campaignId,
+        status: "PENDING",
+      },
+      select: {
+        id: true,
+        campaignId: true,
+        establishmentId: true,
+        establishmentName: true,
+        establishmentPhone: true,
+        establishmentData: true,
+      },
+    });
+  }
 
   if (contacts.length === 0) {
     const error = new Error("Campaign has no pending contacts to dispatch");
@@ -349,7 +609,6 @@ const startCampaign = async (campaignId, options = {}) => {
         select: {
           id: true,
           name: true,
-          businessName: true,
           phone: true,
         },
       });
@@ -372,8 +631,8 @@ const startCampaign = async (campaignId, options = {}) => {
 
     const businessName =
       contact.establishmentName ||
-      establishment?.businessName ||
       establishment?.name ||
+      contactData.name ||
       contactData.businessName ||
       null;
 
@@ -383,6 +642,31 @@ const startCampaign = async (campaignId, options = {}) => {
       contactData.contactName ||
       businessName ||
       "Prospecto";
+
+    const establishmentName = businessName || "Establecimiento";
+    const decisionMakerName =
+      contactData.decisionMakerName ||
+      contactData.prospectName ||
+      contactData.contactName ||
+      prospectName ||
+      "Prospecto";
+    const agentName =
+      contactData.agentName ||
+      resolvedAgentProfile.agentName ||
+      campaign.agentConfigName ||
+      "Asesor EasyOrder";
+      
+    // Prioridad 1: Agent Builder, Prioridad 2: ElevenLabs, Prioridad 3: Contact Data
+    const personalityName =
+      agentBuilderPersonalityName ||
+      resolvedAgentProfile.voiceName ||
+      resolvedAgentProfile.voiceId ||
+      contactData.personality_name ||
+      contactData.personalityName ||
+      agentName;
+
+    const finalVoiceName = agentBuilderPersonalityName || resolvedAgentProfile.voiceName || null;
+    const finalVoiceId = agentBuilderVoiceId || resolvedAgentProfile.voiceId || null;
 
     const phoneNumber =
       contact.establishmentPhone ||
@@ -399,14 +683,44 @@ const startCampaign = async (campaignId, options = {}) => {
         campaignContactId: contact.id,
         prospectName,
         businessName,
+        establishmentName,
+        decisionMakerName,
+        agentName,
+        voiceName: finalVoiceName,
+        voice_name: finalVoiceName,
+        voiceId: finalVoiceId,
+        voice_id: finalVoiceId,
+        establishment_name: establishmentName,
+        decision_maker_name: decisionMakerName,
+        agent_name: agentName,
+        companyName: establishmentName,
+        company_name: establishmentName,
+        contactName: decisionMakerName,
+        contact_name: decisionMakerName,
+        leadName: decisionMakerName,
+        lead_name: decisionMakerName,
         couponType: campaign.couponPrefix || contactData.couponType || null,
         agentConfigId: resolvedAgentId,
-        campaignContext: {
-          campaignName: campaign.name,
-          offer: campaign.offer || null,
-        },
+        campaignName: campaign.name || null,
+        campaignOffer: campaign.offer || null,
+        personality_name: personalityName,
+        personalityName: personalityName,
       },
     };
+  });
+
+  logger.info("[CampaignStart] Dynamic variables preview", {
+    campaignId,
+    agentId: resolvedAgentId,
+    firstRecipient: recipients[0]
+      ? {
+        campaignContactId: recipients[0].campaignContactId,
+        phoneNumber: recipients[0].phone_number,
+        agent_name: recipients[0].dynamic_variables?.agent_name,
+        voice_id: recipients[0].dynamic_variables?.voice_id,
+        personality_name: recipients[0].dynamic_variables?.personality_name,
+      }
+      : null,
   });
 
   const dispatchResult = await campaignBatchDispatcherService.submitCampaignBatch({
@@ -417,7 +731,7 @@ const startCampaign = async (campaignId, options = {}) => {
     maxRecipientsPerRequest,
     scheduledTimeUnix,
     callName: `campaign-${campaign.name}`,
-    agentPhoneNumberId,
+    agentPhoneNumberId: resolvedAgentPhoneNumberId,
   });
 
   const invalidContactReasons = new Map();

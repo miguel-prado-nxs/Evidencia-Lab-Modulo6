@@ -2,10 +2,14 @@ const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 const axios = require("axios");
+const { enqueueSDRCall, enqueueQualificationCall } = require("../queues");
 
 /**
  * createTest
  * Creates a new A/B Test, distributes contacts among variants, and saves to DB.
+ * 
+ * Con ElevenLabs, cada variante tiene un agentConfigId que es el Agent ID de ElevenLabs.
+ * Ya no se buscan personalidades en demo-form-service.
  * 
  * @param {Object} data
  * @param {string} data.name
@@ -33,6 +37,13 @@ async function createTest(data) {
         throw new Error(`Total percentage must be 100, got ${totalPercentage}`);
     }
 
+    // Validate all variants have valid voiceId
+    for (const variant of variants) {
+        if (!variant.voiceId || variant.voiceId === 'elevenlabs') {
+            throw new Error(`Variant must have a valid voiceId. Received: ${variant.voiceId || 'empty'}`);
+        }
+    }
+
     return await prisma.$transaction(async (tx) => {
         // 1. Create Test
         const abTest = await tx.abTest.create({
@@ -48,12 +59,24 @@ async function createTest(data) {
         // 2. Create Variants
         const createdVariants = [];
         for (const variant of variants) {
+            // Usar personalityId desde el frontend si está disponible
+            let personalityId = variant.personalityId || null;
+
+            // Si no viene personalityId, buscar por voiceId (fallback)
+            if (!personalityId && variant.voiceId) {
+                const personality = await tx.elevenLabsPersonality.findFirst({
+                    where: { voiceId: variant.voiceId }
+                });
+                personalityId = personality?.id || null;
+            }
+
             const v = await tx.abTestVariant.create({
                 data: {
                     abTestId: abTest.id,
+                    personalityId, // ID de elevenlabs_personalities
                     agentConfigId: variant.agentConfigId,
-                    agentConfigName: variant.agentConfigName,
                     voiceId: variant.voiceId,
+                    voiceName: variant.voiceName || null,
                     percentage: variant.percentage
                 }
             });
@@ -99,34 +122,22 @@ async function createTest(data) {
 }
 
 /**
- * fetchAgentConfig
- * Fetch full agent configuration from demo-form-service
+ * fetchAgentConfig (DEPRECATED - ElevenLabs)
+ * 
+ * Con ElevenLabs, las personalidades están configuradas directamente en el
+ * panel de ElevenLabs. El agentConfigId ahora ES el ElevenLabs Agent ID.
+ * Ya no se necesita consultar demo-form-service para obtener configs.
+ * 
+ * Se mantiene como stub por compatibilidad con código que pueda llamarla,
+ * retornando un objeto mínimo con el ID pasado.
  */
 async function fetchAgentConfig(agentConfigId) {
-    const DEMO_FORM_URL = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
-    const AGENTS_CONFIG_KEY = process.env.AGENTS_CONFIG_KEY;
-
-    try {
-        const response = await axios.get(
-            `${DEMO_FORM_URL}/agent-configs/${agentConfigId}`,
-            {
-                headers: {
-                    "X-API-Key": AGENTS_CONFIG_KEY || ""
-                },
-                timeout: 5000
-            }
-        );
-
-        if (response.data?.success && response.data?.data) {
-            return response.data.data;
-        }
-        
-        logger.warn(`[A/B Test] Agent config ${agentConfigId} not found or invalid response`);
-        return null;
-    } catch (error) {
-        logger.error(`[A/B Test] Error fetching agent config ${agentConfigId}:`, error.message);
-        return null;
-    }
+    logger.info(`[A/B Test] fetchAgentConfig llamado con ${agentConfigId} (ElevenLabs - no se consulta demo-form-service)`);
+    return {
+        id: agentConfigId,
+        name: `ElevenLabs Agent ${agentConfigId}`,
+        type: 'elevenlabs',
+    };
 }
 
 /**
@@ -237,7 +248,8 @@ async function startTest(id) {
         include: {
             variants: {
                 include: {
-                    contacts: true
+                    contacts: true,
+                    personality: true
                 }
             }
         }
@@ -259,8 +271,8 @@ async function fetchContactDetails(contactId, type) {
         // Fetch from Geo DB - use 'name' field (same as frontend)
         const establishment = await prismaGeo.establishment.findUnique({
             where: { id: String(contactId) },
-            select: { 
-                phone: true, 
+            select: {
+                phone: true,
                 name: true,  // This is what frontend uses: item.establishment?.name
                 streetType: true,
                 exteriorNum: true,
@@ -268,18 +280,18 @@ async function fetchContactDetails(contactId, type) {
                 stateName: true
             }
         });
-        
+
         if (!establishment) return null;
-        
+
         // Try to get enrichment data for email and decision maker name
         const enrichment = await prisma.establishmentEnrichment.findFirst({
             where: { establishmentId: contactId },
-            select: { 
+            select: {
                 decisionMakerEmail: true,
                 decisionMakerName: true
             }
         });
-        
+
         return {
             phone: establishment.phone,
             name: establishment.name || 'el establecimiento',
@@ -298,38 +310,27 @@ async function fetchContactDetails(contactId, type) {
 }
 
 /**
- * Trigger calls for a running test
+ * Trigger calls for a running test (usando sistema de colas).
+ * 
+ * Con ElevenLabs, ya NO se necesita fetchAgentConfig del demo-form-service.
+ * El agentConfigId de cada variante ES el ElevenLabs Agent ID directamente.
+ * Las personalidades están configuradas en el panel de ElevenLabs.
  */
 async function triggerTestCalls(test) {
-    const SDR_URL = process.env.SDR_AGENT_URL || process.env.AGENTS_SDK_URL || "http://localhost:8000";
-    const QUAL_URL = process.env.QUALIFICATION_AGENT_URL || "http://localhost:8001";
-    const API_KEY = process.env.SDR_API_KEY;
-
     const isSDR = test.agentType === "SDR";
-    const baseUrl = isSDR ? SDR_URL : QUAL_URL;
-    const endpoint = isSDR ? "/api/sdr/initiate-call" : "/api/qualification/initiate-call";
 
-    logger.info(`[A/B Test] Starting test ${test.id} - ${test.variants.length} variants`);
+    logger.info(`[A/B Test] Starting test ${test.id} - ${test.variants.length} variants (ElevenLabs)`);
+    logger.info(`[A/B Test] Encolando llamadas ${isSDR ? 'SDR' : 'QUALIFICATION'} via ElevenLabs...`);
 
-    // Fetch all agent configs upfront to avoid repeated calls
-    const agentConfigsMap = new Map();
-    for (const variant of test.variants) {
-        if (!agentConfigsMap.has(variant.agentConfigId)) {
-            const config = await fetchAgentConfig(variant.agentConfigId);
-            if (config) {
-                agentConfigsMap.set(variant.agentConfigId, config);
-                logger.info(`[A/B Test] Loaded config for variant: ${config.name}`);
-            }
-        }
-    }
+    let jobsEnqueued = 0;
+    let jobsFailed = 0;
 
     for (const variant of test.variants) {
-        const fullAgentConfig = agentConfigsMap.get(variant.agentConfigId);
-        
-        if (!fullAgentConfig) {
-            logger.error(`[A/B Test] Skipping variant ${variant.id} - agent config ${variant.agentConfigId} not found`);
-            continue;
-        }
+        // Con ElevenLabs, agentConfigId es directamente el ElevenLabs Agent ID
+        const elevenLabsAgentId = variant.agentConfigId;
+
+        logger.info(`[A/B Test] Variante ${variant.id}: Agent ID ElevenLabs = ${elevenLabsAgentId}`);
+
         for (const contact of variant.contacts) {
             if (contact.status !== "PENDING") continue;
 
@@ -338,94 +339,98 @@ async function triggerTestCalls(test) {
 
                 if (!contactDetails || !contactDetails.phone) {
                     await updateCallResult(contact.contactId, variant.id, { status: "FAILED", result: "No phone number" });
+                    jobsFailed++;
                     continue;
                 }
 
-                // Add delay to avoid aggressive rate limiting and context loss
-                // 3 seconds between calls to ensure each agent maintains context
-                await new Promise(r => setTimeout(r, 3000));
-
-                logger.info(`[A/B Test] Calling ${contact.contactId} with ${fullAgentConfig.name}`);
-
-                // Build complete agent config payload
-                const agentConfigPayload = {
-                    id: fullAgentConfig.id,
-                    name: fullAgentConfig.name,
-                    openai_voice: fullAgentConfig.openai_voice,
-                    voice_speed: fullAgentConfig.voice_speed,
-                    voice_temperature: fullAgentConfig.voice_temperature,
-                    voice_intensity: fullAgentConfig.voice_intensity,
-                    voice_style: fullAgentConfig.voice_style,
-                    age: fullAgentConfig.age,
-                    origin: fullAgentConfig.origin,
-                    personality_name: fullAgentConfig.personality_name,
-                    personality_description: fullAgentConfig.personality_description,
-                    tone_description: fullAgentConfig.tone_description,
-                    inner_voice: fullAgentConfig.inner_voice,
-                    expressions: fullAgentConfig.expressions,
-                    imperfections: fullAgentConfig.imperfections,
-                    transparency_response: fullAgentConfig.transparency_response
+                // Preparar datos para encolar
+                const establishmentData = {
+                    name: contactDetails.name && contactDetails.name !== 'el establecimiento'
+                        ? contactDetails.name
+                        : 'su negocio',
+                    phone: contactDetails.phone,
+                    address: contactDetails.address || "",
+                    // agentConfigName ya no se usa aquí
                 };
 
-                // Build payload based on agent type
-                let payload;
-                if (isSDR) {
-                    // SDR payload format
-                    // Use a more generic phrase if name is missing to avoid confusion
-                    const businessName = contactDetails.name && contactDetails.name !== 'el establecimiento' 
-                        ? contactDetails.name 
-                        : 'su negocio';
-                    
-                    payload = {
-                        establishmentId: contact.contactId,
-                        businessContact: contactDetails.phone,
-                        businessName: businessName,
-                        address: contactDetails.address || "",
-                        agentConfig: agentConfigPayload,
-                        ab_test_context: {
-                            test_id: test.id,
-                            variant_id: variant.id,
-                            contact_record_id: contact.id
-                        }
-                    };
-                } else {
-                    // QUALIFICATION payload format (matches "Mis Negocios" payload)
-                    payload = {
-                        establishment_id: contact.contactId,
-                        business_name: contactDetails.name || "Establecimiento",
-                        prospect_name: contactDetails.decisionMakerName || "Contacto",
-                        phone: contactDetails.phone,
+                logger.info(`[A/B Test DEBUG] Processing variant ${variant.id} for A/B testing with voice from DB`);
+
+                // Obtener voice_id desde elevenlabs_personalities si está linkeado
+                let voiceId = variant.voiceId; // Fallback al voiceId directo
+                let agentName = variant.voiceName || "Agente";
+
+                if (variant.personality) {
+                    // Usar voz desde la tabla elevenlabs_personalities
+                    voiceId = variant.personality.voiceId;
+                    agentName = variant.personality.name || agentName;
+                    logger.info(`[A/B Test] Using voice from DB: ${agentName} (${voiceId})`);
+                }
+
+                // Validar que voiceId no esté vacío o sea 'elevenlabs' (placeholder)
+                if (!voiceId || voiceId === 'elevenlabs') {
+                    logger.error(`[A/B Test] Variant ${variant.id} has no valid voiceId. Skipping call for contact ${contact.contactId}`);
+                    await updateCallResult(contact.contactId, variant.id, {
+                        status: "FAILED",
+                        result: "Voz no configurada en la variante"
+                    });
+                    jobsFailed++;
+                    continue;
+                }
+
+                const jobData = {
+                    contactId: contact.contactId,
+                    abTestContactId: contact.id,
+                    agentConfigId: elevenLabsAgentId, // ElevenLabs Agent ID
+                    elevenLabsAgentId, // Explicit para los workers
+                    voiceId, // Voice ID desde elevenlabs_personalities
+                    skipVoiceOverride: false, // Aplicar override con la voz de BD
+                    agentName, // Nombre del agente desde elevenlabs_personalities
+                    establishmentData,
+                };
+
+                logger.info(`[A/B Test DEBUG] final jobData for ${contact.id}: ${JSON.stringify({ ...jobData, establishmentData: undefined })}`);
+                // Agregar datos del tomador de decisiones si existen (necesario para personalización)
+                if (contactDetails.decisionMakerName || contactDetails.email) {
+                    jobData.decisionMakerData = {
+                        name: contactDetails.decisionMakerName || "Contacto",
                         email: contactDetails.email || null,
-                        agent_config_id: fullAgentConfig.id,
-                        ab_test_context: {
-                            test_id: test.id,
-                            variant_id: variant.id,
-                            contact_record_id: contact.id
-                        }
                     };
                 }
 
-                await axios.post(`${baseUrl}${endpoint}`, payload, {
-                    headers: { "X-API-Key": API_KEY }
-                });
+                // Encolar job
+                if (isSDR) {
+                    await enqueueSDRCall(jobData);
+                    logger.info(`[A/B Test] Job SDR encolado para ${contact.contactId} (Agent: ${elevenLabsAgentId})`);
+                } else {
+                    await enqueueQualificationCall(jobData);
+                    logger.info(`[A/B Test] Job QUALIFICATION encolado para ${contact.contactId} (Agent: ${elevenLabsAgentId})`);
+                }
 
-                await updateCallResult(contact.contactId, variant.id, { status: "CALLED" });
+                jobsEnqueued++;
 
             } catch (e) {
-                logger.error(`Failed to trigger call for ${contact.contactId}`, e.message);
+                logger.error(`[A/B Test] Error encolando job para ${contact.contactId}:`, e.message);
                 await updateCallResult(contact.contactId, variant.id, { status: "FAILED", result: e.message });
+                jobsFailed++;
             }
         }
     }
+
+    logger.info(`[A/B Test] Encolamiento completado: ${jobsEnqueued} jobs encolados, ${jobsFailed} fallidos`);
+    logger.info(`[A/B Test] Los workers procesarán las llamadas asíncronamente via ElevenLabs`);
 }
 
 async function listTests(userId = null) {
     const whereClause = userId ? { createdBy: userId } : {};
-    
+
     return await prisma.abTest.findMany({
         where: whereClause,
         include: {
-            variants: true,
+            variants: {
+                include: {
+                    personality: true // Incluir la personalidad vinculada
+                }
+            },
             _count: {
                 select: { variants: true }
             }
@@ -476,7 +481,7 @@ async function removeCandidate(establishmentId) {
             where: { establishmentId }
         });
     } catch (e) {
-        if (e.code === 'P2025') return null; 
+        if (e.code === 'P2025') return null;
         throw e;
     }
 }
@@ -589,6 +594,138 @@ async function stopTest(id) {
     });
 }
 
+async function pauseTest(id) {
+    return await prisma.abTest.update({
+        where: { id },
+        data: {
+            status: "PAUSED"
+        }
+    });
+}
+
+async function resumeTest(id) {
+    const test = await prisma.abTest.update({
+        where: { id },
+        data: {
+            status: "RUNNING"
+        },
+        include: {
+            variants: {
+                include: {
+                    contacts: true,
+                    personality: true
+                }
+            }
+        }
+
+    });
+
+    // Re-encolar jobs pendientes si los hay
+    triggerTestCalls(test).catch(err => {
+        logger.error(`Error re-encolando llamadas del test ${id}:`, err);
+    });
+
+    return test;
+}
+
+/**
+ * Reconcile stalled contacts: find contacts stuck in CALLED status for too long
+ * and mark them as COMPLETED. This handles the case where the ElevenLabs webhook
+ * (save_all_and_end_call) never fires due to session collision or call issues.
+ * 
+ * Runs periodically (every 3 minutes) and checks contacts stuck for > 5 minutes.
+ */
+async function reconcileStalledContacts() {
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+    const cutoffDate = new Date(Date.now() - STALE_THRESHOLD_MS);
+
+    try {
+        // Find contacts stuck in CALLED status for more than 5 minutes
+        const stalledContacts = await prisma.abTestContact.findMany({
+            where: {
+                status: 'CALLED',
+                calledAt: {
+                    lt: cutoffDate  // calledAt is more than 5 minutes ago
+                }
+            },
+            include: {
+                variant: {
+                    include: {
+                        abTest: { select: { id: true, status: true } }
+                    }
+                }
+            }
+        });
+
+        if (stalledContacts.length === 0) return;
+
+        logger.info(`[Reconciliation] Found ${stalledContacts.length} stalled contacts (CALLED > 5 min)`);
+
+        for (const contact of stalledContacts) {
+            // Only reconcile contacts from RUNNING tests
+            if (contact.variant?.abTest?.status !== 'RUNNING') continue;
+
+            // Parse existing result to get conversationId if available
+            let existingResult = {};
+            try {
+                if (contact.result) {
+                    existingResult = JSON.parse(contact.result);
+                }
+            } catch (_) { }
+
+            const result = {
+                ...existingResult,
+                status: 'completed',
+                reconciled: true,
+                reconciledAt: new Date().toISOString(),
+                note: 'Auto-completed by reconciliation (webhook did not fire within 5 minutes)'
+            };
+
+            await prisma.abTestContact.update({
+                where: { id: contact.id },
+                data: {
+                    status: 'COMPLETED',
+                    result: JSON.stringify(result)
+                }
+            });
+
+            logger.info(`[Reconciliation] Auto-completed contact ${contact.contactId} (abTestContact: ${contact.id})`);
+        }
+
+        // Check if any test is now fully completed
+        const testIds = [...new Set(stalledContacts.map(c => c.variant?.abTest?.id).filter(Boolean))];
+        for (const testId of testIds) {
+            // Use a more direct query to avoid complex subqueries that might fail in some DB setups
+            const variants = await prisma.abTestVariant.findMany({
+                where: { abTestId: testId },
+                select: { id: true }
+            });
+            const variantIds = variants.map(v => v.id);
+
+            const pendingCount = await prisma.abTestContact.count({
+                where: {
+                    abTestVariantId: { in: variantIds },
+                    status: { in: ['PENDING', 'CALLED'] }
+                }
+            });
+
+            if (pendingCount === 0) {
+                await prisma.abTest.update({
+                    where: { id: testId },
+                    data: { status: 'COMPLETED', endDate: new Date() }
+                });
+                logger.info(`[Reconciliation] Test ${testId} marked as COMPLETED (all contacts resolved)`);
+            }
+        }
+    } catch (error) {
+        logger.error('[Reconciliation] Error reconciling stalled contacts:', error.message);
+    }
+}
+
+// Start periodic reconciliation (every 3 minutes)
+setInterval(reconcileStalledContacts, 3 * 60 * 1000);
+logger.info('[Reconciliation] Periodic stalled contact reconciliation started (every 3 min)');
+
 module.exports = {
     createTest,
     getTestProgress,
@@ -605,5 +742,9 @@ module.exports = {
     eliminateCandidateById,
     getCandidatesWithDetails,
     getCandidatesWithSnapshot,
-    stopTest
+    stopTest,
+    pauseTest,
+    resumeTest,
+    reconcileStalledContacts
 };
+

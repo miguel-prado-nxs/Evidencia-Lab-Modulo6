@@ -32,6 +32,33 @@ const config = {
     syncIntervalMs: parseInt(process.env.TWENTY_SYNC_INTERVAL_MS || "10000", 10),
     maxRetries: parseInt(process.env.TWENTY_MAX_RETRIES || "5", 10),
   },
+  // Redis y Bull Queue
+  redis: {
+    url: process.env.REDIS_URL || "redis://localhost:6381",
+    host: process.env.REDIS_HOST || "localhost",
+    port: parseInt(process.env.REDIS_PORT || "6381", 10),
+    password: process.env.REDIS_PASSWORD || null,
+  },
+  // Agentes de Voz (ElevenLabs)
+  agents: {
+    sdr: {
+      url: process.env.ELEVENLABS_SDR_URL || process.env.SDR_AGENT_URL || "http://localhost:8080",
+      apiKey: process.env.ELEVENLABS_SDR_API_KEY || process.env.SDR_API_KEY || "",
+      agentId: process.env.ELEVENLABS_SDR_AGENT_ID || "",
+    },
+    qualification: {
+      url: process.env.ELEVENLABS_QUALIFICATION_URL || process.env.QUALIFICATION_AGENT_URL || "http://localhost:8081",
+      apiKey: process.env.ELEVENLABS_QUALIFICATION_API_KEY || process.env.QUALIFICATION_API_KEY || "",
+      agentId: process.env.ELEVENLABS_QUALIFICATION_AGENT_ID || "",
+    },
+    // Concurrencia configurable (ElevenLabs plan Pro = 20 simultáneas max)
+    sdrConcurrency: parseInt(process.env.SDR_CONCURRENCY || "8", 10),
+    qualificationConcurrency: parseInt(process.env.QUALIFICATION_CONCURRENCY || "10", 10),
+  },
+  // Webhook ElevenLabs
+  elevenlabs: {
+    webhookSecret: process.env.ELEVENLABS_WEBHOOK_SECRET || "",
+  },
 };
 
 module.exports = config;

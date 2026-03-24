@@ -1,0 +1,25 @@
+
+=== Test: "Esteban sdr prueba 4" (30a90b44-78b6-4c12-83a5-08f6124aa21e) ===
+Status: COMPLETED | Type: SDR
+Created: Thu Mar 12 2026 15:09:55 GMT-0700 (hora estándar del Pacífico de México)
+Started: Thu Mar 12 2026 15:10:01 GMT-0700 (hora estándar del Pacífico de México)
+
+--- Variant: Cano (4c36b068-3fbf-4159-a91f-d8ae694b3632) ---
+  agentConfigId: agent_8001kjdzt8xsf428pdwr6dasb3x6
+  voiceId: gsPeK1qQrfiqjkbnquQ7
+  percentage: 50%
+  Contacts (1):
+    Contact 11833107:
+      status: COMPLETED
+      calledAt: Thu Mar 12 2026 15:10:04 GMT-0700 (hora estándar del Pacífico de México)
+      result: {"success":true,"status":"completed","duration":0,"finalCallStatus":"completed","timestamp":"2026-03-12T22:10:04.715Z"}
+
+--- Variant: Esteban (ef717e51-6f37-4a4b-957b-407a44de3937) ---
+  agentConfigId: agent_8001kjdzt8xsf428pdwr6dasb3x6
+  voiceId: dWuRxmMbMNqQv2k7lBO2
+  percentage: 50%
+  Contacts (1):
+    Contact 3821287:
+      status: CALLED
+      calledAt: Thu Mar 12 2026 15:10:04 GMT-0700 (hora estándar del Pacífico de México)
+      result: {"success":true,"status":"in_progress","conversationId":"conv_8401kkj1k2ggfsxr1fekh8kbx71e","sessionId":"sdr-1773353404863-a4ue3q","timestamp":"2026-03-12T22:10:05.222Z"}

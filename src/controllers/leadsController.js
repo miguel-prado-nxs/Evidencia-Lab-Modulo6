@@ -1,6 +1,7 @@
 const leadService = require("../services/leadService");
 const logger = require("../config/logger");
 const axios = require("axios");
+const config = require("../config/env");
 
 // Listar leads
 const list = async (req, res, next) => {
@@ -219,6 +220,43 @@ const track = async (req, res, next) => {
   }
 };
 
+// Función para normalizar teléfono al formato E.164
+const normalizePhoneToE164 = (phone) => {
+  if (!phone) return null;
+
+  // Limpiar el teléfono de caracteres no numéricos
+  let cleaned = phone.replace(/\D/g, '');
+
+  // Si ya tiene código de país (comienza con 52 para México y tiene 12 dígitos)
+  if (cleaned.startsWith('52') && cleaned.length === 12) {
+    return `+${cleaned}`;
+  }
+
+  // Si es un número de 10 dígitos (formato local mexicano)
+  if (cleaned.length === 10) {
+    return `+52${cleaned}`;
+  }
+
+  // Si tiene 11 dígitos y empieza con 1 (podría ser número de celular con 1 al inicio)
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+52${cleaned.substring(1)}`;
+  }
+
+  // Si ya tiene el formato correcto con +
+  if (phone.startsWith('+') && /^\+[1-9]\d{1,14}$/.test(phone)) {
+    return phone;
+  }
+
+  // Por defecto, asumir México (+52) si es un número de 10 dígitos
+  if (cleaned.length >= 10) {
+    return `+52${cleaned.slice(-10)}`;
+  }
+
+  // Si no se puede normalizar, devolver el original
+  console.warn(`[PHONE NORMALIZATION] No se pudo normalizar el teléfono: ${phone}`);
+  return phone;
+};
+
 // Enriquecer automáticamente un establecimiento
 const autoEnrich = async (req, res, next) => {
   try {
@@ -228,7 +266,12 @@ const autoEnrich = async (req, res, next) => {
       employeeRange,
       establishmentId,
       address,
-      agentConfig: requestAgentConfig  // agentConfig enviado desde el frontend
+      agentConfig: requestAgentConfig, // Opcional: objeto de configuración
+      agent_config_id: requestAgentConfigId, // Opcional: ID directo
+      ab_test_contact_id: abTestContactId,
+      voice_id: voiceId,
+      prospect_name: prospectName,
+      agent_name: agentName,
     } = req.body;
 
     // Validar datos requeridos
@@ -238,6 +281,10 @@ const autoEnrich = async (req, res, next) => {
         error: "Se requieren: businessName y businessContact",
       });
     }
+
+    // Normalizar teléfono al formato E.164
+    const normalizedPhone = normalizePhoneToE164(businessContact);
+    console.log(`[AUTO-ENRICH] Teléfono original: ${businessContact}, normalizado: ${normalizedPhone}`);
 
     // Registrar los datos recibidos para debugging
     console.log("=== AUTO-ENRICH DATOS RECIBIDOS (PARTNERS API) ===");
@@ -250,13 +297,14 @@ const autoEnrich = async (req, res, next) => {
     console.log("Sales Partner ID:", req.salesPartnerId);
     console.log("==================================================");
 
-    // Verificar si SDR_AGENT_URL está configurado
-    const sdrAgentUrl = process.env.SDR_AGENT_URL || process.env.AGENTS_SDK_URL;
+    // Usar la misma configuración que test-call (config.agents.sdr)
+    console.log("[AUTO-ENRICH] config.agents:", JSON.stringify(config.agents, null, 2));
+    const sdrAgentUrl = config.agents?.sdr?.url;
     if (!sdrAgentUrl) {
-      logger.warn("SDR_AGENT_URL no configurado - solo logging datos");
+      logger.warn("config.agents.sdr.url no configurado - solo logging datos");
       return res.json({
         success: true,
-        message: "Datos recibidos (SDR_AGENT_URL no configurado)",
+        message: "Datos recibidos (SDR URL no configurado)",
         receivedData: {
           businessName,
           businessContact,
@@ -268,13 +316,14 @@ const autoEnrich = async (req, res, next) => {
 
     // Usar agentConfig del request si está presente, sino obtener default
     let agentConfig = null;
-    
+
     if (requestAgentConfig && requestAgentConfig.id) {
       // Usar agentConfig enviado desde el frontend
       agentConfig = {
         id: requestAgentConfig.id,
-        name: requestAgentConfig.name || requestAgentConfig.personality_name,
-        openai_voice: requestAgentConfig.openai_voice || "echo",
+        name: requestAgentConfig.name,
+        personality_name: requestAgentConfig.personality_name, // Nombre de la voz (ej: "Lluvia Barceló")
+        openai_voice: requestAgentConfig.openai_voice || "echo", // ElevenLabs voice ID
         voice_speed: parseFloat(requestAgentConfig.voice_speed) || 1.0,
         voice_temperature: parseFloat(requestAgentConfig.voice_temperature) || 1.0,
         voice_intensity: parseInt(requestAgentConfig.voice_intensity) || 1,
@@ -309,7 +358,8 @@ const autoEnrich = async (req, res, next) => {
           agentConfig = {
             id: data.id,
             name: data.name,
-            openai_voice: data.openai_voice || data.voice || "echo",
+            personality_name: data.personality_name, // Nombre de la voz (ej: "Lluvia Barceló")
+            openai_voice: data.openai_voice || data.voice || "echo", // ElevenLabs voice ID
             voice_speed: data.voice_speed || 1.0,
             voice_temperature: data.voice_temperature || 1.0,
             voice_intensity: data.voice_intensity || 1,
@@ -333,36 +383,89 @@ const autoEnrich = async (req, res, next) => {
 
     // Llamar al agente SDR en agentes-crm-sdk
 
+    // Si viene un ab_test_contact_id pero no trae la voz (porque se disparó manual desde frontend),
+    // vamos a buscar la voz de esa variante a la base de datos
+    // Usar openai_voice (ElevenLabs voice ID) y personality_name (nombre de la voz)
+    let finalVoiceId = voiceId || agentConfig?.openai_voice;
+    let finalAgentName = agentName || agentConfig?.personality_name || agentConfig?.name;
+    let finalAgentConfigId = requestAgentConfigId || agentConfig?.id;
+
+    if (abTestContactId && !voiceId) {
+      try {
+        const { PrismaClient } = require("@prisma/client");
+        const prisma = new PrismaClient();
+
+        const abTestContact = await prisma.aBTestContact.findUnique({
+          where: { id: abTestContactId },
+          include: {
+            variant: {
+              include: {
+                personality: true
+              }
+            }
+          }
+        });
+
+        if (abTestContact && abTestContact.variant) {
+          console.log(`[AUTO-ENRICH] Recuperando config A/B Test para variante ${abTestContact.variant.id}`);
+          if (abTestContact.variant.voiceId) {
+            finalVoiceId = abTestContact.variant.voiceId;
+            console.log(`[AUTO-ENRICH] ✅ Voice ID inyectado desde BD: ${finalVoiceId}`);
+          }
+          if (abTestContact.variant.personality?.name) {
+            finalAgentName = abTestContact.variant.personality.name;
+            console.log(`[AUTO-ENRICH] ✅ Agent Name inyectado desde BD: ${finalAgentName}`);
+          }
+          if (abTestContact.variant.agentConfigId) {
+            finalAgentConfigId = abTestContact.variant.agentConfigId;
+          }
+        }
+        await prisma.$disconnect();
+      } catch (err) {
+        console.error("[AUTO-ENRICH] Error buscando voice_id de variante:", err);
+      }
+    }
+
+    // Construir payload dinámicamente, omitiendo campos con valor null
     const sdrPayload = {
       establishment_id: establishmentId || `auto-${Date.now()}`,
       establishment_name: businessName,
-      phone: businessContact,
+      phone: normalizedPhone,
       employee_range: employeeRange || "0 a 5 personas",
       address: address || "",
-      // Pasar userId para asignación de prospecto
-      // Usar salesPartnerId (ya viene en formato correcto desde middleware)
-      // o user.id si viene de JWT, o null si no hay usuario
-      user_id: req.salesPartnerId || req.user?.id || null,
-      // Agregar agent_config si se obtuvo
-      ...(agentConfig && { agent_config: agentConfig }),
+      prospect_name: prospectName || "Contacto",
     };
+
+    // Agregar campos opcionales solo si tienen valor
+    if (req.salesPartnerId || req.user?.id) {
+      sdrPayload.user_id = req.salesPartnerId || req.user.id;
+    }
+    if (abTestContactId) {
+      sdrPayload.ab_test_contact_id = abTestContactId;
+    }
+    if (finalVoiceId) {
+      sdrPayload.voice_id = finalVoiceId;
+    }
+    // NOTA: agent_config_id es un ID local de la BD, NO es un ID de ElevenLabs
+    // Comentado temporalmente para usar el agente default de ElevenLabs (ELEVENLABS_AGENT_ID)
+    // TODO: Agregar campo elevenlabs_agent_id en la tabla agent_configs y mapear correctamente
+    // if (finalAgentConfigId) {
+    //   sdrPayload.agent_config_id = finalAgentConfigId;
+    // }
+    if (finalAgentName) {
+      sdrPayload.personality_name = finalAgentName;
+    }
 
     console.log("[AUTO-ENRICH] Llamando al agente SDR:", sdrAgentUrl + "/api/sdr/initiate-call");
     console.log("[AUTO-ENRICH] Payload:", JSON.stringify(sdrPayload, null, 2));
 
-    // Obtener API Key para autenticación con agentes-crm-sdk
-    const sdrApiKey = process.env.SDR_API_KEY;
-    if (!sdrApiKey) {
-      logger.warn("[AUTO-ENRICH] SDR_API_KEY no configurada - llamada puede fallar");
-    }
-
+    // Llamar al servicio SDR (igual que test-call, sin X-API-Key)
     const sdrResponse = await axios.post(
       sdrAgentUrl + "/api/sdr/initiate-call",
       sdrPayload,
       {
         headers: {
           "Content-Type": "application/json",
-          "X-API-Key": sdrApiKey || "",
         },
         timeout: 30000,
       }
@@ -458,9 +561,12 @@ const autoQualify = async (req, res, next) => {
     console.log("===================================================");
 
     // URL del agente de qualification
-    const qualificationAgentUrl = process.env.QUALIFICATION_AGENT_URL || process.env.AGENTS_SDK_URL;
+    const qualificationAgentUrl =
+      process.env.ELEVENLABS_QUALIFICATION_URL ||
+      process.env.QUALIFICATION_AGENT_URL ||
+      process.env.AGENTS_SDK_URL;
     if (!qualificationAgentUrl) {
-      logger.error("[AUTO-QUALIFY] QUALIFICATION_AGENT_URL no configurada");
+      logger.error("[AUTO-QUALIFY] ELEVENLABS_QUALIFICATION_URL no configurada");
       return res.status(500).json({
         success: false,
         error: "Servicio de agentes de calificación no configurado",
@@ -472,7 +578,7 @@ const autoQualify = async (req, res, next) => {
     }
 
     // Obtener configuración de agente default para QUALIFICATION desde demo-form-service
-    let agentConfigId = null;
+    let agentConfig = null;
     try {
       const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
       const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
@@ -491,8 +597,14 @@ const autoQualify = async (req, res, next) => {
       );
 
       if (configResponse.data?.success && configResponse.data?.data) {
-        agentConfigId = configResponse.data.data.id;
-        console.log("[AUTO-QUALIFY] ✅ Using agent_config_id:", agentConfigId);
+        const data = configResponse.data.data;
+        agentConfig = {
+          id: data.id,
+          name: data.name,
+          personality_name: data.personality_name, // Nombre de la voz (ej: "Esteban")
+          openai_voice: data.openai_voice || data.voice || null, // ElevenLabs voice ID
+        };
+        console.log("[AUTO-QUALIFY] ✅ Using agent_config:", JSON.stringify(agentConfig, null, 2));
       } else {
         console.log("[AUTO-QUALIFY] ⚠️ No default QUALIFICATION config found");
       }
@@ -500,6 +612,10 @@ const autoQualify = async (req, res, next) => {
       console.error("[AUTO-QUALIFY] ❌ Error fetching agent_config:", configError.message);
       logger.warn("[AUTO-QUALIFY] No se pudo obtener agent_config, continuando sin él");
     }
+
+    // Extraer voice_id y agent_name del agentConfig (igual que en autoEnrich)
+    const finalVoiceId = agentConfig?.openai_voice || null;
+    const finalAgentName = agentConfig?.personality_name || agentConfig?.name || null;
 
     // Llamar al agente de Qualification en agentes-crm-sdk
     const qualificationPayload = {
@@ -510,9 +626,18 @@ const autoQualify = async (req, res, next) => {
       email: decisionMakerEmail || null,
       // Pasar userId para asignación
       user_id: req.salesPartnerId || req.user?.id || null,
-      // Agregar agent_config_id si se obtuvo
-      ...(agentConfigId && { agent_config_id: agentConfigId }),
     };
+
+    // Agregar voice_id si se obtuvo del agentConfig (ElevenLabs voice ID)
+    if (finalVoiceId) {
+      qualificationPayload.voice_id = finalVoiceId;
+    }
+    // Agregar personality_name si se obtuvo del agentConfig
+    if (finalAgentName) {
+      qualificationPayload.personality_name = finalAgentName;
+    }
+    // NOTA: No enviamos agent_config_id porque es un ID local de BD, no de ElevenLabs
+    // El servicio de calificación usará el agente default configurado en ELEVENLABS_AGENT_ID
 
     console.log("[AUTO-QUALIFY] Llamando al agente de Qualification:", qualificationAgentUrl + "/api/qualification/initiate-call");
     console.log("[AUTO-QUALIFY] Payload:", JSON.stringify(qualificationPayload, null, 2));

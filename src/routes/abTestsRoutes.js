@@ -8,7 +8,17 @@ router.get('/', abTestsController.getAll);
 router.get('/:id/progress', abTestsController.getProgress);
 router.patch('/:id/start', abTestsController.start);
 router.patch('/:id/stop', abTestsController.stop);
+router.post('/:id/pause', abTestsController.pauseTest);
+router.post('/:id/resume', abTestsController.resumeTest);
 router.post('/update-result', abTestsController.updateResult);
+
+// Queue monitoring
+router.get('/queue-stats', abTestsController.getQueueStats);
+
+// Real-time monitoring via Server-Sent Events (SSE)
+router.get('/queues/monitor-stream', abTestsController.streamGlobalQueueMonitoring);
+router.get('/monitoring/connections', abTestsController.getActiveMonitoringConnections);
+router.get('/:id/monitor-stream', abTestsController.streamTestMonitoring);
 
 // Extended metrics endpoints
 router.get('/:id/metrics', abTestsController.getMetrics);
@@ -19,6 +29,9 @@ router.post('/call-logs/:callLogId/result', abTestsController.logCallResult);
 // Agent status endpoint
 router.get('/agent-status/:agentConfigId', abTestsController.getAgentRunningStatus);
 router.post('/agents-status/bulk', abTestsController.getAgentsBulkRunningStatus);
+
+// ElevenLabs proxy endpoints
+router.get('/elevenlabs-agents', abTestsController.getElevenLabsAgents);
 
 // Candidates
 router.post('/candidates', abTestsController.addCandidate);

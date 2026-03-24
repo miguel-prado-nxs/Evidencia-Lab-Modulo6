@@ -266,6 +266,57 @@ async function exportLeads(filters = {}, format = "csv") {
 }
 
 /**
+ * Exportar leads formateados para Batch de ElevenLabs
+ */
+async function exportLeadsForElevenLabs(filters = {}) {
+  const { partnerId, status, dateFrom, dateTo } = filters;
+
+  const where = {};
+  if (partnerId) where.partnerId = partnerId;
+  if (status) where.status = status;
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) where.createdAt.lte = new Date(dateTo);
+  }
+
+  const leads = await prisma.lead.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Voces conocidas para rotación automática si el usuario no especifica una
+  const VOICES = [
+    { name: "Esteban", id: "dWuRxmMbMNqQv2k7lBO2" },
+    { name: "Cano", id: "gsPeK1qQrfiqjkbnquQ7" }
+  ];
+
+  const columns = [
+    { header: "phone_number", key: "phone_number", accessor: (r) => r.phone || "" },
+    { header: "name", key: "name", accessor: (r) => r.contactName || "" },
+    { header: "business_name", key: "business_name", accessor: (r) => r.businessName || "" },
+    { 
+      header: "voice_id", 
+      key: "voice_id", 
+      accessor: (r, i) => VOICES[i % VOICES.length].id 
+    },
+    { 
+      header: "voice_name", 
+      key: "voice_name", 
+      accessor: (r, i) => VOICES[i % VOICES.length].name 
+    }
+  ];
+
+  const csv = exportToCSV(leads, columns);
+
+  return {
+    data: csv,
+    contentType: "text/csv",
+    filename: `elevenlabs_batch_${Date.now()}.csv`,
+  };
+}
+
+/**
  * Columnas para comisiones
  */
 const COMMISSIONS_COLUMNS = [
@@ -647,5 +698,6 @@ module.exports = {
   exportPartners,
   exportDeals,
   generatePartnerReport,
+  exportLeadsForElevenLabs,
 };
 

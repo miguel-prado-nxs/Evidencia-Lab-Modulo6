@@ -26,5 +26,8 @@ router.get("/partners", requireAdmin, exportController.exportPartners);
 // Generar reporte de partner
 router.get("/report/:partnerId", exportController.generatePartnerReport);
 
+// Exportar para ElevenLabs Batch (NUEVO)
+router.get("/elevenlabs", exportController.exportLeadsForElevenLabs);
+
 module.exports = router;
 

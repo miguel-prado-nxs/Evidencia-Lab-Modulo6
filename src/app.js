@@ -8,6 +8,10 @@ const logger = require("./config/logger");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const { initSocket } = require("./config/socket");
 const twentySyncWorker = require("./workers/twentySyncWorker");
+require("./workers/sdrCallWorker");
+require("./workers/qualificationCallWorker");
+const { setupBullBoard } = require("./queues/dashboard");
+const { getHealthClient } = require("./queues/config");
 const campaignBatchReconciliationWorker = require("./workers/campaignBatchReconciliationWorker");
 
 // Importar rutas
@@ -31,6 +35,9 @@ const easyorderRoutes = require("./routes/easyorder");
 const agentMetricsRoutes = require("./routes/agentMetrics");
 const abTestsRoutes = require("./routes/abTestsRoutes");
 const testCallRoutes = require("./routes/testCall");
+const webhooksRoutes = require("./routes/webhooks");
+const elevenLabsRoutes = require("./routes/elevenLabsRoutes");
+const voicesRoutes = require("./routes/voices");
 const campaignsRoutes = require("./routes/campaigns");
 const couponsRoutes = require("./routes/coupons");
 const couponTemplatesRoutes = require("./routes/couponTemplates");
@@ -64,7 +71,7 @@ app.use(
   express.json({
     limit: "10mb",
     verify: (req, res, buffer) => {
-      if (req.originalUrl && req.originalUrl.startsWith("/api/v1/campaigns/elevenlabs-webhook")) {
+      if (req.originalUrl && req.originalUrl.includes("/campaigns/elevenlabs-webhook")) {
         req.rawBody = buffer.toString("utf8");
       }
     },
@@ -96,16 +103,33 @@ app.use((req, res, next) => {
 });
 
 // ===========================================
+// BULL BOARD (Dashboard de colas)
+// ===========================================
+setupBullBoard(app);
+
+// ===========================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ===========================================
 
 // Health check
-app.get("/health", (req, res) => {
+app.get("/health", async (req, res) => {
+  let redisStatus = "disconnected";
+  try {
+    const redisClient = getHealthClient();
+    const pong = await redisClient.ping();
+    if (pong === "PONG") {
+      redisStatus = "connected";
+    }
+  } catch {
+    redisStatus = "disconnected";
+  }
+
   res.json({
     success: true,
     message: "EasyOrder Partners API está funcionando correctamente",
     timestamp: new Date().toISOString(),
     environment: config.server.nodeEnv,
+    redis: redisStatus,
   });
 });
 
@@ -157,6 +181,9 @@ app.use("/api/v1/easyorder", easyorderRoutes);
 app.use("/api/v1/agent-metrics", agentMetricsRoutes);
 app.use("/api/v1/ab-tests", abTestsRoutes);
 app.use("/api/v1/test-call", testCallRoutes);
+app.use("/api/v1/webhooks", webhooksRoutes);
+app.use("/api/v1/elevenlabs", elevenLabsRoutes);
+app.use("/api/v1/voices", voicesRoutes);
 app.use("/api/v1/campaigns", campaignsRoutes);
 app.use("/api/v1/coupons", couponsRoutes);
 app.use("/api/v1/coupon-templates", couponTemplatesRoutes);

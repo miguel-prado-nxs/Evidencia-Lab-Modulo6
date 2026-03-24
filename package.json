@@ -7,6 +7,7 @@
     "build": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "postinstall": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "start": "node src/app.js",
+    "start:workers": "node src/startWorkers.js",
     "dev": "nodemon src/app.js",
     "db:generate": "prisma generate && prisma generate --schema=prisma/schema-geo.prisma",
     "db:push": "prisma db push",
@@ -14,7 +15,10 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "node prisma/seed.js",
-    "seed:emails": "node prisma/seed-email-templates.js"
+    "seed:emails": "node prisma/seed-email-templates.js",
+    "redis:check": "node scripts/checkRedis.js",
+    "test:integration": "node tests/integration/queue-system.test.js",
+    "test:integration:watch": "nodemon tests/integration/queue-system.test.js"
   },
   "keywords": [
     "partners",
@@ -26,9 +30,12 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.943.0",
     "@aws-sdk/lib-storage": "^3.943.0",
+    "@bull-board/api": "^6.20.3",
+    "@bull-board/express": "^6.20.3",
     "@prisma/client": "^5.22.0",
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
+    "bull": "^4.16.5",
     "cors": "^2.8.5",
     "csv-stringify": "^6.6.0",
     "exceljs": "^4.4.0",
@@ -36,6 +43,7 @@
     "express-rate-limit": "^7.2.0",
     "helmet": "^7.1.0",
     "iconv-lite": "^0.7.0",
+    "ioredis": "^5.9.3",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "pdfkit": "^0.17.2",

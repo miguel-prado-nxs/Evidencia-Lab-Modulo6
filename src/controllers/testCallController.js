@@ -6,7 +6,7 @@
 const logger = require("../config/logger");
 const axios = require("axios");
 
-const TEST_CALL_SERVICE_URL = process.env.TEST_CALL_SERVICE_URL;
+const config = require("../config/env");
 
 /**
  * POST /api/v1/test-call
@@ -41,12 +41,13 @@ async function handleTestCall(req, res, next) {
             });
         }
 
-        // Validar que TEST_CALL_SERVICE_URL esté configurado
-        if (!TEST_CALL_SERVICE_URL) {
-            logger.error("[Test Call] TEST_CALL_SERVICE_URL no está configurado en .env");
+        // Validar que el servicio ElevenLabs esté configurado
+        const ELEVENLABS_SDR_URL = config.agents?.sdr?.url;
+        if (!ELEVENLABS_SDR_URL) {
+            logger.error("[Test Call] URL del agente de SDR no configurada en config.agents.sdr.url");
             return res.status(500).json({
                 success: false,
-                error: "Servicio de llamadas no configurado",
+                error: "Servicio de llamadas de agente no configurado",
             });
         }
 
@@ -55,12 +56,19 @@ async function handleTestCall(req, res, next) {
             voice: model_settings.voice,
         });
 
-        // Llamar al servicio externo de voz
-        const response = await axios.post(TEST_CALL_SERVICE_URL, {
-            phone,
-            message,
-            model_settings,
-        }, {
+        // Payload adaptado para elevenlabs-sdr
+        const payload = {
+            establishment_id: `test-${Date.now()}`,
+            establishment_name: "Llamada de Prueba",
+            phone: phone,
+            prospect_name: "Usuario de Prueba",
+            agent_name: model_settings.personality_name || "Agente de Prueba",
+            voice_id: model_settings.voice,
+        };
+
+        // Llamar al servicio externo de ElevenLabs SDR
+        const endpoint = `${ELEVENLABS_SDR_URL}/api/sdr/initiate-call`;
+        const response = await axios.post(endpoint, payload, {
             headers: {
                 "Content-Type": "application/json",
             },

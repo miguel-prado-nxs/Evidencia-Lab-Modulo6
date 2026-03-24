@@ -1,0 +1,1274 @@
+﻿// Prisma Schema para EasyOrder Partners API
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========== USUARIOS Y AUTENTICACION ==========
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?   @map("password_hash")
+  name          String
+  role          UserRole  @default(PARTNER)
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  partner                 Partner?
+  accounts                Account[]
+  sessions                Session[]
+  notifications           Notification[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// ========== TOKENS DE AUTENTICACION ==========
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+enum UserRole {
+  ADMIN
+  PARTNER
+  PENDING
+}
+
+// ========== PARTNER ==========
+
+model Partner {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+  code   String @unique // Codigo unico: EO-ABC123
+
+  type   PartnerType
+  tier   PartnerTier   @default(REGISTERED)
+  status PartnerStatus @default(PENDING)
+
+  // Datos de empresa
+  companyName String? @map("company_name")
+  companyType String? @map("company_type")
+  taxId       String? @map("tax_id") // RFC
+  website     String?
+  phone       String?
+
+  // Direccion
+  country String  @default("MX")
+  state   String?
+  city    String?
+  address String?
+
+  // Contacto adicional
+  contactName  String? @map("contact_name")
+  contactEmail String? @map("contact_email")
+  contactPhone String? @map("contact_phone")
+
+  // Comisiones
+  commissionRate Decimal @default(0.15) @map("commission_rate") @db.Decimal(5, 4)
+  paymentMethod  String? @map("payment_method")
+  paymentDetails Json?   @map("payment_details")
+
+  // Tracking
+  referralLink    String  @unique @map("referral_link")
+  totalLeads      Int     @default(0) @map("total_leads")
+  totalDeals      Int     @default(0) @map("total_deals")
+  totalRevenue    Decimal @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  totalCommission Decimal @default(0) @map("total_commission") @db.Decimal(12, 2)
+
+  // Fechas
+  approvedAt     DateTime? @map("approved_at")
+  firstSaleAt    DateTime? @map("first_sale_at")
+  lastActivityAt DateTime? @map("last_activity_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leads        Lead[]
+  deals        Deal[]
+  commissions  Commission[]
+  activities   Activity[]
+  referredBy   Partner?       @relation("PartnerReferrals", fields: [referredById], references: [id])
+  referredById String?        @map("referred_by_id")
+  referrals    Partner[]      @relation("PartnerReferrals")
+  prospects    LeadProspect[] // GeoInsights prospects
+
+  // LMS relations
+  enrollments    CourseEnrollment[]
+  lessonProgress LessonProgress[]
+  quizAttempts   QuizAttempt[]
+  certificates   Certificate[]
+
+  // Referral campaigns
+  referralCampaigns ReferralCampaign[]
+
+  // Establishment meetings
+  establishmentMeetings EstablishmentMeeting[]
+
+  // Call leads (resultados de llamadas de calificaci├│n)
+  callLeads CallLead[]
+
+  @@index([code])
+  @@index([type])
+  @@index([tier])
+  @@index([status])
+  @@index([createdAt])
+  @@map("partners")
+}
+
+enum PartnerType {
+  AFFILIATE
+  REFERRAL
+  RESELLER
+  SOLUTIONS
+  TECHNOLOGY
+}
+
+enum PartnerTier {
+  REGISTERED
+  SILVER
+  GOLD
+  ELITE
+}
+
+enum PartnerStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+// ========== LEADS ==========
+
+model Lead {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+
+  // Datos del lead
+  businessName String  @map("business_name")
+  contactName  String  @map("contact_name")
+  email        String
+  phone        String?
+
+  // Detalles del negocio
+  businessType  String?  @map("business_type")
+  location      String?
+  monthlyOrders String?  @map("monthly_orders")
+  interests     String[]
+
+  // Tracking UTM
+  utmSource   String? @map("utm_source")
+  utmMedium   String? @map("utm_medium")
+  utmCampaign String? @map("utm_campaign")
+  utmTerm     String? @map("utm_term")
+  utmContent  String? @map("utm_content")
+  landingPage String? @map("landing_page")
+  referrer    String?
+
+  // Estado
+  status       LeadStatus @default(NEW)
+  qualityScore Int?       @map("quality_score") // 1-100
+  notes        String?    @db.Text
+
+  // Valor estimado
+  estimatedValue Decimal? @map("estimated_value") @db.Decimal(10, 2)
+  estimatedMrr   Decimal? @map("estimated_mrr") @db.Decimal(10, 2)
+
+  // Fechas
+  contactedAt DateTime? @map("contacted_at")
+  qualifiedAt DateTime? @map("qualified_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner    Partner    @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  deal       Deal?
+  activities Activity[]
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([email])
+  @@index([utmCampaign])
+  @@index([createdAt])
+  @@map("leads")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  NEGOTIATION
+  WON
+  LOST
+}
+
+// ========== DEALS (Ventas Cerradas) ==========
+
+model Deal {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+  leadId    String @unique @map("lead_id")
+
+  // Cliente
+  customerId   String? @map("customer_id") // ID en sistema EasyOrder
+  businessName String  @map("business_name")
+
+  // Plan y valor
+  planType   String  @map("plan_type") // starter, growth, premium
+  planPrice  Decimal @map("plan_price") @db.Decimal(10, 2) // MRR del plan
+  setupFee   Decimal @default(0) @map("setup_fee") @db.Decimal(10, 2)
+  totalValue Decimal @map("total_value") @db.Decimal(10, 2) // Valor total 12 meses
+
+  // Comision
+  commissionRate   Decimal @map("commission_rate") @db.Decimal(5, 4)
+  commissionAmount Decimal @map("commission_amount") @db.Decimal(10, 2)
+  commissionPaid   Decimal @default(0) @map("commission_paid") @db.Decimal(10, 2)
+
+  // Estado
+  status DealStatus @default(PENDING)
+
+  // Fechas
+  closedAt    DateTime  @map("closed_at")
+  activatedAt DateTime? @map("activated_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner     Partner      @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  commissions Commission[]
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([closedAt])
+  @@map("deals")
+}
+
+enum DealStatus {
+  PENDING
+  ACTIVE
+  CHURNED
+}
+
+// ========== COMISIONES ==========
+
+model Commission {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+  dealId    String @map("deal_id")
+
+  // Tipo y monto
+  type     CommissionType
+  amount   Decimal        @db.Decimal(10, 2)
+  currency String         @default("MXN")
+
+  // Periodo (para comisiones recurrentes)
+  periodStart DateTime? @map("period_start")
+  periodEnd   DateTime? @map("period_end")
+
+  // Estado de pago
+  status     CommissionStatus @default(PENDING)
+  paidAt     DateTime?        @map("paid_at")
+  paymentRef String?          @map("payment_ref")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  deal    Deal    @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("commissions")
+}
+
+enum CommissionType {
+  SIGNUP_BONUS
+  RECURRING
+  BONUS
+}
+
+enum CommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+// ========== ACTIVIDADES ==========
+
+model Activity {
+  id        String  @id @default(uuid())
+  partnerId String  @map("partner_id")
+  leadId    String? @map("lead_id")
+
+  type        ActivityType
+  description String
+  metadata    Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("activities")
+}
+
+enum ActivityType {
+  PARTNER_REGISTERED
+  PARTNER_APPROVED
+  PARTNER_TIER_UPGRADE
+  LEAD_CREATED
+  LEAD_STATUS_CHANGED
+  DEAL_CLOSED
+  COMMISSION_EARNED
+  COMMISSION_PAID
+  LOGIN
+  RESOURCE_DOWNLOADED
+}
+
+// ========== RECURSOS DE MARKETING ==========
+
+model Resource {
+  id String @id @default(uuid())
+
+  name         String
+  description  String?
+  category     ResourceCategory
+  type         String // pdf, pptx, docx, mp4, png
+  url          String? // URL externa (opcional)
+  thumbnailUrl String?          @map("thumbnail_url")
+
+  // Archivos subidos localmente
+  fileName    String? @map("file_name")
+  fileSize    Int?    @map("file_size") // bytes
+  mimeType    String? @map("mime_type")
+  storagePath String? @map("storage_path")
+
+  // Permisos
+  minTier      PartnerTier   @default(REGISTERED) @map("min_tier")
+  partnerTypes PartnerType[] @map("partner_types")
+
+  // Metadata
+  tags      String[]
+  downloads Int      @default(0)
+  viewCount Int      @default(0) @map("view_count")
+
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([category])
+  @@index([minTier])
+  @@index([isActive])
+  @@map("resources")
+}
+
+enum ResourceCategory {
+  SALES_DECK
+  ONE_PAGER
+  EMAIL_TEMPLATE
+  SOCIAL_MEDIA
+  VIDEO
+  CASE_STUDY
+  PRICE_LIST
+  BRAND_ASSETS
+  CONTRACT_TEMPLATE
+  OTHER
+}
+
+// ========== CONFIGURACION DEL PROGRAMA ==========
+
+model ProgramConfig {
+  id String @id @default(uuid())
+
+  key         String  @unique
+  value       Json
+  description String?
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("program_config")
+}
+
+// ========== NextAuth Tables ==========
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ========== API KEYS ==========
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  name        String
+  description String?   @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
+  lastUsedAt  DateTime? @map("last_used_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  expiresAt   DateTime? @map("expires_at")
+
+  @@index([key])
+  @@index([isActive])
+  @@map("api_keys")
+}
+
+// ========== NOTA SOBRE ESTABLECIMIENTOS ==========
+// Los establecimientos DENUE (800k+) est├ín en Mapa DB (DATABASE_URL_RESTAURANTES)
+// NO en Partners DB. El establishmentId es solo una referencia string.
+// La relaci├│n se maneja a nivel de aplicaci├│n, no con FK constraints.
+
+// ========== ENRIQUECIMIENTO DE ESTABLECIMIENTOS ==========
+
+// Nivel de enriquecimiento del establecimiento
+enum EstablishmentLevel {
+  ESTABLISHMENT // Solo datos DENUE base
+  CONTACT // Tiene phone/email/website (dato DENUE)
+  PROSPECT // Tiene info del tomador de decisiones
+  LEAD // Tiene cualificacion completa (intent/fear/pain/desire)
+  CLIENT // Lead que ya realizo una compra
+}
+
+// Enriquecimiento de establecimientos (datos adicionales capturados por partners)
+// NOTA: establishmentId referencia a Mapa DB, NO hay FK constraint
+model EstablishmentEnrichment {
+  id              String @id @default(uuid())
+  establishmentId String @unique @map("establishment_id")
+
+  // ==================== COLUMNAS EXISTENTES (NO TOCAR) ====================
+  decisionMakerName     String? @map("decision_maker_name")
+  decisionMakerPosition String? @map("decision_maker_position")
+  decisionMakerPhone    String? @map("decision_maker_phone")
+  decisionMakerWhatsApp String? @map("decision_maker_whatsapp")
+  decisionMakerEmail    String? @map("decision_maker_email")
+
+  intent String? @db.Text
+  fear   String? @db.Text
+  pain   String? @db.Text
+  desire String? @db.Text
+
+  // ==================== BANT QUALIFICATION SCORES ====================
+  // Scores de calificaci├│n BANT (0-10, -1 = no explorado)
+  needScore      Int? @default(-1) @map("need_score")
+  authorityScore Int? @default(-1) @map("authority_score")
+  budgetScore    Int? @default(-1) @map("budget_score")
+  timelineScore  Int? @default(-1) @map("timeline_score")
+  overallScore   Int? @default(-1) @map("overall_score")
+
+  // Notas de calificaci├│n y metadata
+  qualificationNotes     String?  @map("qualification_notes") @db.Text
+  qualificationCompleted Boolean? @default(false) @map("qualification_completed")
+  confidenceLevel        String?  @map("confidence_level") @db.VarChar(20)
+  // 'high', 'medium', 'low', 'insufficient'
+
+  purchaseDate     DateTime? @map("purchase_date")
+  productPurchased String?   @map("product_purchased")
+  purchaseAmount   Decimal?  @map("purchase_amount") @db.Decimal(10, 2)
+  clientSince      DateTime? @map("client_since")
+  clientStatus     String?   @map("client_status")
+  clientNotes      String?   @map("client_notes") @db.Text
+
+  level EstablishmentLevel @default(ESTABLISHMENT)
+
+  enrichedBy    String?   @map("enriched_by")
+  enrichedAt    DateTime? @map("enriched_at")
+  lastUpdatedBy String?   @map("last_updated_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // ==================== NUEVAS COLUMNAS SDR  ====================
+  // Tracking de llamadas SDR
+  callSummary         String? @map("call_summary") @db.Text
+  strategy            String? @db.VarChar(10)
+  callAttempts        Int?    @default(1) @map("call_attempts")
+  callDurationSeconds Int?    @default(0) @map("call_duration_seconds")
+  callStatus          String? @map("call_status") @db.VarChar(20)
+  enrichmentStatus    String? @map("enrichment_status") @db.VarChar(30)
+  gatekeeperInfo      Json?   @map("gatekeeper_info")
+  bestCallTime        String? @map("best_call_time") @db.VarChar(50)
+
+  // ==================== DATOS DEL ESTABLECIMIENTO (para Orchestrator) ====================
+  // Copia de datos de BD 801k para evitar joins cross-database
+  // Campos: name, phone, email, employee_range, activity_code, activity_name, 
+  //         latitude, longitude, state_name, municipality_name
+  establishmentData Json? @map("establishment_data")
+
+  // ==================== ├ìNDICES (ACTUALIZAR) ====================
+  @@index([level])
+  @@index([establishmentId])
+  @@index([enrichedBy])
+  @@index([enrichmentStatus])
+  @@index([strategy])
+  @@index([callStatus])
+  @@map("establishment_enrichments")
+}
+
+// ========== PERFILES DE RESTAURANTE (captura inicial) ==========
+// Almacena los datos base capturados por Ventas antes de provisionar el POS
+// leadId referencia al enriquecimiento/lead en este sistema (no FK estricta)
+model RestaurantProfile {
+  id              String  @id @default(uuid())
+  establishmentId String  @unique @map("establishment_id")
+  leadId          String? @map("lead_id")
+  restaurantId    Int?    @map("restaurant_id") // ID del restaurante en easyorder-backend
+  direccionId     Int?    @map("direccion_id") // ID de la direcci├│n en easyorder-backend
+
+  businessName    String  @map("business_name")
+  cuisineType     String? @map("cuisine_type")
+  contactPhone    String? @map("contact_phone")
+  contactEmail    String? @map("contact_email")
+  contactWhatsapp String? @map("contact_whatsapp")
+  timezone        String?
+  address         Json? // snapshot de la direcci├│n enviada al POS
+  logoUrl         String? @map("logo_url")
+
+  // Pasos completados del proceso de provisionamiento
+  step1Completed Boolean @default(false) @map("step1_completed") // Perfil b├ísico + Logo
+  step2Completed Boolean @default(false) @map("step2_completed") // Sucursales
+  step3Completed Boolean @default(false) @map("step3_completed") // Men├║
+
+  // Estado de provisionamiento
+  provisionStatus String @default("pending") @map("provision_status")
+  // 'pending', 'provisioned', 'failed', 'active'
+
+  provisionedAt DateTime? @map("provisioned_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([leadId])
+  @@index([restaurantId])
+  @@index([provisionStatus])
+  @@map("restaurant_profiles")
+}
+
+// ========== INTERACCIONES SDR ==========
+// Registro de todas las llamadas del agente SDR (exitosas y fallidas)
+model SdrInteraction {
+  id              String @id @default(uuid())
+  establishmentId String @map("establishment_id") // Referencia a Mapa DB (sin FK)
+
+  // Estado de la llamada
+  callStatus String? @map("call_status") @db.VarChar(30)
+  // 'completed', 'no_answer', 'busy', 'failed', 'voicemail'
+
+  enrichmentStatus String? @map("enrichment_status") @db.VarChar(30)
+  // 'identified', 'not_found', 'gatekeeper_blocked', 'callback_scheduled', 'contacted'
+
+  // Resultado
+  decisionMakerFound Boolean @default(false) @map("decision_maker_found")
+  decisionMakerName  String? @map("decision_maker_name")
+  decisionMakerRole  String? @map("decision_maker_role")
+
+  // Detalles de la llamada
+  callSummary         String? @map("call_summary") @db.Text
+  callDurationSeconds Int?    @map("call_duration_seconds")
+  attemptNumber       Int     @default(1) @map("attempt_number")
+
+  // Estrategia A/B
+  strategy String? @db.VarChar(10)
+
+  // Info del gatekeeper (si aplica)
+  gatekeeperInfo Json? @map("gatekeeper_info")
+  // { name: "Mar├¡a", message: "El due├▒o no est├í", callback_time: "14:00" }
+
+  // Twilio
+  twilioCallSid String? @map("twilio_call_sid") @db.VarChar(50)
+
+  // Agent Config (from demo-form-service agent_configs table)
+  agentConfigId String? @map("agent_config_id") @db.Uuid
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // ├ìndices
+  @@index([establishmentId])
+  @@index([callStatus])
+  @@index([enrichmentStatus])
+  @@index([strategy])
+  @@index([decisionMakerFound])
+  @@index([createdAt])
+  @@index([agentConfigId])
+  @@map("sdr_interactions")
+}
+
+// ========== PROSPECTS DESDE DENUE ==========
+// NOTA: establishmentId referencia a Mapa DB usando clee (DENUE), NO hay FK constraint
+
+model LeadProspect {
+  id              String  @id @default(uuid())
+  establishmentId String  @map("establishment_id") // Clee del establecimiento DENUE (sin FK)
+  partnerId       String? @map("partner_id")
+
+  status   ProspectStatus @default(AVAILABLE)
+  priority Int            @default(0) // Score de prioridad 0-100
+
+  // Seguimiento
+  assignedAt  DateTime? @map("assigned_at")
+  contactedAt DateTime? @map("contacted_at")
+  convertedAt DateTime? @map("converted_at")
+
+  notes String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relaciones (solo con Partner, que s├¡ est├í en esta DB)
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([establishmentId])
+  @@map("lead_prospects")
+}
+
+enum ProspectStatus {
+  AVAILABLE
+  ASSIGNED
+  CONTACTED
+  CONVERTED
+  NOT_INTERESTED
+  INVALID
+}
+
+// ========== ZONAS GEOGRAFICAS ==========
+
+model GeoZone {
+  id   String   @id @default(uuid())
+  name String
+  type ZoneType
+
+  // Codigos de referencia (para states/municipalities)
+  stateCode        String? @map("state_code")
+  municipalityCode String? @map("municipality_code")
+
+  // Geometria GeoJSON para zonas custom
+  geometry Json?
+
+  // Metricas agregadas
+  totalEstablishments Int   @default(0) @map("total_establishments")
+  totalProspects      Int   @default(0) @map("total_prospects")
+  assignedProspects   Int   @default(0) @map("assigned_prospects")
+  convertedProspects  Int   @default(0) @map("converted_prospects")
+  conversionRate      Float @default(0) @map("conversion_rate")
+
+  // Centro de la zona (para centrar el mapa)
+  centerLat Float? @map("center_lat")
+  centerLng Float? @map("center_lng")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([type])
+  @@index([stateCode])
+  @@index([municipalityCode])
+  @@map("geo_zones")
+}
+
+enum ZoneType {
+  STATE
+  MUNICIPALITY
+  CUSTOM
+}
+
+// ========== NOTIFICACIONES ==========
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  read      Boolean          @default(false)
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  LEAD_NEW
+  LEAD_STATUS_CHANGED
+  DEAL_CLOSED
+  COMMISSION_APPROVED
+  COMMISSION_PAID
+  PARTNER_APPROVED
+  PARTNER_TIER_UPGRADE
+  SYSTEM
+}
+
+// ========== PLANTILLAS DE EMAIL ==========
+
+model EmailTemplate {
+  id        String  @id @default(uuid())
+  name      String  @unique
+  subject   String
+  htmlBody  String  @map("html_body") @db.Text
+  textBody  String  @map("text_body") @db.Text
+  variables Json // Variables disponibles para el template
+  isActive  Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
+// ========== SISTEMA LMS (CAPACITACI├ôN) ==========
+
+model Course {
+  id           String           @id @default(uuid())
+  title        String
+  slug         String           @unique
+  description  String           @db.Text
+  thumbnailUrl String?          @map("thumbnail_url")
+  duration     Int // minutos totales estimados
+  difficulty   CourseDifficulty
+  minTier      PartnerTier      @default(REGISTERED) @map("min_tier")
+  partnerTypes PartnerType[]    @map("partner_types")
+  isPublished  Boolean          @default(false) @map("is_published")
+  order        Int              @default(0)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  lessons      Lesson[]
+  enrollments  CourseEnrollment[]
+  certificates Certificate[]
+
+  @@index([slug])
+  @@index([isPublished])
+  @@map("courses")
+}
+
+enum CourseDifficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model Lesson {
+  id          String  @id @default(uuid())
+  courseId    String  @map("course_id")
+  title       String
+  slug        String
+  description String?
+  content     String  @db.Text // Markdown
+  videoUrl    String? @map("video_url") // YouTube/Vimeo embed
+  duration    Int // minutos
+  order       Int
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quizzes  Quiz[]
+  progress LessonProgress[]
+
+  @@unique([courseId, slug])
+  @@index([courseId])
+  @@map("lessons")
+}
+
+model Quiz {
+  id           String @id @default(uuid())
+  lessonId     String @map("lesson_id")
+  title        String
+  passingScore Int    @default(70) @map("passing_score")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  lesson    Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@index([lessonId])
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String  @id @default(uuid())
+  quizId        String  @map("quiz_id")
+  question      String
+  options       Json // [{id, text}]
+  correctOption String  @map("correct_option")
+  explanation   String?
+  order         Int
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([quizId])
+  @@map("quiz_questions")
+}
+
+model CourseEnrollment {
+  id          String           @id @default(uuid())
+  partnerId   String           @map("partner_id")
+  courseId    String           @map("course_id")
+  status      EnrollmentStatus @default(IN_PROGRESS)
+  progress    Int              @default(0) // porcentaje 0-100
+  startedAt   DateTime         @default(now()) @map("started_at")
+  completedAt DateTime?        @map("completed_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, courseId])
+  @@index([partnerId])
+  @@index([courseId])
+  @@map("course_enrollments")
+}
+
+enum EnrollmentStatus {
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+}
+
+model LessonProgress {
+  id          String    @id @default(uuid())
+  partnerId   String    @map("partner_id")
+  lessonId    String    @map("lesson_id")
+  completed   Boolean   @default(false)
+  completedAt DateTime? @map("completed_at")
+  watchTime   Int       @default(0) @map("watch_time") // segundos
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  lesson  Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, lessonId])
+  @@index([partnerId])
+  @@index([lessonId])
+  @@map("lesson_progress")
+}
+
+model QuizAttempt {
+  id          String   @id @default(uuid())
+  partnerId   String   @map("partner_id")
+  quizId      String   @map("quiz_id")
+  score       Int
+  passed      Boolean
+  answers     Json // {questionId: answerId}
+  attemptedAt DateTime @default(now()) @map("attempted_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([quizId])
+  @@map("quiz_attempts")
+}
+
+model Certificate {
+  id        String   @id @default(uuid())
+  partnerId String   @map("partner_id")
+  courseId  String   @map("course_id")
+  code      String   @unique // C├│digo verificable
+  issuedAt  DateTime @default(now()) @map("issued_at")
+  pdfUrl    String?  @map("pdf_url")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, courseId])
+  @@index([code])
+  @@map("certificates")
+}
+
+// ========== CAMPA├æAS DE REFERIDO UTM ==========
+
+model ReferralCampaign {
+  id        String @id @default(uuid())
+  partnerId String @map("partner_id")
+
+  // Datos de la campa├▒a
+  name        String // Nombre descriptivo
+  utmSource   String  @map("utm_source")
+  utmMedium   String  @map("utm_medium")
+  utmCampaign String  @map("utm_campaign")
+  utmTerm     String? @map("utm_term")
+  utmContent  String? @map("utm_content")
+
+  // Link generado completo
+  fullLink  String  @map("full_link")
+  shortLink String? @map("short_link") // Para integracion con acortadores
+
+  // Estadisticas calculadas (se actualizan periodicamente)
+  clicks       Int @default(0)
+  uniqueClicks Int @default(0) @map("unique_clicks")
+
+  // Estado
+  isActive Boolean @default(true) @map("is_active")
+
+  // Fechas
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([partnerId, utmCampaign])
+  @@index([partnerId])
+  @@index([utmCampaign])
+  @@index([isActive])
+  @@map("referral_campaigns")
+}
+
+// ========== MEETINGS DE ESTABLECIMIENTOS ==========
+
+model EstablishmentMeeting {
+  id              String @id @default(uuid())
+  establishmentId String @map("establishment_id") // ID del establecimiento DENUE
+  partnerId       String @map("partner_id") // Partner/Vendedor que agenda
+
+  // Datos del meeting
+  meetingScheduled Boolean   @default(false) @map("meeting_scheduled")
+  meetingDate      DateTime? @map("meeting_date")
+  meetingLink      String?   @map("meeting_link") // Zoom/Meet link
+  calendlyEventUri String?   @map("calendly_event_uri") // URI del evento en Calendly
+
+  // Notas
+  notes String? @db.Text
+
+  // Metadata
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@unique([establishmentId, partnerId]) // Un partner solo puede tener un meeting por establecimiento
+  @@index([partnerId])
+  @@index([establishmentId])
+  @@index([meetingScheduled])
+  @@index([meetingDate])
+  @@map("establishment_meetings")
+}
+
+// ========== CALL LEADS - RESULTADOS DE LLAMADAS DE CALIFICACI├ôN ==========
+
+model CallLead {
+  id String @id @default(uuid())
+
+  // Datos del prospecto
+  fullName String  @map("full_name")
+  phone    String
+  email    String?
+
+  // Referencia al establecimiento (para flujo de ventas)
+  establishmentId String? @map("establishment_id")
+
+  // Preferencia de llamada
+  preferredTime String    @default("now") @map("preferred_time") // 'now', 'morning', 'afternoon', 'scheduled'
+  scheduledAt   DateTime? @map("scheduled_at")
+
+  // Estado de la llamada
+  callStatus String @default("pending") @map("call_status")
+  // 'pending', 'in_progress', 'completed', 'failed', 'no_answer', 'scheduled'
+
+  // Resultados de la llamada (llenado por agente IA)
+  callSummary         String? @map("call_summary") @db.Text
+  callTranscript      Json?   @map("call_transcript") // Transcripci├│n completa
+  callDurationSeconds Int?    @map("call_duration_seconds")
+
+  // Calificaci├│n del lead
+  qualificationScore   String? @map("qualification_score") // 'A', 'B', 'C', 'D'
+  intentScore          Int?    @map("intent_score") // 0-100
+  qualificationDetails Json?   @map("qualification_details")
+  // {
+  //   "current_situation": "Manual, no system",
+  //   "pain_points": ["Lost orders", "Slow service"],
+  //   "business_size": "10-20 employees",
+  //   "interests": ["POS", "Digital menu"],
+  //   "urgency": "high",
+  //   "decision_maker": true,
+  //   "next_step": "demo_scheduled",
+  //   "bant": { "budget": {...}, "authority": {...}, "need": {...}, "timeline": {...} }
+  // }
+
+  // Datos BANT espec├¡ficos (intent, fear, pain, desire)
+  intent String? @db.Text
+  fear   String? @db.Text
+  pain   String? @db.Text
+  desire String? @db.Text
+
+  // Seguimiento
+  nextAction     String?   @map("next_action") // 'schedule_demo', 'send_info', 'follow_up_later', 'not_interested'
+  nextActionDate DateTime? @map("next_action_date")
+
+  // M├®todo de agendamiento
+  bookingMethod String? @map("booking_method") // 'verbal', 'calendly_link', 'agent_scheduled'
+
+  // Conversi├│n
+  convertedToLeadId String? @map("converted_to_lead_id")
+
+  // Asignaci├│n
+  partnerId          String? @map("partner_id") // Partner/Vendedor asignado
+  representativeName String? @map("representative_name")
+
+  // Tracking
+  source        String  @default("sales_qualification")
+  utmData       Json?   @map("utm_data")
+  twilioCallSid String? @map("twilio_call_sid")
+
+  // Agent Config (from demo-form-service agent_configs table)
+  agentConfigId String? @map("agent_config_id") @db.Uuid
+
+  // Timestamps
+  calledAt  DateTime? @map("called_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relaciones
+  partner Partner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+
+  @@index([callStatus])
+  @@index([phone])
+  @@index([qualificationScore])
+  @@index([establishmentId])
+  @@index([partnerId])
+  @@index([createdAt(sort: Desc)])
+  @@index([agentConfigId])
+  @@map("call_leads")
+}
+
+// ========== TWENTY CRM SYNC ==========
+
+// Estado de sincronizacion con Twenty CRM
+// Guarda el mapeo entre establishmentId (Partners) y los IDs creados en Twenty
+model TwentySyncState {
+  id              String @id @default(uuid())
+  establishmentId String @unique @map("establishment_id")
+
+  // IDs de registros en Twenty
+  twentyEstablecimientoId String? @map("twenty_establecimiento_id")
+  twentyContactoId        String? @map("twenty_contacto_id")
+  twentyProspectoId       String? @map("twenty_prospecto_id")
+  twentyOpportunityId     String? @map("twenty_opportunity_id")
+  twentyClienteId         String? @map("twenty_cliente_id")
+
+  // Auditoria
+  lastSyncedLevel String?   @map("last_synced_level") // ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
+  lastSyncedAt    DateTime? @map("last_synced_at")
+  lastError       String?   @map("last_error") @db.Text
+  lastErrorAt     DateTime? @map("last_error_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([twentyEstablecimientoId])
+  @@index([twentyOpportunityId])
+  @@index([lastSyncedLevel])
+  @@map("twenty_sync_states")
+}
+
+// Cola de trabajos de sincronizacion (outbox pattern)
+model TwentySyncJob {
+  id              String @id @default(uuid())
+  establishmentId String @map("establishment_id")
+
+  // Metadata
+  partnerId String? @map("partner_id")
+  reason    String // ADD_TO_CONTACTS, CONTACT_TO_PROSPECT, QUALIFICATION_TO_LEAD, ENRICHMENT_TO_CLIENT, UPDATE_LEAD_STATUS
+
+  // Estado del job
+  status    TwentySyncJobStatus @default(PENDING)
+  attempts  Int                 @default(0)
+  nextRunAt DateTime            @default(now()) @map("next_run_at")
+
+  // Resultado
+  lastError   String?   @map("last_error") @db.Text
+  lastErrorAt DateTime? @map("last_error_at")
+  completedAt DateTime? @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, nextRunAt])
+  @@index([establishmentId])
+  @@index([createdAt(sort: Desc)])
+  @@map("twenty_sync_jobs")
+}
+
+enum TwentySyncJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// Metadata del sistema de sincronizaci├│n con Twenty
+model TwentySyncMetadata {
+  id                          String    @id @default("singleton")
+  initialMigrationCompleted   Boolean   @default(false) @map("initial_migration_completed")
+  initialMigrationStartedAt   DateTime? @map("initial_migration_started_at")
+  initialMigrationCompletedAt DateTime? @map("initial_migration_completed_at")
+  totalRecordsMigrated        Int       @default(0) @map("total_records_migrated")
+  lastMigrationError          String?   @map("last_migration_error") @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("twenty_sync_metadata")
+}
+
+// ========== A/B TESTING ==========
+
+model AbTest {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  agentType   String  @map("agent_type") // SDR, QUALIFICATION
+  status      String  @default("DRAFT") // DRAFT, RUNNING, COMPLETED, CANCELLED
+  createdBy   String? @map("created_by") // User ID quien creo el test
+
+  startDate DateTime? @map("start_date")
+  endDate   DateTime? @map("end_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  variants AbTestVariant[]
+
+  @@index([createdBy])
+  @@map("ab_tests")
+}
+
+model AbTestVariant {
+  id       String @id @default(uuid())
+  abTestId String @map("ab_test_id")
+
+  agentConfigId   String @map("agent_config_id") // ID from demo-form-service
+  agentConfigName String @map("agent_config_name") // Snapshot name
+  voiceId         String @map("voice_id") // Snapshot voice/personality
+
+  percentage Int // 0-100
+
+  // Metrics snapshot
+  totalCalls     Int @default(0) @map("total_calls")
+  totalConnected Int @default(0) @map("total_connected")
+  totalConverted Int @default(0) @map("total_converted")
+
+  abTest   AbTest          @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+  contacts AbTestContact[]
+
+  @@map("ab_test_variants")
+}
+
+model AbTestContact {
+  id              String @id @default(uuid())
+  abTestVariantId String @map("ab_test_variant_id")
+
+  contactId   String @map("contact_id") // establishmentId or leadId
+  contactType String @default("ESTABLISHMENT") // ESTABLISHMENT, LEAD
+
+  status String  @default("PENDING") // PENDING, CALLED, COMPLETED, FAILED
+  result String? // JSON or string result
+
+  calledAt  DateTime? @map("called_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  variant AbTestVariant @relation(fields: [abTestVariantId], references: [id], onDelete: Cascade)
+
+  @@map("ab_test_contacts")
+}
+
+model AbTestCandidate {
+  id              String  @id @default(uuid())
+  establishmentId String  @unique @map("establishment_id") // ID del contacto/negocio
+  userId          String? @map("user_id") // Para saber qui├®n lo seleccion├│
+
+  // Snapshot m├¡nimo para preview r├ípido y fallback
+  snapshotName      String? @map("snapshot_name")
+  snapshotPhone     String? @map("snapshot_phone")
+  snapshotUbicacion String? @map("snapshot_ubicacion") // Estado, Municipio
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("ab_test_candidates")
+}
