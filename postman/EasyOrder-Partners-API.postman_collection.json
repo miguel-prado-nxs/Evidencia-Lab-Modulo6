@@ -1,0 +1,618 @@
+{
+  "info": {
+    "_postman_id": "easyorder-partners-api-collection",
+    "name": "EasyOrder Partners API",
+    "description": "Colección completa para testing de EasyOrder Partners API incluyendo campañas, cupones, leads y webhooks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "your-api-key-here",
+      "type": "string"
+    },
+    {
+      "key": "jwtToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "campaignId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "contactId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "couponCode",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\",\n  \"name\": \"Test User\",\n  \"type\": \"AFFILIATE\",\n  \"companyName\": \"Test Company\",\n  \"phone\": \"+525512345678\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/register"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.token) {",
+                  "    pm.collectionVariables.set('jwtToken', jsonData.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": "{{baseUrl}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Campaigns",
+      "item": [
+        {
+          "name": "Create Campaign",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set('campaignId', jsonData.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Campaign\",\n  \"description\": \"Campaign for testing\",\n  \"type\": \"SDR\",\n  \"centerLat\": 19.4326,\n  \"centerLng\": -99.1332,\n  \"radiusMeters\": 5000,\n  \"filters\": {}\n}"
+            },
+            "url": "{{baseUrl}}/api/campaigns"
+          }
+        },
+        {
+          "name": "List Campaigns",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/campaigns"
+          }
+        },
+        {
+          "name": "Get Campaign by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}"
+          }
+        },
+        {
+          "name": "Update Campaign",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Campaign Name\",\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}"
+          }
+        },
+        {
+          "name": "Get Campaign Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}/stats"
+          }
+        },
+        {
+          "name": "Get Campaign Contacts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}/contacts"
+          }
+        },
+        {
+          "name": "Assign Contacts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"establishmentIds\": [\"establishment-uuid-1\", \"establishment-uuid-2\"]\n}"
+            },
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}/contacts"
+          }
+        },
+        {
+          "name": "Assign Contacts with Geo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filters\": {\n    \"activityCodes\": [\"5611\", \"5612\"],\n    \"employeeRanges\": [\"1-5\", \"6-10\"]\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}/contacts/geo"
+          }
+        },
+        {
+          "name": "Start Campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetConcurrencyLimit\": 5,\n  \"maxRecipientsPerRequest\": 10\n}"
+            },
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}/start"
+          }
+        },
+        {
+          "name": "Update Contact Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"RESPONDED\"\n}"
+            },
+            "url": "{{baseUrl}}/api/campaigns/contacts/{{contactId}}/status"
+          }
+        },
+        {
+          "name": "Get Available Agents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/campaigns/agents"
+          }
+        },
+        {
+          "name": "Delete Campaign",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/campaigns/{{campaignId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coupons",
+      "item": [
+        {
+          "name": "Generate For Call (with campaignContext)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.coupon && jsonData.data.coupon.code) {",
+                  "    pm.collectionVariables.set('couponCode', jsonData.data.coupon.code);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+525512345678\",\n  \"prospectName\": \"Carlos García\",\n  \"businessName\": \"La Taquería\",\n  \"agentId\": \"agent-uuid\",\n  \"callId\": \"call-uuid\",\n  \"campaignContext\": {\n    \"campaignId\": \"{{campaignId}}\",\n    \"campaignContactId\": \"{{contactId}}\",\n    \"couponType\": \"PLUS30\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/coupons/generate-for-call"
+          }
+        },
+        {
+          "name": "Generate For Call (with scenario)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+525512345678\",\n  \"prospectName\": \"Carlos García\",\n  \"businessName\": \"La Taquería\",\n  \"scenario\": \"bant_high\",\n  \"bantScores\": {\n    \"budget\": 8,\n    \"authority\": 9,\n    \"need\": 7,\n    \"timeline\": 8\n  },\n  \"agentId\": \"agent-uuid\",\n  \"callId\": \"call-uuid\"\n}"
+            },
+            "url": "{{baseUrl}}/api/coupons/generate-for-call"
+          }
+        },
+        {
+          "name": "Check Eligibility",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"+525512345678\",\n  \"couponType\": \"PLUS30\"\n}"
+            },
+            "url": "{{baseUrl}}/api/coupons/check-eligibility"
+          }
+        },
+        {
+          "name": "Get Coupon by Code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/coupons/code/{{couponCode}}"
+          }
+        },
+        {
+          "name": "Track Visit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metadata\": {\n    \"userAgent\": \"Mozilla/5.0\",\n    \"referrer\": \"whatsapp\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/coupons/{{couponCode}}/visit"
+          }
+        },
+        {
+          "name": "Redeem Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userData\": {\n    \"email\": \"cliente@example.com\",\n    \"name\": \"Carlos García\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/coupons/{{couponCode}}/redeem"
+          }
+        },
+        {
+          "name": "List Coupons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/coupons?campaignId={{campaignId}}&status=GENERATED&page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "coupons"],
+              "query": [
+                {"key": "campaignId", "value": "{{campaignId}}"},
+                {"key": "status", "value": "GENERATED"},
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "50"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Available Coupons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/coupons/available?campaignId={{campaignId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coupon Templates",
+      "item": [
+        {
+          "name": "List Templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/coupon-templates"
+          }
+        },
+        {
+          "name": "Get Template by Type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/coupon-templates/PLUS30"
+          }
+        },
+        {
+          "name": "Create Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"couponType\": \"PLUS30\",\n  \"name\": \"30% de descuento + 2 meses gratis\",\n  \"description\": \"Oferta especial para nuevos clientes\",\n  \"scenarios\": [\"bant_high\", \"price_objection\"],\n  \"percentOff\": 30,\n  \"durationMonths\": 2,\n  \"messageTemplate\": \"¡Hola {{nombre}}! Te enviamos un cupón especial para {{negocio}}: {{codigo}} - {{beneficio}}\",\n  \"maxPerUser\": 1,\n  \"expiresHours\": 48,\n  \"priority\": 10\n}"
+            },
+            "url": "{{baseUrl}}/api/coupon-templates"
+          }
+        },
+        {
+          "name": "Update Template",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"active\": true,\n  \"priority\": 20\n}"
+            },
+            "url": "{{baseUrl}}/api/coupon-templates/PLUS30"
+          }
+        },
+        {
+          "name": "Delete Template",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/coupon-templates/PLUS30"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Leads",
+      "item": [
+        {
+          "name": "Track Lead (Public)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"partnerCode\": \"PARTNER123\",\n  \"businessName\": \"Restaurante El Buen Sabor\",\n  \"contactName\": \"María López\",\n  \"email\": \"maria@buensabor.com\",\n  \"phone\": \"+525587654321\",\n  \"businessType\": \"restaurant\",\n  \"location\": \"CDMX\",\n  \"monthlyOrders\": \"100-500\",\n  \"utmSource\": \"facebook\",\n  \"utmCampaign\": \"spring_promo\"\n}"
+            },
+            "url": "{{baseUrl}}/api/leads/track"
+          }
+        },
+        {
+          "name": "List Leads",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/leads"
+          }
+        },
+        {
+          "name": "Get Lead by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "url": "{{baseUrl}}/api/leads/lead-uuid"
+          }
+        },
+        {
+          "name": "Create Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"businessName\": \"Café Central\",\n  \"contactName\": \"Juan Pérez\",\n  \"email\": \"juan@cafecentral.com\",\n  \"phone\": \"+525598765432\",\n  \"businessType\": \"cafe\",\n  \"location\": \"Monterrey\"\n}"
+            },
+            "url": "{{baseUrl}}/api/leads"
+          }
+        },
+        {
+          "name": "Update Lead Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{jwtToken}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"QUALIFIED\"\n}"
+            },
+            "url": "{{baseUrl}}/api/leads/lead-uuid/status"
+          }
+        },
+        {
+          "name": "Auto Enrich",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leadId\": \"lead-uuid\",\n  \"enrichmentData\": {\n    \"employees\": 15,\n    \"revenue\": \"1-5M\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/leads/auto-enrich"
+          }
+        },
+        {
+          "name": "Auto Qualify",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "x-api-key", "value": "{{apiKey}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"leadId\": \"lead-uuid\",\n  \"bantScores\": {\n    \"budget\": 8,\n    \"authority\": 7,\n    \"need\": 9,\n    \"timeline\": 6\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/leads/auto-qualify"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "ElevenLabs Webhook Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/webhooks/elevenlabs/health"
+          }
+        },
+        {
+          "name": "ElevenLabs Call Completed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "elevenlabs-signature", "value": "t=timestamp,v0=signature"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"post_call_transcription\",\n  \"data\": {\n    \"conversation_id\": \"conv-uuid\",\n    \"phone_number\": \"+525512345678\",\n    \"analysis\": {\n      \"call_successful\": true,\n      \"transcript_summary\": \"El prospecto mostró interés en el producto\"\n    },\n    \"metadata\": {\n      \"call_duration_secs\": 180\n    },\n    \"conversation_initiation_client_data\": {\n      \"dynamic_variables\": {\n        \"campaignId\": \"campaign-uuid\",\n        \"campaignContactId\": \"contact-uuid\"\n      }\n    }\n  }\n}"
+            },
+            "url": "{{baseUrl}}/webhooks/elevenlabs/call-completed"
+          }
+        },
+        {
+          "name": "Campaign ElevenLabs Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "elevenlabs-signature", "value": "t=timestamp,v0=signature"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"conversation_ended\",\n  \"data\": {\n    \"conversation_id\": \"conv-uuid\",\n    \"phone_number\": \"+525512345678\",\n    \"analysis\": {\n      \"call_successful\": true,\n      \"transcript_summary\": \"Llamada completada exitosamente\"\n    },\n    \"dynamic_variables\": {\n      \"campaignId\": \"{{campaignId}}\",\n      \"campaignContactId\": \"{{contactId}}\"\n    }\n  }\n}"
+            },
+            "url": "{{baseUrl}}/api/campaigns/elevenlabs-webhook"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    }
+  ]
+}
