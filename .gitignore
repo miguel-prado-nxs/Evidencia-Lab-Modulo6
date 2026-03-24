@@ -9,3 +9,16 @@ body.json
 .env
 .env.backup
 .env.local
+
+# Archivos de contexto y análisis (no subir a repo)
+ANALISIS_*.md
+ESTADO_*.md
+test-all-endpoints.ps1
+apply-campaigns-migration.js
+apply-campaigns-migration-simple.js
+run-migration-direct.js
+Epica*.md
+PROPUESTA_*.md
+plan*.md
+campaigns-module*.md
+campañas*.md

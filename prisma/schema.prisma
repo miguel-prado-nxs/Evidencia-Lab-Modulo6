@@ -312,38 +312,46 @@ model ApiKey {
 }
 
 model EstablishmentEnrichment {
-  id                    String             @id @default(uuid())
-  establishmentId       String             @unique @map("establishment_id")
-  decisionMakerName     String?            @map("decision_maker_name")
-  decisionMakerPosition String?            @map("decision_maker_position")
-  decisionMakerPhone    String?            @map("decision_maker_phone")
-  decisionMakerWhatsApp String?            @map("decision_maker_whatsapp")
-  decisionMakerEmail    String?            @map("decision_maker_email")
-  intent                String?
-  fear                  String?
-  pain                  String?
-  desire                String?
-  level                 EstablishmentLevel @default(ESTABLISHMENT)
-  enrichedBy            String?            @map("enriched_by")
-  enrichedAt            DateTime?          @map("enriched_at")
-  lastUpdatedBy         String?            @map("last_updated_by")
-  createdAt             DateTime           @default(now()) @map("created_at")
-  updatedAt             DateTime           @updatedAt @map("updated_at")
-  clientNotes           String?            @map("client_notes")
-  clientSince           DateTime?          @map("client_since")
-  clientStatus          String?            @map("client_status")
-  productPurchased      String?            @map("product_purchased")
-  purchaseAmount        Decimal?           @map("purchase_amount") @db.Decimal(10, 2)
-  purchaseDate          DateTime?          @map("purchase_date")
-  callSummary           String?            @map("call_summary")
-  strategy              String?            @db.VarChar(10)
-  callAttempts          Int?               @default(1) @map("call_attempts")
-  callDurationSeconds   Int?               @default(0) @map("call_duration_seconds")
-  callStatus            String?            @map("call_status") @db.VarChar(20)
-  enrichmentStatus      String?            @map("enrichment_status") @db.VarChar(30)
-  gatekeeperInfo        Json?              @map("gatekeeper_info")
-  bestCallTime          String?            @map("best_call_time") @db.VarChar(50)
-  establishmentData     Json?              @map("establishment_data")
+  id                      String             @id @default(uuid())
+  establishmentId         String             @unique @map("establishment_id")
+  decisionMakerName       String?            @map("decision_maker_name")
+  decisionMakerPosition   String?            @map("decision_maker_position")
+  decisionMakerPhone      String?            @map("decision_maker_phone")
+  decisionMakerWhatsApp   String?            @map("decision_maker_whatsapp")
+  decisionMakerEmail      String?            @map("decision_maker_email")
+  intent                  String?
+  fear                    String?
+  pain                    String?
+  desire                  String?
+  level                   EstablishmentLevel @default(ESTABLISHMENT)
+  enrichedBy              String?            @map("enriched_by")
+  enrichedAt              DateTime?          @map("enriched_at")
+  lastUpdatedBy           String?            @map("last_updated_by")
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
+  clientNotes             String?            @map("client_notes")
+  clientSince             DateTime?          @map("client_since")
+  clientStatus            String?            @map("client_status")
+  productPurchased        String?            @map("product_purchased")
+  purchaseAmount          Decimal?           @map("purchase_amount") @db.Decimal(10, 2)
+  purchaseDate            DateTime?          @map("purchase_date")
+  callSummary             String?            @map("call_summary")
+  strategy                String?            @db.VarChar(10)
+  callAttempts            Int?               @default(1) @map("call_attempts")
+  callDurationSeconds     Int?               @default(0) @map("call_duration_seconds")
+  callStatus              String?            @map("call_status") @db.VarChar(20)
+  enrichmentStatus        String?            @map("enrichment_status") @db.VarChar(30)
+  gatekeeperInfo          Json?              @map("gatekeeper_info")
+  bestCallTime            String?            @map("best_call_time") @db.VarChar(50)
+  establishmentData       Json?              @map("establishment_data")
+  authority_score         Int?               @default(-1)
+  budget_score            Int?               @default(-1)
+  confidence_level        String?            @db.VarChar(20)
+  need_score              Int?               @default(-1)
+  overall_score           Int?               @default(-1)
+  qualification_completed Boolean?           @default(false)
+  qualification_notes     String?
+  timeline_score          Int?               @default(-1)
 
   @@index([level])
   @@index([establishmentId])
@@ -776,7 +784,6 @@ model ElevenLabsPersonality {
 
   @@map("elevenlabs_personalities")
 }
-
 model AbTest {
   id          String          @id @default(uuid())
   name        String
@@ -795,19 +802,20 @@ model AbTest {
 }
 
 model AbTestVariant {
-  id             String                 @id @default(uuid())
-  abTestId       String                 @map("ab_test_id")
-  agentConfigId  String?                @map("agent_config_id")
-  voiceId        String?                @map("voice_id")
-  percentage     Int
-  totalCalls     Int                    @default(0) @map("total_calls")
-  totalConnected Int                    @default(0) @map("total_connected")
-  totalConverted Int                    @default(0) @map("total_converted")
-  voiceName      String?                @map("voice_name")
-  personalityId  String?                @map("personality_id")
-  contacts       AbTestContact[]
-  abTest         AbTest                 @relation(fields: [abTestId], references: [id], onDelete: Cascade)
-  personality    ElevenLabsPersonality? @relation(fields: [personalityId], references: [id])
+  id              String                 @id @default(uuid())
+  abTestId        String                 @map("ab_test_id")
+  agentConfigId   String?                @map("agent_config_id")
+  agentConfigName String?                @map("agent_config_name")
+  voiceId         String?                @map("voice_id")
+  voiceName       String?                @map("voice_name")
+  personalityId   String?                @map("personality_id")
+  percentage      Int
+  totalCalls      Int                    @default(0) @map("total_calls")
+  totalConnected  Int                    @default(0) @map("total_connected")
+  totalConverted  Int                    @default(0) @map("total_converted")
+  contacts        AbTestContact[]
+  abTest          AbTest                 @relation(fields: [abTestId], references: [id], onDelete: Cascade)
+  personality     ElevenLabsPersonality? @relation(fields: [personalityId], references: [id])
 
   @@map("ab_test_variants")
 }
@@ -857,7 +865,6 @@ model OnboardingInteraction {
   @@index([conversationId])
   @@map("onboarding_interactions")
 }
-
 enum UserRole {
   ADMIN
   PARTNER
@@ -991,4 +998,240 @@ enum TwentySyncJobStatus {
   PROCESSING
   DONE
   FAILED
+}
+// ========== CAMPAÑAS DE MARKETING ==========
+
+model Campaign {
+  id          String   @id @default(uuid())
+  
+  // Datos básicos
+  name        String
+  description String?  @db.Text
+  status      CampaignStatus @default(DRAFT)
+  type        CampaignType?  // ACQUISITION, NURTURING, REACTIVATION
+  
+  // Segmentación geográfica
+  centerLat     Float?   @map("center_lat")
+  centerLng     Float?   @map("center_lng")
+  radiusMeters  Int?     @map("radius_meters")
+  
+  // Filtros específicos (alineados con frontend)
+  activityCodes   String[] @default([]) @map("activity_codes")  // Tipos de restaurante
+  employeeRanges  String[] @default([]) @map("employee_ranges") // Rangos de empleados
+  filters         Json?    // Filtros adicionales flexibles
+  
+  // Agente y oferta
+  agentConfigId   String?  @map("agent_config_id")
+  agentConfigName String?  @map("agent_config_name")
+  offer           String?  @db.Text // Descripción de la oferta
+  couponPrefix    String?  @map("coupon_prefix")
+  
+  // Métricas de contactos
+  totalContacts     Int @default(0) @map("total_contacts")
+  totalCalled       Int @default(0) @map("total_called")      // Contactos llamados
+  totalResponded    Int @default(0) @map("total_responded")   // Contactos que respondieron
+  totalConverted    Int @default(0) @map("total_converted")   // Contactos convertidos
+  totalFailed       Int @default(0) @map("total_failed")      // Contactos fallidos
+  
+  // Métricas de cupones
+  couponsSent       Int @default(0) @map("coupons_sent")
+  couponsVisited    Int @default(0) @map("coupons_visited")
+  couponsConverted  Int @default(0) @map("coupons_converted")
+  
+  // Metadata
+  createdBy   String?  @map("created_by") // User ID
+  partnerId   String?  @map("partner_id")  // Partner asociado
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relaciones
+  contacts    CampaignContact[]
+  coupons     CampaignCoupon[]
+  
+  @@index([status])
+  @@index([type])
+  @@index([createdBy])
+  @@index([partnerId])
+  @@index([createdAt(sort: Desc)])
+  @@map("campaigns")
+}
+
+enum CampaignStatus {
+  DRAFT      // Frontend: "Pending"
+  ACTIVE     // Frontend: "Running"
+  PAUSED     // Frontend: "Paused"
+  COMPLETED  // Frontend: "Completed"
+  CANCELLED
+}
+
+enum CampaignType {
+  ACQUISITION
+  NURTURING
+  REACTIVATION
+}
+
+model CampaignContact {
+  id         String   @id @default(uuid())
+  campaignId String   @map("campaign_id")
+  
+  // Referencia al establecimiento (sin FK por cross-DB)
+  establishmentId String @map("establishment_id")
+  
+  // Snapshot de datos para evitar joins
+  establishmentName  String? @map("establishment_name")
+  establishmentPhone String? @map("establishment_phone")
+  establishmentData  Json?   @map("establishment_data")
+  
+  // Tracking de estados
+  status      ContactStatus @default(PENDING)
+  sentAt      DateTime?     @map("sent_at")
+  visitedAt   DateTime?     @map("visited_at")
+  convertedAt DateTime?     @map("converted_at")
+  
+  // Cupón asignado (si aplica)
+  couponId    String?  @map("coupon_id")
+  
+  // Metadata de envío
+  messageId   String?  @map("message_id") // ID del mensaje WhatsApp
+  errorReason String?  @map("error_reason")
+
+  // Batch calling fields (NUEVO)
+  providerBatchId   String?   @map("provider_batch_id")
+  conversationId    String?   @map("conversation_id") @unique
+  callDuration      Int?      @map("call_duration")
+  callTranscript    String?   @map("call_transcript")    @db.Text
+  webhookReceivedAt DateTime? @map("webhook_received_at")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  campaign    Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  coupon      CampaignCoupon?  @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  
+  @@unique([campaignId, establishmentId]) // Un contacto por campaña
+  @@index([campaignId])
+  @@index([establishmentId])
+  @@index([status])
+  @@index([sentAt])
+  @@map("campaign_contacts")
+}
+
+enum ContactStatus {
+  PENDING    // Frontend: "Pending"
+  CALLING    // Frontend: "Calling" - en proceso de llamada
+  CALLED     // Frontend: "Called" - llamada realizada
+  RESPONDED  // Frontend: "Responded" - contacto respondió positivamente
+  SENT       // Mensaje/cupón enviado
+  DELIVERED  // Mensaje entregado (WhatsApp)
+  VISITED    // Visitó landing de cupón
+  CONVERTED  // Frontend: "Converted" - se convirtió en cliente
+  FAILED     // Frontend: "Failed" - falló el contacto
+}
+
+model CampaignCoupon {
+  id         String   @id @default(uuid())
+  campaignId String?  @map("campaign_id") // Nullable para cupones ad-hoc sin campaña
+  
+  // Código único del cupón
+  code       String   @unique
+  
+  // Oferta (texto descriptivo)
+  offer      String   // "+2 meses gratis", "20% descuento"
+  
+  // Configuración Stripe (nuevos campos)
+  couponType     String?  @map("coupon_type")      // PLUS30, 50OFF, TRIAL14, etc.
+  percentOff     Int?     @map("percent_off")      // 0-100
+  durationMonths Int?     @map("duration_months")  // 1, 2, 3...
+  trialDays      Int?     @map("trial_days")       // Para extensión de trial
+  stripePromoId  String?  @map("stripe_promo_id")  // ID del Promotion Code en Stripe
+  
+  // Tracking
+  status        CouponStatus @default(GENERATED)
+  generatedAt   DateTime     @default(now()) @map("generated_at")
+  sentAt        DateTime?    @map("sent_at")
+  visitedAt     DateTime?    @map("visited_at")
+  convertedAt   DateTime?    @map("converted_at")
+  
+  // Tracking avanzado (nuevos campos)
+  scenario      String?   // "bant_high", "price_objection", "trial_ending"
+  assignedPhone String?   @map("assigned_phone")  // Teléfono del prospecto
+  assignedAt    DateTime? @map("assigned_at")     // Cuándo se asignó
+  expiresAt     DateTime? @map("expires_at")      // 48h desde asignación
+  
+  // Atribución (nuevos campos)
+  source        String?   // "agent_call", "crm_chat", "campaign"
+  agentId       String?   @map("agent_id")        // ID del agente que lo generó
+  callId        String?   @map("call_id")         // ID de la llamada ElevenLabs
+  
+  // Metadata
+  visitCount    Int      @default(0) @map("visit_count")
+  lastVisitedAt DateTime? @map("last_visited_at")
+  
+  // Datos de conversión (si aplica)
+  conversionData Json?   @map("conversion_data")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  campaign    Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contacts    CampaignContact[]
+  
+  @@index([campaignId])
+  @@index([code])
+  @@index([status])
+  @@index([couponType])
+  @@index([assignedPhone])
+  @@index([expiresAt])
+  @@index([source])
+  @@map("campaign_coupons")
+}
+
+enum CouponStatus {
+  GENERATED
+  SENT
+  VISITED
+  CONVERTED
+  EXPIRED
+}
+
+// ========== PLANTILLAS DE CUPONES ==========
+
+model CouponTemplate {
+  id          String   @id @default(uuid())
+  
+  // Identificación
+  couponType  String   @unique @map("coupon_type")  // PLUS30, 50OFF, TRIAL14, etc.
+  name        String                                 // Nombre descriptivo
+  description String?  @db.Text                      // Descripción del cupón
+  
+  // Escenarios donde aplica
+  scenarios   String[] @default([])                  // ["bant_high", "price_objection", "trial_ending"]
+  
+  // Configuración Stripe
+  percentOff     Int?  @map("percent_off")           // 0-100
+  durationMonths Int?  @map("duration_months")       // 1, 2, 3...
+  trialDays      Int?  @map("trial_days")            // Para extensión de trial
+  
+  // Plantilla de mensaje WhatsApp
+  messageTemplate String  @map("message_template") @db.Text  // Texto con variables {{nombre}}, {{negocio}}, {{codigo}}
+  mediaUrl        String? @map("media_url")                  // URL de imagen/banner opcional
+  
+  // Reglas de uso
+  maxPerUser   Int      @default(1) @map("max_per_user")     // Máximo de cupones por usuario
+  expiresHours Int      @default(48) @map("expires_hours")   // Horas hasta expiración
+  validFor     String[] @default([]) @map("valid_for")       // ["new_users", "upgrade", "retention"]
+  
+  // Estado
+  active      Boolean  @default(true)
+  priority    Int      @default(0)  // Para ordenar templates cuando hay múltiples matches
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  @@index([couponType])
+  @@index([active])
+  @@map("coupon_templates")
 }

@@ -12,6 +12,7 @@ require("./workers/sdrCallWorker");
 require("./workers/qualificationCallWorker");
 const { setupBullBoard } = require("./queues/dashboard");
 const { getHealthClient } = require("./queues/config");
+const campaignBatchReconciliationWorker = require("./workers/campaignBatchReconciliationWorker");
 
 // Importar rutas
 const authRoutes = require("./routes/auth");
@@ -37,6 +38,9 @@ const testCallRoutes = require("./routes/testCall");
 const webhooksRoutes = require("./routes/webhooks");
 const elevenLabsRoutes = require("./routes/elevenLabsRoutes");
 const voicesRoutes = require("./routes/voices");
+const campaignsRoutes = require("./routes/campaigns");
+const couponsRoutes = require("./routes/coupons");
+const couponTemplatesRoutes = require("./routes/couponTemplates");
 
 // Crear aplicación Express
 const app = express();
@@ -63,7 +67,16 @@ app.use(
 );
 
 // Parse JSON
-app.use(express.json({ limit: "10mb" }));
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req, res, buffer) => {
+      if (req.originalUrl && req.originalUrl.includes("/campaigns/elevenlabs-webhook")) {
+        req.rawBody = buffer.toString("utf8");
+      }
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Rate limiting
@@ -136,6 +149,8 @@ app.get("/api/v1", (req, res) => {
       analytics: "/api/v1/analytics",
       geo: "/api/v1/geo",
       referrals: "/api/v1/referrals",
+      campaigns: "/api/v1/campaigns",
+      coupons: "/api/v1/coupons",
     },
     authentication: "JWT Bearer token en header Authorization",
     documentation: "Ver README.md",
@@ -169,6 +184,9 @@ app.use("/api/v1/test-call", testCallRoutes);
 app.use("/api/v1/webhooks", webhooksRoutes);
 app.use("/api/v1/elevenlabs", elevenLabsRoutes);
 app.use("/api/v1/voices", voicesRoutes);
+app.use("/api/v1/campaigns", campaignsRoutes);
+app.use("/api/v1/coupons", couponsRoutes);
+app.use("/api/v1/coupon-templates", couponTemplatesRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
@@ -196,16 +214,35 @@ server.listen(PORT, () => {
 
   // Iniciar worker de sincronizacion con Twenty CRM
   twentySyncWorker.start();
+  campaignBatchReconciliationWorker.start();
 });
+
+const stopWorkers = () => {
+  try {
+    twentySyncWorker.stop();
+  } catch (error) {
+    logger.error("Error stopping twentySyncWorker", { error: error.message });
+  }
+
+  try {
+    campaignBatchReconciliationWorker.stop();
+  } catch (error) {
+    logger.error("Error stopping campaignBatchReconciliationWorker", {
+      error: error.message,
+    });
+  }
+};
 
 // Manejo de errores no capturados
 process.on("unhandledRejection", (err) => {
   logger.error("Unhandled Rejection:", err);
+  stopWorkers();
   process.exit(1);
 });
 
 process.on("uncaughtException", (err) => {
   logger.error("Uncaught Exception:", err);
+  stopWorkers();
   process.exit(1);
 });
 
