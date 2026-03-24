@@ -524,7 +524,18 @@ const startCampaign = async (campaignId, options = {}) => {
   try {
     const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
     const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
-    const configUrl = `${demoFormUrl}/agent-configs/default/SDR`;
+    
+    // Determinar si es SDR o Calificación basado en el agentId de la campaña
+    const sdrAgentId = process.env.ELEVENLABS_SDR_AGENT_ID;
+    const qualificationAgentId = process.env.ELEVENLABS_QUALIFICATION_AGENT_ID;
+    
+    let configType = "SDR"; // Default a SDR
+    if (resolvedAgentId === qualificationAgentId) {
+      configType = "QUALIFICATION";
+    }
+    
+    const configUrl = `${demoFormUrl}/agent-configs/default/${configType}`;
+    logger.info(`[CampaignStart] Detectado tipo de agente: ${configType}. Consultando config en: ${configUrl}`);
     
     const configResponse = await axios.get(configUrl, {
       headers: { "X-API-Key": agentsConfigKey || "" },
@@ -535,12 +546,12 @@ const startCampaign = async (campaignId, options = {}) => {
       const data = configResponse.data.data;
       agentBuilderVoiceId = data.openai_voice || data.voice || null;
       agentBuilderPersonalityName = data.personality_name || null;
-      logger.info("[CampaignStart] Usando configuración de voz por defecto de Agent Builder", {
+      logger.info(`[CampaignStart] Usando configuración de voz por defecto de Agent Builder (${configType})`, {
         voiceId: agentBuilderVoiceId,
         personalityName: agentBuilderPersonalityName
       });
     } else {
-      logger.warn("[CampaignStart] La respuesta del Agent Builder no contenía data válida");
+      logger.warn(`[CampaignStart] La respuesta del Agent Builder (${configType}) no contenía data válida`);
     }
   } catch (error) {
     logger.warn("[CampaignStart] No se pudo obtener la configuración por defecto de Agent Builder. Se usará la de ElevenLabs.", { error: error.message });

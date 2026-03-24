@@ -130,11 +130,14 @@ const removeDuplicateAliases = (dynamicVariables = {}) => {
     ["voiceId", "voice_id"],
   ];
 
+  // Comentado para evitar que ElevenLabs falle por falta de variables camelCase
+  /*
   for (const [camelKey, snakeKey] of aliasPairs) {
     if (cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "") {
       delete cleaned[camelKey];
     }
   }
+  */
 
   return cleaned;
 };
