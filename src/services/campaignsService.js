@@ -498,6 +498,35 @@ const startCampaign = async (campaignId, options = {}) => {
     voiceId: resolvedAgentProfile.voiceId,
   });
 
+  // Obtener configuración de voz del Agent Builder (demo-form-service) para sobrescribir la de ElevenLabs
+  let agentBuilderVoiceId = null;
+  let agentBuilderPersonalityName = null;
+  
+  try {
+    const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
+    const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
+    const configUrl = `${demoFormUrl}/agent-configs/default/SDR`;
+    
+    const configResponse = await axios.get(configUrl, {
+      headers: { "X-API-Key": agentsConfigKey || "" },
+      timeout: 5000,
+    });
+    
+    if (configResponse.data?.success && configResponse.data?.data) {
+      const data = configResponse.data.data;
+      agentBuilderVoiceId = data.openai_voice || data.voice || null;
+      agentBuilderPersonalityName = data.personality_name || null;
+      logger.info("[CampaignStart] Usando configuración de voz por defecto de Agent Builder", {
+        voiceId: agentBuilderVoiceId,
+        personalityName: agentBuilderPersonalityName
+      });
+    } else {
+      logger.warn("[CampaignStart] La respuesta del Agent Builder no contenía data válida");
+    }
+  } catch (error) {
+    logger.warn("[CampaignStart] No se pudo obtener la configuración por defecto de Agent Builder. Se usará la de ElevenLabs.", { error: error.message });
+  }
+
   let contacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
@@ -596,12 +625,18 @@ const startCampaign = async (campaignId, options = {}) => {
       resolvedAgentProfile.agentName ||
       campaign.agentConfigName ||
       "Asesor EasyOrder";
+      
+    // Prioridad 1: Agent Builder, Prioridad 2: ElevenLabs, Prioridad 3: Contact Data
     const personalityName =
+      agentBuilderPersonalityName ||
       resolvedAgentProfile.voiceName ||
       resolvedAgentProfile.voiceId ||
       contactData.personality_name ||
       contactData.personalityName ||
       agentName;
+
+    const finalVoiceName = agentBuilderPersonalityName || resolvedAgentProfile.voiceName || null;
+    const finalVoiceId = agentBuilderVoiceId || resolvedAgentProfile.voiceId || null;
 
     const phoneNumber =
       contact.establishmentPhone ||
@@ -621,10 +656,10 @@ const startCampaign = async (campaignId, options = {}) => {
         establishmentName,
         decisionMakerName,
         agentName,
-        voiceName: resolvedAgentProfile.voiceName || null,
-        voice_name: resolvedAgentProfile.voiceName || null,
-        voiceId: resolvedAgentProfile.voiceId || null,
-        voice_id: resolvedAgentProfile.voiceId || null,
+        voiceName: finalVoiceName,
+        voice_name: finalVoiceName,
+        voiceId: finalVoiceId,
+        voice_id: finalVoiceId,
         establishment_name: establishmentName,
         decision_maker_name: decisionMakerName,
         agent_name: agentName,

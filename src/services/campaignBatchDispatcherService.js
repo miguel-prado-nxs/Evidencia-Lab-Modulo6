@@ -376,13 +376,41 @@ const submitChunkToProvider = async ({
     call_name: callName || `campaign-${campaignId}-${Date.now()}`,
     agent_id: agentId,
     target_concurrency_limit: targetConcurrencyLimit,
-    recipients: chunk.map((recipient) => ({
-      phone_number: recipient.phoneNumber,
-      dynamic_variables: recipient.dynamicVariables,
-      conversation_initiation_client_data: {
+    recipients: chunk.map((recipient) => {
+      const voiceId = recipient.dynamicVariables?.voice_id || recipient.dynamicVariables?.voiceId;
+      
+      const recipientData = {
+        phone_number: recipient.phoneNumber,
         dynamic_variables: recipient.dynamicVariables,
-      },
-    })),
+        conversation_initiation_client_data: {
+          dynamic_variables: recipient.dynamicVariables,
+        },
+      };
+
+      // Si hay un voice_id específico, incluirlo en múltiples lugares (Shotgun approach) 
+      // para asegurar que ElevenLabs lo tome independientemente de la versión de la API
+      if (voiceId) {
+        // 1. Root level
+        recipientData.voice_id = voiceId;
+        
+        // 2. Inside conversation_initiation_client_data (SDR Microservice style)
+        recipientData.conversation_initiation_client_data.voice_id = voiceId;
+        recipientData.conversation_initiation_client_data.conversation_config_override = {
+          tts: {
+            voice_id: voiceId
+          }
+        };
+
+        // 3. Outside conversation_initiation_client_data (Batch API root level style)
+        recipientData.conversation_config_override = {
+          tts: {
+            voice_id: voiceId
+          }
+        };
+      }
+
+      return recipientData;
+    }),
   };
 
   if (scheduledTimeUnix) {
@@ -400,9 +428,12 @@ const submitChunkToProvider = async ({
       recipientCount: chunk.length,
       callName: payload.call_name,
       agentPhoneNumberId,
-      firstRecipient: chunk[0] ? {
-        phoneNumber: chunk[0].phoneNumber,
-        dynamicVariables: chunk[0].dynamicVariables,
+      firstRecipient: payload.recipients[0] ? {
+        phoneNumber: payload.recipients[0].phone_number,
+        dynamicVariables: payload.recipients[0].dynamic_variables,
+        voiceId: payload.recipients[0].voice_id,
+        configOverride: payload.recipients[0].conversation_config_override,
+        clientData: payload.recipients[0].conversation_initiation_client_data,
       } : null,
     });
 
