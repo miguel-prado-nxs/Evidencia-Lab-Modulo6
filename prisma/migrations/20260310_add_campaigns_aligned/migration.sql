@@ -249,3 +249,17 @@ BEGIN
         FOREIGN KEY ("campaign_id") REFERENCES "campaigns"("id") ON DELETE CASCADE ON UPDATE CASCADE;
     END IF;
 END $$;
+
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'campaigns_coupon_prefix_fkey'
+    ) THEN
+        ALTER TABLE "campaigns"
+        ADD CONSTRAINT "campaigns_coupon_prefix_fkey"
+        FOREIGN KEY ("coupon_prefix")
+        REFERENCES "coupon_templates"("id")
+        ON DELETE SET NULL
+        ON UPDATE CASCADE;
+    END IF;
+END $$;
