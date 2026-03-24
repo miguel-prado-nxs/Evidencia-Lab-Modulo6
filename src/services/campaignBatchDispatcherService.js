@@ -135,7 +135,7 @@ const removeDuplicateAliases = (dynamicVariables = {}) => {
     const hasSnake = cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "";
 
     if (hasCamel && hasSnake) {
-      delete cleaned[snakeKey];
+      delete cleaned[camelKey];
     }
   }
 
