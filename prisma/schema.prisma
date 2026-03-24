@@ -1165,9 +1165,10 @@ model CampaignCoupon {
   expiresAt     DateTime? @map("expires_at")      // 48h desde asignación
   
   // Atribución (nuevos campos)
-  source        String?   // "agent_call", "crm_chat", "campaign"
-  agentId       String?   @map("agent_id")        // ID del agente que lo generó
-  callId        String?   @map("call_id")         // ID de la llamada ElevenLabs
+  source            String?   // "agent_call", "crm_chat", "campaign"
+  agentId           String?   @map("agent_id")              // ID del agente que lo generó
+  callId            String?   @map("call_id")               // ID de la llamada ElevenLabs
+  campaignContactId String?   @map("campaign_contact_id")   // ID del contacto de campaña para trazabilidad
   
   // Metadata
   visitCount    Int      @default(0) @map("visit_count")
@@ -1189,6 +1190,7 @@ model CampaignCoupon {
   @@index([assignedPhone])
   @@index([expiresAt])
   @@index([source])
+  @@index([campaignContactId])
   @@map("campaign_coupons")
 }
 

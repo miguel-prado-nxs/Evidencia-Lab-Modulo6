@@ -64,6 +64,26 @@ const checkEligibility = async (phone, couponType) => {
 };
 
 /**
+ * Selecciona el template apropiado basado en el tipo de cupón
+ * @param {string} couponType - Tipo de cupón (ej: "PLUS30", "50OFF")
+ * @returns {Promise<object>} Template seleccionado
+ */
+const selectTemplateByCouponType = async (couponType) => {
+  const template = await prisma.couponTemplate.findFirst({
+    where: {
+      couponType,
+      active: true
+    }
+  });
+
+  if (!template) {
+    throw new Error(`No active template found for couponType: ${couponType}`);
+  }
+
+  return template;
+};
+
+/**
  * Selecciona el template apropiado basado en el escenario
  * @param {string} scenario - Escenario (ej: "bant_high", "price_objection")
  * @param {object} bantScores - Puntajes BANT opcionales
@@ -98,11 +118,13 @@ const selectTemplateByScenario = async (scenario, bantScores = {}) => {
  * @param {string} params.phone - Teléfono del prospecto
  * @param {string} params.prospectName - Nombre del prospecto
  * @param {string} params.businessName - Nombre del negocio
- * @param {string} params.scenario - Escenario que dispara el cupón
+ * @param {string} params.scenario - Escenario que dispara el cupón (opcional si viene couponType)
  * @param {object} params.bantScores - Puntajes BANT (opcional)
  * @param {string} params.agentId - ID del agente que genera el cupón
  * @param {string} params.callId - ID de la llamada
  * @param {string} params.campaignId - ID de campaña (opcional)
+ * @param {string} params.campaignContactId - ID del contacto de campaña para trazabilidad (opcional)
+ * @param {string} params.couponType - Tipo de cupón directo desde campaignContext (opcional)
  * @returns {Promise<{coupon: object, message: string, template: object}>}
  */
 const generateCouponForCall = async ({
@@ -113,10 +135,21 @@ const generateCouponForCall = async ({
   bantScores = {},
   agentId,
   callId,
-  campaignId = null
+  campaignId = null,
+  campaignContactId = null,
+  couponType = null
 }) => {
-  // 1. Seleccionar template por escenario
-  const template = await selectTemplateByScenario(scenario, bantScores);
+  // 1. Seleccionar template: prioridad a couponType, fallback a scenario
+  let template;
+  if (couponType) {
+    template = await selectTemplateByCouponType(couponType);
+    logger.info("Template selected by couponType", { couponType, templateId: template.id });
+  } else if (scenario) {
+    template = await selectTemplateByScenario(scenario, bantScores);
+    logger.info("Template selected by scenario", { scenario, templateId: template.id });
+  } else {
+    throw new Error("Either couponType or scenario is required to select a template");
+  }
   
   // 2. Verificar elegibilidad
   const eligibility = await checkEligibility(phone, template.couponType);
@@ -149,11 +182,12 @@ const generateCouponForCall = async ({
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + template.expiresHours);
   
-  // 5. Crear cupón
+  // 5. Crear cupón con trazabilidad de campaña
   const coupon = await prisma.campaignCoupon.create({
     data: {
       code,
       campaignId,
+      campaignContactId, // Trazabilidad directa al contacto de campaña
       couponType: template.couponType,
       offer: template.description || `${template.name}`,
       percentOff: template.percentOff,
@@ -183,8 +217,11 @@ const generateCouponForCall = async ({
     code: coupon.code,
     phone,
     scenario,
+    couponType: template.couponType,
     agentId,
-    callId
+    callId,
+    campaignId,
+    campaignContactId
   });
   
   return {
@@ -332,5 +369,6 @@ module.exports = {
   redeemCoupon,
   checkEligibility,
   selectTemplateByScenario,
+  selectTemplateByCouponType,
   renderTemplate
 };
