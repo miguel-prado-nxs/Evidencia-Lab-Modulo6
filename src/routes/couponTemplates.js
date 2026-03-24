@@ -41,7 +41,7 @@ const updateTemplateSchema = z.object({
   }),
 });
 
-router.use(authenticateJWT);
+// router.use(authenticateJWT);
 
 router.get("/", couponTemplatesController.list);
 router.get("/:type", couponTemplatesController.getByType);

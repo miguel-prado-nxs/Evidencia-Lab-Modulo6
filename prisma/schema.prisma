@@ -998,7 +998,8 @@ enum TwentySyncJobStatus {
   PROCESSING
   DONE
   FAILED
-}
+}
+
 // ========== CAMPAÑAS DE MARKETING ==========
 
 model Campaign {
@@ -1050,6 +1051,8 @@ model Campaign {
   // Relaciones
   contacts    CampaignContact[]
   coupons     CampaignCoupon[]
+
+  couponTemplate CouponTemplate? @relation(fields: [couponPrefix], references: [id], onDelete: SetNull)
   
   @@index([status])
   @@index([type])
@@ -1234,4 +1237,6 @@ model CouponTemplate {
   @@index([couponType])
   @@index([active])
   @@map("coupon_templates")
+
+  campaigns    Campaign[]
 }

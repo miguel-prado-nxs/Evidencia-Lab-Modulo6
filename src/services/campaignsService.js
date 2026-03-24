@@ -153,6 +153,7 @@ const getCampaignById = async (id) => {
         take: 10,
         orderBy: { createdAt: "desc" },
       },
+      couponTemplate: true,
     },
   });
 
@@ -183,6 +184,7 @@ const listCampaigns = async (filters = {}) => {
             coupons: true,
           },
         },
+        couponTemplate: true,
       },
     }),
     prisma.campaign.count({ where }),
@@ -257,6 +259,23 @@ const updateCampaign = async (id, data) => {
     where: { id },
     data: updateData,
   });
+
+  // Eliminar contactos existentes y reasignar nuevos si hay parámetros geográficos
+  if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
+    // Eliminar todos los contactos existentes de la campaña
+    await prisma.campaignContact.deleteMany({
+      where: { campaignId: id },
+    });
+
+    // Reasignar contactos con los nuevos filtros
+    await assignContactsWithGeoFilter(campaign.id, {
+      ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+      activityCodes: campaign.activityCodes || [],
+      employeeRanges: campaign.employeeRanges || [],
+    });
+
+    logger.info(`Campaign contacts refreshed: ${campaign.id}`, { campaignId: campaign.id });
+  }
 
   logger.info(`Campaign updated: ${campaign.id}`, { campaignId: campaign.id });
   return campaign;
