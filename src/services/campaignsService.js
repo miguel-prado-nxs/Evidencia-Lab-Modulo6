@@ -1127,6 +1127,33 @@ const resumeCampaign = async (campaignId) => {
     logger.warn(`No pending contacts found to resume for campaign ${campaignId}`);
   }
 
+  // Si hay pendientes, re-despachar llamadas para que continúen automáticamente
+  if (pendingContacts.length > 0) {
+    const startResult = await startCampaign(campaignId, {
+      agentId: campaign.agentConfigId,
+    });
+
+    logger.info(`Campaign resumed with redispatch: ${campaignId}`, {
+      campaignId,
+      previousStatus: campaign.status,
+      newStatus: startResult.status,
+      pendingContactsCount: pendingContacts.length,
+      stuckCallingContactsCount: stuckCallingContacts.length,
+      reconciliedContactsCount: reconciliedCount,
+      dispatchedRecipients: startResult.dispatch?.dispatchedRecipients,
+    });
+
+    return {
+      campaignId,
+      status: startResult.status,
+      startedAt: startResult.startedAt,
+      dispatch: startResult.dispatch,
+      pendingContacts: pendingContacts.length,
+      stuckCallingContacts: stuckCallingContacts.length,
+      reconciliedContacts: reconciliedCount,
+    };
+  }
+
   const updatedCampaign = await prisma.campaign.update({
     where: { id: campaignId },
     data: {
@@ -1134,7 +1161,7 @@ const resumeCampaign = async (campaignId) => {
     },
   });
 
-  logger.info(`Campaign resumed: ${campaignId}`, {
+  logger.info(`Campaign resumed without redispatch: ${campaignId}`, {
     campaignId,
     previousStatus: campaign.status,
     newStatus: updatedCampaign.status,
@@ -1143,7 +1170,6 @@ const resumeCampaign = async (campaignId) => {
     reconciliedContactsCount: reconciliedCount,
   });
 
-  // Return resume info for potential batch dispatch if needed
   return {
     ...updatedCampaign,
     pendingContacts: pendingContacts.length,
