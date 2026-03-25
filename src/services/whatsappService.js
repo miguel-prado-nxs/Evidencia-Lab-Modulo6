@@ -1,6 +1,6 @@
 const logger = require("../config/logger");
 
-const BAILEYS_SERVICE_URL = process.env.BAILEYS_SERVICE_URL;
+const BAILEYS_URL = process.env.BAILEYS_URL;
 const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY;
 const BAILEYS_FROM_PHONE = process.env.BAILEYS_FROM_PHONE; // Número de WhatsApp remitente (opcional, si no se envía, Baileys usa la primera sesión activa)
 
@@ -15,9 +15,9 @@ const BAILEYS_FROM_PHONE = process.env.BAILEYS_FROM_PHONE; // Número de WhatsAp
  * @returns {Promise<{success: boolean, data?: object, error?: string}>}
  */
 const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) => {
-  if (!BAILEYS_SERVICE_URL) {
-    logger.warn("BAILEYS_SERVICE_URL not configured — skipping WhatsApp send");
-    return { success: false, error: "BAILEYS_SERVICE_URL not configured" };
+  if (!BAILEYS_URL) {
+    logger.warn("BAILEYS_URL not configured — skipping WhatsApp send");
+    return { success: false, error: "BAILEYS_URL not configured" };
   }
 
   const fromPhone = from || BAILEYS_FROM_PHONE;
@@ -45,7 +45,7 @@ const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) =
       hasMedia: !!mediaUrl,
     });
 
-    const response = await fetch(`${BAILEYS_SERVICE_URL}/api/messages/send`, {
+    const response = await fetch(`${BAILEYS_URL}/api/messages/send`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

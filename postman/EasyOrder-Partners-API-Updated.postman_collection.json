@@ -1,0 +1,540 @@
+{
+  "info": {
+    "_postman_id": "easyorder-partners-api-collection",
+    "name": "EasyOrder Partners API",
+    "description": "Colección completa para testing de EasyOrder Partners API incluyendo campañas, cupones, leads y webhooks.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://partners-api-agentbuilder-dev.up.railway.app",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "your-api-key-here",
+      "type": "string"
+    },
+    {
+      "key": "jwtToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "campaignId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "contactId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "couponId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "couponCode",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Coupons - WhatsApp Integration",
+      "item": [
+        {
+          "name": "Generate and Send Coupon (Webhook ElevenLabs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.coupon) {",
+                  "    pm.collectionVariables.set('couponId', jsonData.data.coupon.id);",
+                  "    pm.collectionVariables.set('couponCode', jsonData.data.coupon.code);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"523891087325\",\n  \"prospectName\": \"Juan García\",\n  \"businessName\": \"Restaurante El Sabor\",\n  \"scenario\": \"closing\",\n  \"agentId\": \"agent-uuid-123\",\n  \"callId\": \"call-uuid-456\",\n  \"campaignId\": \"{{campaignId}}\",\n  \"campaignContactId\": \"{{contactId}}\",\n  \"couponType\": \"PLUS30\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/coupons/generate-for-call",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "coupons",
+                "generate-for-call"
+              ]
+            },
+            "description": "Genera un cupón y lo envía automáticamente por WhatsApp usando una sesión aleatoria de Baileys. Este es el endpoint que ElevenLabs llama como webhook durante una llamada."
+          }
+        },
+        {
+          "name": "Send Coupon Message (Direct)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"523891087325\",\n  \"prospectName\": \"Juan García\",\n  \"businessName\": \"Restaurante El Sabor\",\n  \"scenario\": \"closing\",\n  \"agentId\": \"agent-uuid-123\",\n  \"callId\": \"call-uuid-456\",\n  \"couponType\": \"PLUS30\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/webhooks/coupons/generate-for-call",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "coupons",
+                "generate-for-call"
+              ]
+            },
+            "description": "Envía un cupón directamente sin contexto de campaña. Genera el cupón, obtiene una sesión aleatoria de Baileys y envía el mensaje por WhatsApp."
+          }
+        },
+        {
+          "name": "Send Existing Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"523891087325\",\n  \"from\": \"5218001234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/coupons-whatsapp/{{couponId}}/send",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "coupons-whatsapp",
+                "{{couponId}}",
+                "send"
+              ]
+            },
+            "description": "Envía un cupón existente por WhatsApp. El parámetro 'from' es opcional, se elige al azar si no se proporciona."
+          }
+        },
+        {
+          "name": "Resend Coupon",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"523891087325\",\n  \"from\": \"5218001234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/coupons-whatsapp/{{couponId}}/resend",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "coupons-whatsapp",
+                "{{couponId}}",
+                "resend"
+              ]
+            },
+            "description": "Reenvía un cupón existente a un número diferente."
+          }
+        },
+        {
+          "name": "Send Coupons to Campaign Contact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"couponIds\": [\n    \"coupon-uuid-1\",\n    \"coupon-uuid-2\",\n    \"coupon-uuid-3\"\n  ],\n  \"from\": \"5218001234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/coupons-whatsapp/campaign-contact/{{contactId}}/send-coupons",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "coupons-whatsapp",
+                "campaign-contact",
+                "{{contactId}}",
+                "send-coupons"
+              ]
+            },
+            "description": "Envía múltiples cupones a un contacto de campaña específico."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Campaigns - Coupon Management",
+      "item": [
+        {
+          "name": "Load Coupon Templates",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"couponTemplateIds\": [\n    \"template-uuid-1\",\n    \"template-uuid-2\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/load-coupon-templates",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}",
+                "load-coupon-templates"
+              ]
+            },
+            "description": "Carga y valida templates de cupones para una campaña."
+          }
+        },
+        {
+          "name": "Get Campaign Send Preview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/send-preview",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}",
+                "send-preview"
+              ]
+            },
+            "description": "Obtiene una vista previa de qué se va a enviar en la campaña, incluyendo templates de cupones y mensajes de ejemplo."
+          }
+        },
+        {
+          "name": "Validate Campaign Before Start",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/validate-before-start",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}",
+                "validate-before-start"
+              ]
+            },
+            "description": "Valida que la campaña esté lista para iniciar (templates cargados, contactos asignados, etc)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Campaign Context",
+      "item": [
+        {
+          "name": "Get Campaign Context",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaign-context?campaignId={{campaignId}}&campaignContactId={{contactId}}",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaign-context"
+              ],
+              "query": [
+                {
+                  "key": "campaignId",
+                  "value": "{{campaignId}}"
+                },
+                {
+                  "key": "campaignContactId",
+                  "value": "{{contactId}}"
+                }
+              ]
+            },
+            "description": "Obtiene el contexto completo de la campaña para ElevenLabs, incluyendo información de cupones disponibles e instrucciones para el agente."
+          }
+        },
+        {
+          "name": "Get Coupon Instructions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaign-context/coupon-instructions?campaignId={{campaignId}}",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaign-context",
+                "coupon-instructions"
+              ],
+              "query": [
+                {
+                  "key": "campaignId",
+                  "value": "{{campaignId}}"
+                }
+              ]
+            },
+            "description": "Obtiene las instrucciones de cupones para el agente de ElevenLabs."
+          }
+        },
+        {
+          "name": "Get Coupon Templates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaign-context/coupon-templates?campaignId={{campaignId}}",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaign-context",
+                "coupon-templates"
+              ],
+              "query": [
+                {
+                  "key": "campaignId",
+                  "value": "{{campaignId}}"
+                }
+              ]
+            },
+            "description": "Obtiene los templates de cupones disponibles para una campaña."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Campaigns",
+      "item": [
+        {
+          "name": "Create Campaign",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set('campaignId', jsonData.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Campaña Primavera 2026\",\n  \"description\": \"Campaña de adquisición con cupones\",\n  \"type\": \"ACQUISITION\",\n  \"centerLat\": 25.6866,\n  \"centerLng\": -100.3161,\n  \"radiusMeters\": 5000,\n  \"activityCodes\": [\"5812\"],\n  \"couponTemplateIds\": [\"template-uuid-1\", \"template-uuid-2\"],\n  \"agentConfigId\": \"agent-uuid\",\n  \"offer\": \"Descuento especial para nuevos clientes\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns"
+              ]
+            },
+            "description": "Crea una nueva campaña con templates de cupones."
+          }
+        },
+        {
+          "name": "Get Campaign",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}"
+              ]
+            },
+            "description": "Obtiene los detalles de una campaña."
+          }
+        },
+        {
+          "name": "List Campaigns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns"
+              ]
+            },
+            "description": "Lista todas las campañas."
+          }
+        },
+        {
+          "name": "Update Campaign",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Campaña Primavera 2026 - Actualizada\",\n  \"description\": \"Campaña de adquisición actualizada\",\n  \"couponTemplateIds\": [\"template-uuid-1\", \"template-uuid-2\", \"template-uuid-3\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}"
+              ]
+            },
+            "description": "Actualiza una campaña, incluyendo templates de cupones."
+          }
+        },
+        {
+          "name": "Start Campaign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"agent-uuid\",\n  \"targetConcurrencyLimit\": 5,\n  \"maxRecipientsPerRequest\": 100\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/start",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}",
+                "start"
+              ]
+            },
+            "description": "Inicia una campaña. ElevenLabs recibirá el contexto de campaña con información de cupones en las dynamic_variables."
+          }
+        }
+      ]
+    }
+  ]
+}

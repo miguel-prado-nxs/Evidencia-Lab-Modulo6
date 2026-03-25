@@ -21,6 +21,7 @@ const createCampaignSchema = z.object({
     agentConfigName: z.string().optional(),
     offer: z.string().optional(),
     couponPrefix: z.string().optional(),
+    couponTemplateIds: z.array(z.string()).optional(),
   }),
 });
 
@@ -33,6 +34,7 @@ const updateCampaignSchema = z.object({
     centerLng: z.number().optional(),
     radiusMeters: z.number().int().positive().optional(),
     filters: z.record(z.any()).optional(),
+    couponTemplateIds: z.array(z.string()).optional(),
   }),
 });
 
@@ -66,6 +68,12 @@ const updateContactStatusSchema = z.object({
   }),
 });
 
+const loadCouponTemplatesSchema = z.object({
+  body: z.object({
+    couponTemplateIds: z.array(z.string()).min(1, "At least one coupon template ID is required"),
+  }),
+});
+
 router.post("/elevenlabs-webhook", campaignWebhookController.handleElevenLabsWebhook);
 
 // router.use(authenticateJWT);
@@ -84,5 +92,9 @@ router.get("/:id/contacts", campaignsController.getContacts);
 router.patch("/contacts/:contactId/status", validate(updateContactStatusSchema), campaignsController.updateContactStatus);
 
 router.get("/:id/stats", campaignsController.getStats);
+
+router.post("/:id/load-coupon-templates", validate(loadCouponTemplatesSchema), campaignsController.loadCouponTemplates);
+router.get("/:id/send-preview", campaignsController.getCampaignSendPreview);
+router.get("/:id/validate-before-start", campaignsController.validateBeforeStart);
 
 module.exports = router;

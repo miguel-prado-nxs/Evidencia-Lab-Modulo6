@@ -41,6 +41,9 @@ const voicesRoutes = require("./routes/voices");
 const campaignsRoutes = require("./routes/campaigns");
 const couponsRoutes = require("./routes/coupons");
 const couponTemplatesRoutes = require("./routes/couponTemplates");
+const couponWhatsappRoutes = require("./routes/couponWhatsapp");
+const campaignContextRoutes = require("./routes/campaignContext");
+const couponCallRoutes = require("./routes/couponCall");
 
 // Crear aplicación Express
 const app = express();
@@ -185,8 +188,11 @@ app.use("/api/v1/webhooks", webhooksRoutes);
 app.use("/api/v1/elevenlabs", elevenLabsRoutes);
 app.use("/api/v1/voices", voicesRoutes);
 app.use("/api/v1/campaigns", campaignsRoutes);
+app.use("/api/v1/webhooks/coupons", couponCallRoutes);
 app.use("/api/v1/coupons", couponsRoutes);
 app.use("/api/v1/coupon-templates", couponTemplatesRoutes);
+app.use("/api/v1/coupons-whatsapp", couponWhatsappRoutes);
+app.use("/api/v1/campaign-context", campaignContextRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES

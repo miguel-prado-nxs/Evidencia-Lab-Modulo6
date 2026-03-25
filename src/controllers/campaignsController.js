@@ -1,10 +1,11 @@
 const campaignsService = require("../services/campaignsService");
+const campaignCouponValidationService = require("../services/campaignCouponValidationService");
 const logger = require("../config/logger");
 const axios = require('axios');
 
 const create = async (req, res, next) => {
   try {
-    const { name, description, type, centerLat, centerLng, radiusMeters, activityCodes, employeeRanges, filters, agentConfigId, agentConfigName, offer, couponPrefix } = req.body;
+    const { name, description, type, centerLat, centerLng, radiusMeters, activityCodes, employeeRanges, filters, agentConfigId, agentConfigName, offer, couponPrefix, couponTemplateIds } = req.body;
 
     const campaign = await campaignsService.createCampaign({
       name,
@@ -20,6 +21,7 @@ const create = async (req, res, next) => {
       agentConfigName,
       offer,
       couponPrefix,
+      couponTemplateIds,
       createdBy: req.user?.id,
     });
 
@@ -93,7 +95,8 @@ const update = async (req, res, next) => {
       agentConfigId,
       agentConfigName,
       offer,
-      couponPrefix
+      couponPrefix,
+      couponTemplateIds
     } = req.body;
 
     const existingCampaign = await campaignsService.getCampaignById(id);
@@ -128,6 +131,7 @@ const update = async (req, res, next) => {
       agentConfigName,
       offer,
       couponPrefix,
+      couponTemplateIds,
     });
 
     res.json({
@@ -352,6 +356,68 @@ const startCampaign = async (req, res, next) => {
   }
 };
 
+const loadCouponTemplates = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { couponTemplateIds } = req.body;
+
+    if (!Array.isArray(couponTemplateIds)) {
+      return res.status(400).json({
+        success: false,
+        error: "couponTemplateIds must be an array"
+      });
+    }
+
+    const { templates, validation } = await campaignCouponValidationService.loadAndValidateCouponTemplates(couponTemplateIds);
+
+    logger.info("Coupon templates loaded for campaign", {
+      campaignId: id,
+      templateCount: templates.length,
+      isValid: validation.isValid
+    });
+
+    res.json({
+      success: true,
+      data: {
+        templates,
+        validation
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getCampaignSendPreview = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const preview = await campaignCouponValidationService.getCampaignSendPreview(id);
+
+    res.json({
+      success: true,
+      data: preview
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const validateBeforeStart = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const validation = await campaignCouponValidationService.validateCampaignBeforeStart(id);
+
+    res.json({
+      success: validation.isValid,
+      data: validation
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -365,4 +431,7 @@ module.exports = {
   updateContactStatus,
   getStats,
   getAgents,
+  loadCouponTemplates,
+  getCampaignSendPreview,
+  validateBeforeStart,
 };

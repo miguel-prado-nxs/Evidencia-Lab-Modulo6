@@ -1,0 +1,145 @@
+{
+  "type": "webhook",
+  "name": "send_coupon_call",
+  "description": "Genera un cupón personalizado para el prospecto y lo envía automáticamente por WhatsApp vía Baileys desde Partners API.",
+  "disable_interruptions": false,
+  "force_pre_tool_speech": "auto",
+  "tool_call_sound": null,
+  "tool_call_sound_behavior": "auto",
+  "tool_error_handling_mode": "auto",
+  "execution_mode": "immediate",
+  "api_schema": {
+    "url": "https://partners-api-agentbuilder-dev.up.railway.app/api/v1/coupons/generate-for-call",
+    "method": "POST",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": {
+      "id": "body",
+      "type": "object",
+      "description": "Datos del prospecto para generar cupón y enviarlo por WhatsApp.",
+      "properties": [
+        {
+          "id": "phone",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "Número de teléfono del prospecto con código de país, ej: 523891087325",
+          "dynamic_variable": "phone",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": true
+        },
+        {
+          "id": "prospectName",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "Nombre del prospecto confirmado durante la llamada",
+          "dynamic_variable": "prospectName",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": true
+        },
+        {
+          "id": "businessName",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "Nombre del negocio o restaurante del prospecto",
+          "dynamic_variable": "businessName",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": true
+        },
+        {
+          "id": "scenario",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "Escenario que dispara el cupón: closing, price_objection, bant_high, trial_ending",
+          "dynamic_variable": "scenario",
+          "constant_value": "",
+          "enum": [
+            "closing",
+            "price_objection",
+            "bant_high",
+            "trial_ending"
+          ],
+          "is_system_provided": false,
+          "required": true
+        },
+        {
+          "id": "agentId",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "ID del agente que realiza la llamada",
+          "dynamic_variable": "agentId",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": true
+        },
+        {
+          "id": "callId",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "ID de la llamada actual de ElevenLabs",
+          "dynamic_variable": "callId",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": true
+        },
+        {
+          "id": "campaignId",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "ID de la campaña (opcional, viene en dynamic_variables si es llamada de campaña)",
+          "dynamic_variable": "campaignId",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": false
+        },
+        {
+          "id": "campaignContactId",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "ID del contacto de campaña (opcional, para trazabilidad)",
+          "dynamic_variable": "campaignContactId",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": false
+        },
+        {
+          "id": "couponType",
+          "type": "string",
+          "value_type": "llm_prompt",
+          "description": "Tipo específico de cupón (opcional, ej: PLUS30, 50OFF). Si no se especifica, se selecciona automáticamente según el scenario",
+          "dynamic_variable": "couponType",
+          "constant_value": "",
+          "enum": null,
+          "is_system_provided": false,
+          "required": false
+        }
+      ],
+      "required": true,
+      "value_type": "llm_prompt"
+    },
+    "request_headers": [
+      {
+        "type": "secret",
+        "name": "x-api-key",
+        "secret_id": "sdr_7jht0adywjd6sqt6gvibmzascrioyie7"
+      }
+    ],
+    "content_type": "application/json",
+    "auth_connection": null
+  },
+  "assignments": [],
+  "response_timeout_secs": 20,
+  "dynamic_variables": {
+    "dynamic_variable_placeholders": {}
+  },
+  "response_mocks": []
+}
