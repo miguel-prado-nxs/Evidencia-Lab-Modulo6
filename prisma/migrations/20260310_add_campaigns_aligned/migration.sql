@@ -263,3 +263,7 @@ BEGIN
         ON UPDATE CASCADE;
     END IF;
 END $$;
+
+-- Add missing campaign coupon template ids array column
+ALTER TABLE "campaigns"
+ADD COLUMN IF NOT EXISTS "coupon_template_ids" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
