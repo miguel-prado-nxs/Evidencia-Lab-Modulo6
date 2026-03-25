@@ -7,59 +7,7 @@ const axios = require("axios");
 const BAILEYS_URL = process.env.BAILEYS_URL;
 const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY;
 
-/**
- * Obtiene una sesión conectada aleatoria de Baileys
- * @returns {Promise<string|null>} Número de teléfono de una sesión conectada o null
- */
-const getRandomConnectedSession = async () => {
-  try {
-    const response = await axios.get(`${BAILEYS_URL}/api/sessions`, {
-      headers: {
-        "X-API-KEY": BAILEYS_API_KEY || ""
-      }
-    });
 
-    logger.info("Baileys sessions response", {
-      responseKeys: Object.keys(response.data || {})
-    });
-
-    // El endpoint /api/sessions regresa un array de sesiones conectadas
-    const sessionsArr = response.data?.data || response.data || [];
-
-    logger.info("Sessions found", {
-      count: sessionsArr.length,
-      sessions: sessionsArr.map(s => ({
-        phone: s.phoneNumber || s.id,
-        status: s.status
-      }))
-    });
-
-    if (!Array.isArray(sessionsArr) || sessionsArr.length === 0) {
-      logger.warn("No connected sessions available in Baileys", {
-        totalSessions: 0
-      });
-      return null;
-    }
-
-    // Seleccionar una sesión al azar
-    const randomSession = sessionsArr[Math.floor(Math.random() * sessionsArr.length)];
-
-    logger.info("Selected random WhatsApp session", {
-      phone: randomSession.phoneNumber || randomSession.id,
-      status: randomSession.status
-    });
-
-    return randomSession.phoneNumber || randomSession.id;
-  } catch (error) {
-    logger.error("Error getting connected sessions from Baileys", {
-      error: error.message,
-      url: `${BAILEYS_URL}/api/sessions`,
-      status: error.response?.status,
-      responseData: error.response?.data
-    });
-    return null;
-  }
-};
 
 /**
  * Envía un cupón generado mediante WhatsApp usando Baileys
@@ -91,7 +39,7 @@ const sendCouponViaWhatsapp = async ({ couponId, phone, from }) => {
     // Si no se proporciona número remitente, obtener uno al azar de Baileys
     let fromPhone = from;
     if (!fromPhone) {
-      fromPhone = await getRandomConnectedSession();
+      fromPhone = await whatsappService.getRandomConnectedSession();
       if (!fromPhone) {
         throw new Error("No connected WhatsApp sessions available in Baileys");
       }
@@ -302,7 +250,7 @@ const generateAndSendCoupon = async ({
     // 2. Si no se proporciona número remitente, obtener uno al azar de Baileys
     let fromPhone = from;
     if (!fromPhone) {
-      fromPhone = await getRandomConnectedSession();
+      fromPhone = await whatsappService.getRandomConnectedSession();
       if (!fromPhone) {
         throw new Error("No connected WhatsApp sessions available in Baileys");
       }

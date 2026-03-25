@@ -47,6 +47,25 @@
       "name": "Coupons - WhatsApp Integration",
       "item": [
         {
+          "name": "Get Active Baileys Sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{baseUrl}}/api/sessions",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions"
+              ]
+            },
+            "description": "Consulta las sesiones conectadas de WhatsApp en Baileys. Retorna un arreglo de sesiones activas."
+          }
+        },
+        {
           "name": "Generate and Send Coupon (Webhook ElevenLabs)",
           "event": [
             {
