@@ -50,12 +50,20 @@
           "name": "Get Active Baileys Sessions",
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "X-API-KEY",
+                "value": "easyorder2025",
+                "type": "text"
+              }
+            ],
             "url": {
-              "raw": "https://{{baseUrl}}/api/sessions",
+              "raw": "https://whatsapp-baileys.okcrm.mx/api/sessions",
               "protocol": "https",
               "host": [
-                "{{baseUrl}}"
+                "whatsapp-baileys",
+                "okcrm",
+                "mx"
               ],
               "path": [
                 "api",
