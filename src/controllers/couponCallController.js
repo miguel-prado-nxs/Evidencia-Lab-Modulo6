@@ -75,6 +75,9 @@ const generateForCall = async (req, res, next) => {
       couponType
     });
 
+    // Helper para ignorar variables no resueltas de Postman ("{{variable}}") o strings vacíos
+    const parseOptionalId = (id) => (!id || id.startsWith("{{") ? null : id);
+
     // Generar y enviar el cupón
     const result = await couponWhatsappService.generateAndSendCoupon({
       phone,
@@ -83,8 +86,8 @@ const generateForCall = async (req, res, next) => {
       scenario,
       agentId,
       callId,
-      campaignId: campaignId || null,
-      campaignContactId: campaignContactId || null,
+      campaignId: parseOptionalId(campaignId),
+      campaignContactId: parseOptionalId(campaignContactId),
       couponType: couponType || null,
       from: from || null
     });

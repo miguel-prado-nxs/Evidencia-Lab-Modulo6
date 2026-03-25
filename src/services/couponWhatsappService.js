@@ -287,9 +287,7 @@ const generateAndSendCoupon = async ({
       where: { id: coupon.id },
       data: {
         status: "SENT",
-        sentAt: new Date(),
-        sentFrom: fromPhone,
-        messageId: baileyResult.data?.data?.key?.id
+        sentAt: new Date()
       }
     });
 
