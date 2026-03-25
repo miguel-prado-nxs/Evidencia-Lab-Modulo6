@@ -1057,7 +1057,57 @@ const resumeCampaign = async (campaignId) => {
     throw error;
   }
 
-  // Get pending contacts that haven't been called yet
+  // Reconciliar contactos que quedaron stuck en CALLING
+  // Estos son contactos cuya llamada pudo haber completado mientras la campaña estaba pausada
+  const stuckCallingContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "CALLING",
+    },
+    select: {
+      id: true,
+      webhookReceivedAt: true,
+      conversationId: true,
+      createdAt: true,
+    },
+  });
+
+  // Reconciliar contactos stuck
+  let reconciliedCount = 0;
+  if (stuckCallingContacts.length > 0) {
+    const now = new Date();
+    const CALLING_TIMEOUT_MINUTES = 30; // Si estuvo CALLING más de 30 min sin webhook, resetear a PENDING
+
+    for (const contact of stuckCallingContacts) {
+      const timeInCallingMs = now.getTime() - new Date(contact.createdAt).getTime();
+      const timeInCallingMinutes = timeInCallingMs / (1000 * 60);
+
+      // Si el webhook fue recibido, marcar como CALLED (la llamada se completó)
+      if (contact.webhookReceivedAt) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "CALLED" },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: CALLING → CALLED (webhook received)`);
+      }
+      // Si pasó más tiempo que el timeout sin webhook, resetear a PENDING para reintentar
+      else if (timeInCallingMinutes > CALLING_TIMEOUT_MINUTES && !contact.conversationId) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING" },
+        });
+        reconciliedCount++;
+        logger.warn(`Contact ${contact.id} reconciled: CALLING → PENDING (timeout, no webhook)`);
+      }
+      // Si tiene conversationId pero no webhook, dejar como CALLING (indica que la llamada está en progreso real o fue truncada)
+      else if (contact.conversationId) {
+        logger.debug(`Contact ${contact.id} stuck CALLING with conversation ${contact.conversationId}, awaiting webhook`);
+      }
+    }
+  }
+
+  // Obtener contactos pending que no se han llamado todavía
   const pendingContacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
@@ -1073,7 +1123,7 @@ const resumeCampaign = async (campaignId) => {
     },
   });
 
-  if (pendingContacts.length === 0) {
+  if (pendingContacts.length === 0 && stuckCallingContacts.length === 0) {
     logger.warn(`No pending contacts found to resume for campaign ${campaignId}`);
   }
 
@@ -1089,12 +1139,16 @@ const resumeCampaign = async (campaignId) => {
     previousStatus: campaign.status,
     newStatus: updatedCampaign.status,
     pendingContactsCount: pendingContacts.length,
+    stuckCallingContactsCount: stuckCallingContacts.length,
+    reconciliedContactsCount: reconciliedCount,
   });
 
   // Return resume info for potential batch dispatch if needed
   return {
     ...updatedCampaign,
     pendingContacts: pendingContacts.length,
+    stuckCallingContacts: stuckCallingContacts.length,
+    reconciliedContacts: reconciliedCount,
   };
 };
 

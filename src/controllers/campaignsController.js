@@ -396,10 +396,15 @@ const resumeCampaign = async (req, res, next) => {
 
     const result = await campaignsService.resumeCampaign(id);
 
+    let message = "Campaña reanudada exitosamente";
+    if (result.reconciliedContacts > 0) {
+      message += ` (${result.reconciliedContacts} contactos reconciliados)`;
+    }
+
     res.json({
       success: true,
       data: result,
-      message: "Campaña reanudada exitosamente",
+      message,
     });
   } catch (error) {
     next(error);
