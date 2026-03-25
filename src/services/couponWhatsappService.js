@@ -13,62 +13,47 @@ const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY;
  */
 const getRandomConnectedSession = async () => {
   try {
-    const response = await axios.get(`${BAILEYS_URL}/api/status`, {
+    const response = await axios.get(`${BAILEYS_URL}/api/sessions`, {
       headers: {
         "X-API-KEY": BAILEYS_API_KEY || ""
       }
     });
 
-    logger.info("Baileys status response", {
+    logger.info("Baileys sessions response", {
       responseKeys: Object.keys(response.data || {})
     });
 
-    // Obtener sesiones del formato de Baileys: response.data.data.sessions (objeto)
-    const sessionsObj = response.data?.data?.sessions || {};
-    
-    // Convertir objeto de sesiones a array
-    const sessionEntries = Object.entries(sessionsObj)
-      .map(([phone, sessionData]) => ({
-        phone,
-        status: sessionData?.status || "unknown",
-        ...sessionData
-      }));
+    // El endpoint /api/sessions regresa un array de sesiones conectadas
+    const sessionsArr = response.data?.data || response.data || [];
 
     logger.info("Sessions found", {
-      count: sessionEntries.length,
-      sessions: sessionEntries.map(s => ({
-        phone: s.phone,
+      count: sessionsArr.length,
+      sessions: sessionsArr.map(s => ({
+        phone: s.phoneNumber || s.id,
         status: s.status
       }))
     });
 
-    // Filtrar sesiones conectadas
-    const connectedSessions = sessionEntries.filter(s => s.status === "connected");
-
-    if (connectedSessions.length === 0) {
+    if (!Array.isArray(sessionsArr) || sessionsArr.length === 0) {
       logger.warn("No connected sessions available in Baileys", {
-        totalSessions: sessionEntries.length,
-        sessionStatuses: sessionEntries.map(s => ({
-          phone: s.phone,
-          status: s.status
-        }))
+        totalSessions: 0
       });
       return null;
     }
 
     // Seleccionar una sesión al azar
-    const randomSession = connectedSessions[Math.floor(Math.random() * connectedSessions.length)];
-    
+    const randomSession = sessionsArr[Math.floor(Math.random() * sessionsArr.length)];
+
     logger.info("Selected random WhatsApp session", {
-      phone: randomSession.phone,
+      phone: randomSession.phoneNumber || randomSession.id,
       status: randomSession.status
     });
-    
-    return randomSession.phone;
+
+    return randomSession.phoneNumber || randomSession.id;
   } catch (error) {
     logger.error("Error getting connected sessions from Baileys", {
       error: error.message,
-      url: `${BAILEYS_URL}/api/status`,
+      url: `${BAILEYS_URL}/api/sessions`,
       status: error.response?.status,
       responseData: error.response?.data
     });
