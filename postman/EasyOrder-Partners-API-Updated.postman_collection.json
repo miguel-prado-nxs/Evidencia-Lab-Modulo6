@@ -8,7 +8,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://partners-api-agentbuilder-dev.up.railway.app",
+      "value": "partners-api-agentbuilder-dev.up.railway.app",
       "type": "string"
     },
     {

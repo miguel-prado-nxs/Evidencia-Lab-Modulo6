@@ -19,21 +19,58 @@ const getRandomConnectedSession = async () => {
       }
     });
 
-    const sessions = response.data?.data?.sessions || [];
-    const connectedSessions = sessions.filter(s => s.status === "connected");
+    logger.info("Baileys status response", {
+      responseKeys: Object.keys(response.data || {})
+    });
+
+    // Obtener sesiones del formato de Baileys: response.data.data.sessions (objeto)
+    const sessionsObj = response.data?.data?.sessions || {};
+    
+    // Convertir objeto de sesiones a array
+    const sessionEntries = Object.entries(sessionsObj)
+      .map(([phone, sessionData]) => ({
+        phone,
+        status: sessionData?.status || "unknown",
+        ...sessionData
+      }));
+
+    logger.info("Sessions found", {
+      count: sessionEntries.length,
+      sessions: sessionEntries.map(s => ({
+        phone: s.phone,
+        status: s.status
+      }))
+    });
+
+    // Filtrar sesiones conectadas
+    const connectedSessions = sessionEntries.filter(s => s.status === "connected");
 
     if (connectedSessions.length === 0) {
-      logger.warn("No connected sessions available in Baileys");
+      logger.warn("No connected sessions available in Baileys", {
+        totalSessions: sessionEntries.length,
+        sessionStatuses: sessionEntries.map(s => ({
+          phone: s.phone,
+          status: s.status
+        }))
+      });
       return null;
     }
 
     // Seleccionar una sesión al azar
     const randomSession = connectedSessions[Math.floor(Math.random() * connectedSessions.length)];
-    return randomSession.phone || randomSession.telefono;
+    
+    logger.info("Selected random WhatsApp session", {
+      phone: randomSession.phone,
+      status: randomSession.status
+    });
+    
+    return randomSession.phone;
   } catch (error) {
     logger.error("Error getting connected sessions from Baileys", {
       error: error.message,
-      url: `${BAILEYS_URL}/api/status`
+      url: `${BAILEYS_URL}/api/status`,
+      status: error.response?.status,
+      responseData: error.response?.data
     });
     return null;
   }
