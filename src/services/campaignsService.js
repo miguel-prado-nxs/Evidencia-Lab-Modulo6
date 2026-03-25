@@ -4,6 +4,7 @@ const logger = require("../config/logger");
 const axios = require("axios");
 const geoService = require("./geoService");
 const campaignBatchDispatcherService = require("./campaignBatchDispatcherService");
+const campaignContextService = require("./campaignContextService");
 
 const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
 
@@ -94,6 +95,7 @@ const createCampaign = async (data) => {
     agentConfigName,
     offer,
     couponPrefix,
+    couponTemplateIds,
     createdBy,
   } = data;
 
@@ -125,6 +127,7 @@ const createCampaign = async (data) => {
       agentConfigName,
       offer,
       couponPrefix,
+      couponTemplateIds: couponTemplateIds || [],
       createdBy,
     },
   });
@@ -216,7 +219,8 @@ const updateCampaign = async (id, data) => {
     agentConfigId,
     agentConfigName,
     offer,
-    couponPrefix
+    couponPrefix,
+    couponTemplateIds
   } = data;
 
   const existingCampaign = await prisma.campaign.findUnique({
@@ -254,6 +258,7 @@ const updateCampaign = async (id, data) => {
   if (agentConfigName !== undefined) updateData.agentConfigName = agentConfigName;
   if (offer !== undefined) updateData.offer = offer;
   if (couponPrefix !== undefined) updateData.couponPrefix = couponPrefix;
+  if (couponTemplateIds !== undefined) updateData.couponTemplateIds = couponTemplateIds;
 
   const campaign = await prisma.campaign.update({
     where: { id },
@@ -622,7 +627,11 @@ const startCampaign = async (campaignId, options = {}) => {
 
   const establishmentById = new Map(establishments.map((establishment) => [establishment.id, establishment]));
 
-  const recipients = contacts.map((contact) => {
+  // Construir contexto de campaña para pasar a ElevenLabs
+  // IMPORTANTE: Solo se incluye cuando la llamada se dispara desde una campaña
+  const campaignContext = await campaignContextService.buildCampaignContext(campaignId, null);
+
+  const recipients = await Promise.all(contacts.map(async (contact) => {
     const establishment = establishmentById.get(contact.establishmentId);
     const contactData =
       contact.establishmentData && typeof contact.establishmentData === "object"
@@ -675,6 +684,15 @@ const startCampaign = async (campaignId, options = {}) => {
       contactData.whatsapp ||
       null;
 
+    // Enriquecer contexto de campaña con datos específicos del contacto
+    const contactSpecificContext = campaignContext ? {
+      ...campaignContext,
+      contactId: contact.id,
+      establishmentName: establishmentName,
+      prospectName: prospectName,
+      phoneNumber: phoneNumber
+    } : null;
+
     return {
       campaignContactId: contact.id,
       phone_number: phoneNumber,
@@ -705,9 +723,15 @@ const startCampaign = async (campaignId, options = {}) => {
         campaignOffer: campaign.offer || null,
         personality_name: personalityName,
         personalityName: personalityName,
+        // Contexto de campaña para ElevenLabs
+        campaignContext: contactSpecificContext,
+        couponsAvailable: contactSpecificContext?.coupons?.available || false,
+        couponTypes: contactSpecificContext?.coupons?.templates?.map(t => t.type) || [],
+        couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send",
+        agentInstructions: contactSpecificContext?.agentInstructions || null
       },
     };
-  });
+  }));
 
   logger.info("[CampaignStart] Dynamic variables preview", {
     campaignId,

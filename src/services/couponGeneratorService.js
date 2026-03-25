@@ -45,21 +45,8 @@ const checkEligibility = async (phone, couponType) => {
     return { eligible: false, reason: "Template not found" };
   }
 
-  // Verificar si ya recibió un cupón de este tipo
-  const existingCoupons = await prisma.campaignCoupon.count({
-    where: {
-      assignedPhone: phone,
-      couponType: couponType
-    }
-  });
-
-  if (existingCoupons >= template.maxPerUser) {
-    return { 
-      eligible: false, 
-      reason: `User already received ${existingCoupons} coupon(s) of type ${couponType}` 
-    };
-  }
-
+  // Lógica de validación deshabilitada a petición del usuario.
+  // Permite enviar cuantos cupones se requieran sin limitar por usuario.
   return { eligible: true };
 };
 

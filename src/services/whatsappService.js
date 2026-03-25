@@ -1,8 +1,42 @@
 const logger = require("../config/logger");
+const axios = require("axios");
 
-const BAILEYS_SERVICE_URL = process.env.BAILEYS_SERVICE_URL;
+const BAILEYS_URL = process.env.BAILEYS_URL;
 const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY;
-const BAILEYS_FROM_PHONE = process.env.BAILEYS_FROM_PHONE; // Número de WhatsApp remitente (opcional, si no se envía, Baileys usa la primera sesión activa)
+const BAILEYS_FROM_PHONE = process.env.BAILEYS_FROM_PHONE; // Número de WhatsApp remitente fijo opcional
+
+/**
+ * Obtiene una sesión conectada aleatoria de Baileys
+ * @returns {Promise<string|null>} Número de teléfono de una sesión conectada o null
+ */
+const getRandomConnectedSession = async () => {
+  if (!BAILEYS_URL) return null;
+
+  try {
+    const response = await axios.get(`${BAILEYS_URL}/api/sessions`, {
+      headers: {
+        "X-API-KEY": BAILEYS_API_KEY || ""
+      }
+    });
+
+    const sessionsArr = response.data?.data || response.data || [];
+
+    if (!Array.isArray(sessionsArr) || sessionsArr.length === 0) {
+      logger.warn("No connected sessions available in Baileys");
+      return null;
+    }
+
+    // Seleccionar una sesión al azar
+    const randomSession = sessionsArr[Math.floor(Math.random() * sessionsArr.length)];
+    return randomSession.phoneNumber || randomSession.id;
+  } catch (error) {
+    logger.error("Error getting connected sessions from Baileys", {
+      error: error.message,
+      url: `${BAILEYS_URL}/api/sessions`
+    });
+    return null;
+  }
+};
 
 /**
  * Envía un mensaje de WhatsApp vía el servicio Baileys
@@ -15,22 +49,27 @@ const BAILEYS_FROM_PHONE = process.env.BAILEYS_FROM_PHONE; // Número de WhatsAp
  * @returns {Promise<{success: boolean, data?: object, error?: string}>}
  */
 const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) => {
-  if (!BAILEYS_SERVICE_URL) {
-    logger.warn("BAILEYS_SERVICE_URL not configured — skipping WhatsApp send");
-    return { success: false, error: "BAILEYS_SERVICE_URL not configured" };
+  if (!BAILEYS_URL) {
+    logger.warn("BAILEYS_URL not configured — skipping WhatsApp send");
+    return { success: false, error: "BAILEYS_URL not configured" };
   }
 
-  const fromPhone = from || BAILEYS_FROM_PHONE;
+  let fromPhone = from || BAILEYS_FROM_PHONE;
+
+  // Si no se proporcionó ni está configurado en env, buscar una sesión activa
+  if (!fromPhone) {
+    fromPhone = await getRandomConnectedSession();
+    if (!fromPhone) {
+      logger.error("No active WhatsApp sessions available to send message");
+      return { success: false, error: "No active WhatsApp sessions available" };
+    }
+  }
 
   const payload = {
     to,
     message,
+    from: fromPhone
   };
-
-  // Si hay un número remitente definido, incluirlo
-  if (fromPhone) {
-    payload.from = fromPhone;
-  }
 
   // Si hay media, incluirla
   if (mediaUrl) {
@@ -41,15 +80,15 @@ const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) =
   try {
     logger.info("Sending WhatsApp message via Baileys", {
       to,
-      from: fromPhone || "(auto)",
+      from: fromPhone,
       hasMedia: !!mediaUrl,
     });
 
-    const response = await fetch(`${BAILEYS_SERVICE_URL}/api/messages/send`, {
+    const response = await fetch(`${BAILEYS_URL}/api/messages/send`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": BAILEYS_API_KEY || "",
+        "X-API-KEY": BAILEYS_API_KEY || "",
       },
       body: JSON.stringify(payload),
     });
@@ -74,7 +113,7 @@ const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) =
   } catch (error) {
     logger.error("Error calling Baileys service", {
       error: error.message,
-      url: `${BAILEYS_SERVICE_URL}/api/messages/send`,
+      url: `${BAILEYS_URL}/api/messages/send`,
       to,
     });
     return { success: false, error: error.message };
@@ -83,4 +122,5 @@ const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) =
 
 module.exports = {
   sendWhatsAppMessage,
+  getRandomConnectedSession
 };

@@ -1026,6 +1026,7 @@ model Campaign {
   agentConfigName String?  @map("agent_config_name")
   offer           String?  @db.Text // Descripción de la oferta
   couponPrefix    String?  @map("coupon_prefix")
+  couponTemplateIds String[] @default([]) @map("coupon_template_ids") // IDs de templates seleccionados
   
   // Métricas de contactos
   totalContacts     Int @default(0) @map("total_contacts")
