@@ -520,28 +520,28 @@ const startCampaign = async (campaignId, options = {}) => {
   // Obtener configuración de voz del Agent Builder (demo-form-service) para sobrescribir la de ElevenLabs
   let agentBuilderVoiceId = null;
   let agentBuilderPersonalityName = null;
-  
+
   try {
     const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
     const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
-    
+
     // Determinar si es SDR o Calificación basado en el agentId de la campaña
     const sdrAgentId = process.env.ELEVENLABS_SDR_AGENT_ID;
     const qualificationAgentId = process.env.ELEVENLABS_QUALIFICATION_AGENT_ID;
-    
+
     let configType = "SDR"; // Default a SDR
     if (resolvedAgentId === qualificationAgentId) {
       configType = "QUALIFICATION";
     }
-    
+
     const configUrl = `${demoFormUrl}/agent-configs/default/${configType}`;
     logger.info(`[CampaignStart] Detectado tipo de agente: ${configType}. Consultando config en: ${configUrl}`);
-    
+
     const configResponse = await axios.get(configUrl, {
       headers: { "X-API-Key": agentsConfigKey || "" },
       timeout: 5000,
     });
-    
+
     if (configResponse.data?.success && configResponse.data?.data) {
       const data = configResponse.data.data;
       agentBuilderVoiceId = data.openai_voice || data.voice || null;
@@ -655,7 +655,7 @@ const startCampaign = async (campaignId, options = {}) => {
       resolvedAgentProfile.agentName ||
       campaign.agentConfigName ||
       "Asesor EasyOrder";
-      
+
     // Prioridad 1: Agent Builder, Prioridad 2: ElevenLabs, Prioridad 3: Contact Data
     const personalityName =
       agentBuilderPersonalityName ||
@@ -983,6 +983,97 @@ const getCampaignStats = async (campaignId) => {
   };
 };
 
+const pauseCampaign = async (campaignId) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+  });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "ACTIVE") {
+    const error = new Error(`Campaign must be ACTIVE to pause. Current status: ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const updatedCampaign = await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  logger.info(`Campaign paused: ${campaignId}`, {
+    campaignId,
+    previousStatus: campaign.status,
+    newStatus: updatedCampaign.status,
+  });
+
+  return updatedCampaign;
+};
+
+const resumeCampaign = async (campaignId) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+  });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "PAUSED") {
+    const error = new Error(`Campaign must be PAUSED to resume. Current status: ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Get pending contacts that haven't been called yet
+  const pendingContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "PENDING",
+    },
+    select: {
+      id: true,
+      campaignId: true,
+      establishmentId: true,
+      establishmentName: true,
+      establishmentPhone: true,
+      establishmentData: true,
+    },
+  });
+
+  if (pendingContacts.length === 0) {
+    logger.warn(`No pending contacts found to resume for campaign ${campaignId}`);
+  }
+
+  const updatedCampaign = await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "ACTIVE",
+    },
+  });
+
+  logger.info(`Campaign resumed: ${campaignId}`, {
+    campaignId,
+    previousStatus: campaign.status,
+    newStatus: updatedCampaign.status,
+    pendingContactsCount: pendingContacts.length,
+  });
+
+  // Return resume info for potential batch dispatch if needed
+  return {
+    ...updatedCampaign,
+    pendingContacts: pendingContacts.length,
+  };
+};
+
 module.exports = {
   createCampaign,
   getCampaignById,
@@ -995,4 +1086,6 @@ module.exports = {
   getCampaignContacts,
   updateContactStatus,
   getCampaignStats,
+  pauseCampaign,
+  resumeCampaign,
 };

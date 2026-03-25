@@ -281,25 +281,130 @@ model CouponTemplate {
 - `active` (boolean): Filtrar por activos
 - `scenario` (string): Filtrar por escenario
 
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "uuid",
+      "couponType": "PLUS30",
+      "name": "1 mes gratis Plan Plus",
+      "description": "1 mes gratis de EasyOrder Plus",
+      "scenarios": ["bant_high", "first_contact", "high_intent"],
+      "percentOff": 100,
+      "durationMonths": 1,
+      "trialDays": null,
+      "messageTemplate": "¡Hola {{nombre}}!...",
+      "mediaUrl": null,
+      "maxPerUser": 1,
+      "expiresHours": 48,
+      "validFor": ["new_users"],
+      "active": true,
+      "priority": 10,
+      "createdAt": "2026-03-17T10:00:00Z",
+      "updatedAt": "2026-03-17T10:00:00Z"
+    }
+  ]
+}
+```
+
 #### GET /api/v1/coupon-templates/:type
 **Obtiene template específico**
 
 **Auth:** JWT
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "uuid",
+    "couponType": "PLUS30",
+    "name": "1 mes gratis Plan Plus",
+    "description": "1 mes gratis de EasyOrder Plus",
+    "scenarios": ["bant_high", "first_contact", "high_intent"],
+    "percentOff": 100,
+    "durationMonths": 1,
+    "trialDays": null,
+    "messageTemplate": "¡Hola {{nombre}}!...",
+    "mediaUrl": null,
+    "maxPerUser": 1,
+    "expiresHours": 48,
+    "validFor": ["new_users"],
+    "active": true,
+    "priority": 10
+  }
+}
+```
 
 #### POST /api/v1/coupon-templates
 **Crea nuevo template**
 
 **Auth:** JWT (Admin)
 
+**Body:**
+```json
+{
+  "couponType": "BLACKFRIDAY",
+  "name": "70% descuento Black Friday",
+  "description": "Oferta especial de Black Friday",
+  "scenarios": ["seasonal", "high_intent"],
+  "percentOff": 70,
+  "durationMonths": 1,
+  "messageTemplate": "¡Hola {{nombre}}! 🎉 BLACK FRIDAY: 70% de descuento\n\nCódigo: {{codigo}}\n\n👉 Actívalo: https://easyorder.mx/activate?code={{codigo}}\n\n⏰ Válido hasta el 30 de noviembre",
+  "maxPerUser": 1,
+  "expiresHours": 72,
+  "validFor": ["new_users", "existing_users"],
+  "priority": 15
+}
+```
+
+**Campos obligatorios:**
+- `couponType` (string): Código único del template
+- `name` (string): Nombre descriptivo
+- `messageTemplate` (string): Plantilla del mensaje WhatsApp
+
+**Campos opcionales:**
+- `description` (string): Descripción del cupón
+- `scenarios` (array): Escenarios donde aplica
+- `percentOff` (number 0-100): Porcentaje de descuento
+- `durationMonths` (number): Duración en meses
+- `trialDays` (number): Días de trial adicionales
+- `mediaUrl` (string): URL de imagen/banner
+- `maxPerUser` (number, default: 1): Máximo cupones por usuario
+- `expiresHours` (number, default: 48): Horas hasta expiración
+- `validFor` (array): Segmentos elegibles
+- `priority` (number, default: 0): Prioridad de selección
+
 #### PATCH /api/v1/coupon-templates/:type
 **Actualiza template**
 
 **Auth:** JWT (Admin)
 
+**Body:** (todos los campos opcionales)
+```json
+{
+  "percentOff": 80,
+  "expiresHours": 96,
+  "active": false
+}
+```
+
+**Nota:** El campo `couponType` NO es editable (es el identificador único).
+
 #### DELETE /api/v1/coupon-templates/:type
 **Elimina template**
 
 **Auth:** JWT (Admin)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Template deleted successfully"
+}
+```
 
 ---
 
@@ -570,4 +675,154 @@ GET /api/v1/coupon-templates?active=true
 
 ---
 
-**Última actualización:** 17 de marzo de 2026
+## Catálogo de Valores
+
+### Scenarios (Escenarios de Disparo)
+
+Define en qué momento del customer journey el agente debe ofrecer este cupón.
+
+#### Valores Actuales en Seed
+
+| Valor | Descripción | Cuándo Usar |
+|-------|-------------|-------------|
+| `bant_high` | BANT score alto | Prospecto calificado: Budget, Authority, Need, Timeline confirmados |
+| `first_contact` | Primer contacto | Primera llamada/interacción con prospecto nuevo |
+| `high_intent` | Alta intención de compra | Prospecto muestra interés claro en contratar |
+| `price_objection` | Objeción de precio | Prospecto dice "está caro" o pregunta por descuentos |
+| `trial_ending` | Trial terminando | Usuario en prueba gratis próximo a expirar |
+| `active_free_user` | Usuario free activo | Usuario usando plan gratuito de forma activa |
+| `upgrade_interest` | Interés en upgrade | Usuario actual quiere plan superior |
+| `multiple_branches` | Múltiples sucursales | Prospecto tiene/planea varias ubicaciones |
+| `referral` | Referido | Usuario refirió a otro cliente |
+| `abandoned_conversation` | Conversación abandonada | Prospecto dejó conversación sin cerrar |
+| `cold_lead` | Lead frío | Prospecto que no respondió después de contacto inicial |
+
+#### Valores Adicionales Recomendados
+
+| Valor | Descripción | Cuándo Usar |
+|-------|-------------|-------------|
+| `seasonal` | Campaña estacional | Black Friday, Navidad, Año Nuevo |
+| `competitor_mention` | Menciona competidor | Prospecto compara con Rappi, Uber Eats, etc. |
+| `feature_request` | Solicita feature específica | "¿Tienen integración con X?" |
+| `budget_constraint` | Restricción de presupuesto | "Solo tengo $X al mes" |
+| `decision_pending` | Decisión pendiente | "Lo voy a pensar" / "Necesito consultarlo" |
+| `technical_concern` | Preocupación técnica | "¿Es difícil de usar?" / "¿Necesito internet?" |
+| `onboarding_incomplete` | Onboarding incompleto | Usuario registrado pero no configuró todo |
+| `low_usage` | Uso bajo | Usuario activo pero con poca actividad |
+| `churn_risk` | Riesgo de cancelación | Usuario muestra señales de querer cancelar |
+
+### ValidFor (Segmentos Elegibles)
+
+Define qué tipo de usuarios pueden recibir/redimir este cupón.
+
+#### Valores Actuales en Seed
+
+| Valor | Descripción | Quiénes Califican |
+|-------|-------------|-------------------|
+| `new_users` | Usuarios nuevos | Nunca han tenido cuenta/suscripción |
+| `trial_users` | Usuarios en trial | Actualmente en período de prueba |
+| `upgrade` | Para upgrade | Usuarios actuales que quieren plan superior |
+| `active_users` | Usuarios activos | Tienen suscripción activa pagada |
+
+#### Valores Adicionales Recomendados
+
+| Valor | Descripción | Quiénes Califican |
+|-------|-------------|-------------------|
+| `existing_users` | Usuarios existentes | Cualquier usuario con cuenta (activa o no) |
+| `free_users` | Plan gratuito | Usuarios en plan free/básico |
+| `plus_users` | Plan Plus | Usuarios con suscripción Plus |
+| `pro_users` | Plan Pro | Usuarios con suscripción Pro |
+| `churned_users` | Usuarios cancelados | Tuvieron suscripción pero cancelaron |
+| `inactive_users` | Usuarios inactivos | No han usado la plataforma en X días |
+| `high_value_users` | Alto valor | Usuarios con alto uso/facturación |
+| `retention` | Retención | Usuarios en riesgo de cancelar |
+| `reactivation` | Reactivación | Ex-usuarios para recuperar |
+| `referrers` | Referidores | Usuarios que refieren a otros |
+| `all_users` | Todos | Sin restricción de segmento |
+
+---
+
+## Integración con Campañas
+
+### Uso de Templates en Wizard de Campañas
+
+Cuando un usuario crea una campaña en el frontend, el **Paso 4: Agente y Oferta** debe:
+
+1. **Cargar templates activos:**
+```javascript
+GET /api/v1/coupon-templates?active=true
+```
+
+2. **Mostrar combobox** con templates disponibles:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Tipo de Cupón                                               │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ PLUS30 - 1 mes gratis Plan Plus                      ▼ │ │
+│ ├─────────────────────────────────────────────────────────┤ │
+│ │ 50OFF - 50% descuento primer mes                        │ │
+│ │ TRIAL14 - +14 días de prueba                            │ │
+│ │ UPGRADEPRO - Upgrade a Pro                              │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+3. **Auto-llenar campos** al seleccionar template (snapshot):
+```javascript
+const handleTemplateSelect = (templateType) => {
+  const template = templates.find(t => t.couponType === templateType);
+  
+  if (template) {
+    setCampaignData({
+      ...campaignData,
+      couponPrefix: template.couponType,     // "PLUS30"
+      offer: template.description,           // "1 mes gratis..."
+      // NO guardamos templateId - es snapshot
+    });
+  }
+};
+```
+
+4. **Crear campaña** con valores copiados:
+```javascript
+POST /api/v1/campaigns
+{
+  "couponPrefix": "PLUS30",    // ← Valor copiado del template
+  "offer": "1 mes gratis..."   // ← Valor copiado del template
+  // NO se envía templateId
+}
+```
+
+### Comportamiento de Snapshot
+
+**Importante:** Las campañas guardan una **copia (snapshot)** de los valores del template, NO una referencia.
+
+```
+Tiempo 1: Creas campaña
+┌─────────────────┐           ┌─────────────────┐
+│ CouponTemplate  │  COPIA    │ Campaign        │
+│ PLUS30          │ ────────► │ couponPrefix:   │
+│ "1 mes gratis"  │  VALORES  │   "PLUS30"      │
+└─────────────────┘           │ offer:          │
+                              │   "1 mes gratis"│
+                              └─────────────────┘
+
+Tiempo 2: Marketing edita template
+┌─────────────────┐           ┌─────────────────┐
+│ CouponTemplate  │           │ Campaign        │
+│ PLUS30          │           │ couponPrefix:   │
+│ "2 meses gratis"│ ← Cambió  │   "PLUS30"      │ ← NO cambió
+└─────────────────┘           │ offer:          │
+                              │   "1 mes gratis"│ ← NO cambió
+                              └─────────────────┘
+```
+
+**Ventajas:**
+- Campañas existentes mantienen consistencia
+- Todos los contactos de una campaña reciben la misma oferta
+- Auditoría clara de qué se prometió
+- Métricas comparables por campaña
+
+---
+
+**Última actualización:** 25 de marzo de 2026
