@@ -1240,6 +1240,22 @@ const resumeCampaign = async (campaignId) => {
         reconciliedCount++;
         logger.info(`Contact ${latestContact.id} reconciled: ${latestContact.status} → ${finalStatus} (webhook received)`);
       }
+      // Especial para contactos en PAUSED sin webhook pero con evidencia de que NO se despacharon o fallaron silenciosamente
+      else if (latestContact.status === "PAUSED" && !latestContact.providerBatchId) {
+        await prisma.campaignContact.update({
+          where: { id: latestContact.id },
+          data: {
+            status: "PENDING",
+            sentAt: null,
+            providerBatchId: null,
+            conversationId: null,
+            errorReason: null
+          },
+        });
+        reconciliedCount++;
+        relaunchedCount++;
+        logger.info(`Contact ${latestContact.id} reconciled: PAUSED → PENDING (no provider/webhook evidence, ready to retry)`);
+      }
       // Si ya fue despachado al proveedor (providerBatchId), NO relanzar para evitar duplicados.
       // Esperar webhook y, si expira timeout, cerrarlo sin redial.
       else if (latestContact.providerBatchId) {

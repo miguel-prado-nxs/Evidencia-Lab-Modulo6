@@ -69,7 +69,8 @@ const recalculateCampaignMetrics = async (campaignId) => {
     const couponsVisited = statusCount.VISITED || 0;
     const couponsConverted = statusCount.CONVERTED || 0;
     const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0);
-    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0;
+    const pausedContacts = statusCount.PAUSED || 0;
+    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0 && pausedContacts === 0;
 
     const campaignUpdateData = {
         totalContacts,
