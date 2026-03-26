@@ -597,9 +597,11 @@ const startCampaign = async (campaignId, options = {}) => {
   }
 
   if (contacts.length === 0) {
-    const error = new Error("Campaign has no pending contacts to dispatch");
-    error.statusCode = 400;
-    throw error;
+    return {
+      success: true,
+      message: "No hay contactos pendientes de procesar en esta campaña (todos ya están en proceso o completados)",
+      dispatchedCount: 0
+    };
   }
 
   const establishmentIds = [...new Set(contacts.map((contact) => contact.establishmentId).filter(Boolean))];
@@ -975,13 +977,28 @@ const getCampaignStats = async (campaignId) => {
     });
   }
 
-  const conversionRate = campaign.totalCalled > 0
-    ? (campaign.totalConverted / campaign.totalCalled) * 100
-    : 0;
+  const metricsByStatus = statusBreakdown.reduce((acc, group) => {
+    acc[group.status] = group._count;
+    return acc;
+  }, {});
 
-  const responseRate = campaign.totalCalled > 0
-    ? (campaign.totalResponded / campaign.totalCalled) * 100
-    : 0;
+  const totalContacts = campaign._count.contacts;
+  const totalCalled =
+    (metricsByStatus.CALLING || 0) +
+    (metricsByStatus.CALLED || 0) +
+    (metricsByStatus.RESPONDED || 0) +
+    (metricsByStatus.SENT || 0) +
+    (metricsByStatus.DELIVERED || 0) +
+    (metricsByStatus.VISITED || 0) +
+    (metricsByStatus.CONVERTED || 0) +
+    (metricsByStatus.FAILED || 0);
+
+  const totalResponded = (metricsByStatus.RESPONDED || 0) + (metricsByStatus.VISITED || 0);
+  const totalConverted = metricsByStatus.CONVERTED || 0;
+  const totalFailed = metricsByStatus.FAILED || 0;
+
+  const responseRate = totalCalled > 0 ? (totalResponded / totalCalled) * 100 : 0;
+  const conversionRate = totalResponded > 0 ? (totalConverted / totalResponded) * 100 : 0;
 
   return {
     campaign: {
@@ -990,20 +1007,74 @@ const getCampaignStats = async (campaignId) => {
       status: campaign.status,
     },
     metrics: {
-      totalContacts: campaign.totalContacts,
-      totalCalled: campaign.totalCalled,
-      totalResponded: campaign.totalResponded,
-      totalConverted: campaign.totalConverted,
-      totalFailed: campaign.totalFailed,
+      totalContacts,
+      totalCalled,
+      totalResponded,
+      totalConverted,
+      totalFailed,
       totalCoupons: campaign._count.coupons,
-      conversionRate: conversionRate.toFixed(2),
       responseRate: responseRate.toFixed(2),
+      conversionRate: conversionRate.toFixed(2),
     },
-    statusBreakdown: statusBreakdown.reduce((acc, item) => {
-      acc[item.status] = item._count;
-      return acc;
-    }, {}),
-    conversionTimeline,
+    statusBreakdown: metricsByStatus,
+    conversionTimeline: conversionTimeline,
+  };
+};
+
+const pauseCampaign = async (id) => {
+  const campaign = await prisma.campaign.findUnique({ where: { id } });
+  if (!campaign) throw new Error("Campaña no encontrada");
+  if (campaign.status !== "ACTIVE") throw new Error("Solo se pueden pausar campañas activas");
+
+  return prisma.campaign.update({
+    where: { id },
+    data: { status: "PAUSED" },
+  });
+};
+
+const cancelCampaign = async (id) => {
+  const campaign = await prisma.campaign.findUnique({ where: { id } });
+  if (!campaign) throw new Error("Campaña no encontrada");
+  if (campaign.status === "COMPLETED" || campaign.status === "CANCELLED") {
+    throw new Error("La campaña ya ha finalizado");
+  }
+
+  return prisma.campaign.update({
+    where: { id },
+    data: { status: "CANCELLED" },
+  });
+};
+
+const retryCampaignContacts = async (campaignId, options = {}) => {
+  const { includeFailed = true, includeStaleCalling = true } = options;
+  const statuses = [];
+  if (includeFailed) statuses.push("FAILED");
+  if (includeStaleCalling) statuses.push("CALLING");
+
+  if (statuses.length === 0) return { updatedCount: 0 };
+
+  const result = await prisma.campaignContact.updateMany({
+    where: {
+      campaignId,
+      status: { in: statuses },
+    },
+    data: {
+      status: "PENDING",
+      providerBatchId: null,
+      errorReason: null,
+    },
+  });
+
+  logger.info("[CampaignRetry] Contacts reset for retry", {
+    campaignId,
+    updatedCount: result.count,
+    statuses,
+  });
+
+  return {
+    success: true,
+    updatedCount: result.count,
+    message: `${result.count} contactos reseteados correctamente para re-intento`,
   };
 };
 
@@ -1019,4 +1090,7 @@ module.exports = {
   getCampaignContacts,
   updateContactStatus,
   getCampaignStats,
+  pauseCampaign,
+  cancelCampaign,
+  retryCampaignContacts,
 };

@@ -363,7 +363,9 @@ const persistBatchDispatchResult = async ({
       return prisma.campaignContact.update({
         where: { id: contact.id },
         data: {
+          status: "CALLING",
           providerBatchId,
+          sentAt: new Date(),
           establishmentData,
         },
       });
@@ -577,6 +579,22 @@ const submitCampaignBatch = async ({
       chunkSize: chunk.length,
       chunkCount: chunks.length,
     });
+
+    // Check if campaign was paused or cancelled mid-batch
+    const currentCampaign = await prisma.campaign.findUnique({ 
+      where: { id: campaignId },
+      select: { status: true }
+    });
+
+    if (currentCampaign && (currentCampaign.status === "PAUSED" || currentCampaign.status === "CANCELLED")) {
+      logger.info("[BatchDispatcher] Campaign was paused or cancelled. Stopping chunk dispatch.", {
+        campaignId,
+        status: currentCampaign.status,
+        chunksSent: index,
+        remainingChunks: chunks.length - index,
+      });
+      break;
+    }
 
     const chunkResult = await submitChunkToProvider({
       campaignId,

@@ -418,6 +418,62 @@ const validateBeforeStart = async (req, res, next) => {
   }
 };
 
+const pause = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const campaign = await campaignsService.pauseCampaign(id);
+    res.json({
+      success: true,
+      data: campaign,
+      message: "Campaña pausada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const cancel = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const campaign = await campaignsService.cancelCampaign(id);
+    res.json({
+      success: true,
+      data: campaign,
+      message: "Campaña cancelada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resume = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await campaignsService.startCampaign(id, req.body || {});
+    res.json({
+      success: true,
+      data: result,
+      message: "Campaña reanudada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const retry = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { includeFailed, includeStaleCalling } = req.body || {};
+    const result = await campaignsService.retryCampaignContacts(id, {
+      includeFailed: includeFailed !== false,
+      includeStaleCalling: includeStaleCalling !== false,
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -434,4 +490,8 @@ module.exports = {
   loadCouponTemplates,
   getCampaignSendPreview,
   validateBeforeStart,
+  pause,
+  cancel,
+  resume,
+  retry,
 };
