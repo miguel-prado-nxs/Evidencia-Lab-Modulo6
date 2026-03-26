@@ -328,7 +328,7 @@ const renderCouponMessage = (template, coupon) => {
   let message = template.messageTemplate || "";
 
   // Reemplazar variables
-  message = message.replace(/{{codigo}}/g, coupon.code);
+  message = message.replace(/{{codigo}}/g, `EASY-${coupon.couponType}`);
   message = message.replace(/{{beneficio}}/g, coupon.offer || template.description || template.name);
   message = message.replace(/{{nombre}}/g, coupon.assignedPhone || "Prospecto");
   message = message.replace(/{{negocio}}/g, "Establecimiento");

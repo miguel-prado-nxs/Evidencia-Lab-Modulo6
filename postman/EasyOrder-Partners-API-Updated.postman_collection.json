@@ -560,6 +560,50 @@
             },
             "description": "Inicia una campaña. ElevenLabs recibirá el contexto de campaña con información de cupones en las dynamic_variables."
           }
+        },
+        {
+          "name": "Pause Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/pause",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}",
+                "pause"
+              ]
+            },
+            "description": "Pausa una campaña activa. Detiene el envío de nuevos lotes de llamadas."
+          }
+        },
+        {
+          "name": "Cancel Campaign",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/campaigns/{{campaignId}}/cancel",
+              "protocol": "https",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns",
+                "{{campaignId}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancela definitivamente una campaña. Detiene el envío de nuevos lotes de llamadas y marca la campaña como CANCELLED."
+          }
         }
       ]
     }

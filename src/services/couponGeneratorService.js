@@ -195,7 +195,7 @@ const generateCouponForCall = async ({
   const message = renderTemplate(template.messageTemplate, {
     nombre: prospectName,
     negocio: businessName,
-    codigo: code,
+    codigo: baseCode, // Usar baseCode (ej: EASY-PLUS30) en vez del code con sufijo
     beneficio: template.description || template.name
   });
   
