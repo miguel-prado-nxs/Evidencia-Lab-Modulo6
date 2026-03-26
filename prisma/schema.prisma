@@ -1126,6 +1126,7 @@ model CampaignContact {
 enum ContactStatus {
   PENDING    // Frontend: "Pending"
   CALLING    // Frontend: "Calling" - en proceso de llamada
+  PAUSED     // Frontend: "Paused" - llamada pausada (congelada)
   CALLED     // Frontend: "Called" - llamada realizada
   RESPONDED  // Frontend: "Responded" - contacto respondió positivamente
   SENT       // Mensaje/cupón enviado
