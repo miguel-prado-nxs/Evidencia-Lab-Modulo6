@@ -1024,6 +1024,22 @@ const pauseCampaign = async (campaignId) => {
     throw error;
   }
 
+  // Actualizar todos los contactos CALLING a PAUSED
+  const pausedContactsResult = await prisma.campaignContact.updateMany({
+    where: {
+      campaignId,
+      status: "CALLING",
+    },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  logger.info(`Contacts paused during campaign pause`, {
+    campaignId,
+    pausedCount: pausedContactsResult.count,
+  });
+
   const updatedCampaign = await prisma.campaign.update({
     where: { id: campaignId },
     data: {
@@ -1035,6 +1051,7 @@ const pauseCampaign = async (campaignId) => {
     campaignId,
     previousStatus: campaign.status,
     newStatus: updatedCampaign.status,
+    pausedContactsCount: pausedContactsResult.count,
   });
 
   return updatedCampaign;
@@ -1062,7 +1079,7 @@ const resumeCampaign = async (campaignId) => {
   const stuckCallingContacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
-      status: "CALLING",
+      status: "PAUSED",
     },
     select: {
       id: true,
@@ -1089,7 +1106,7 @@ const resumeCampaign = async (campaignId) => {
           data: { status: "CALLED" },
         });
         reconciliedCount++;
-        logger.info(`Contact ${contact.id} reconciled: CALLING → CALLED (webhook received)`);
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → CALLED (webhook received)`);
       }
       // Si pasó más tiempo que el timeout sin webhook, resetear a PENDING para reintentar
       else if (timeInCallingMinutes > CALLING_TIMEOUT_MINUTES && !contact.conversationId) {
@@ -1098,11 +1115,24 @@ const resumeCampaign = async (campaignId) => {
           data: { status: "PENDING" },
         });
         reconciliedCount++;
-        logger.warn(`Contact ${contact.id} reconciled: CALLING → PENDING (timeout, no webhook)`);
+        logger.warn(`Contact ${contact.id} reconciled: PAUSED → PENDING (timeout, no webhook)`);
       }
-      // Si tiene conversationId pero no webhook, dejar como CALLING (indica que la llamada está en progreso real o fue truncada)
+      // Si tiene conversationId pero no webhook, mantener como PENDING para reintentar (la llamada se interrumpió durante pausa)
       else if (contact.conversationId) {
-        logger.debug(`Contact ${contact.id} stuck CALLING with conversation ${contact.conversationId}, awaiting webhook`);
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING", conversationId: null },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → PENDING (pending retry)`);
+      } else {
+        // Sin webhook y sin conversationId después de timeout, resetear a PENDING
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING" },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → PENDING (no webhook, no conversation)`);
       }
     }
   }

@@ -755,14 +755,40 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             }
         }
 
+        // Verificar estado de la campaña
+        const campaignContext = await prisma.campaign.findUnique({
+            where: { id: contact.campaignId },
+            select: { status: true },
+        });
+
+        // Si la campaña está pausada y el contacto está pausado, no cambiar su estado
+        // El webhook se ackea pero no se actualiza el contacto
+        if (campaignContext?.status === "PAUSED" && contact.status === "PAUSED") {
+            logger.info("[CampaignWebhook] Webhook ignored - campaign is paused", {
+                campaignId: contact.campaignId,
+                contactId: contact.id,
+                conversationId: webhookData.conversationId,
+                contactStatus: contact.status,
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Webhook acknowledged but not processed (campaign paused)",
+            });
+        }
+
         const status = resolveFinalContactStatus({
             callSuccessful: webhookData.callSuccessful,
             failureReason: webhookData.failureReason,
             callDuration: webhookData.callDuration,
             transcriptSummary: webhookData.transcriptSummary,
         });
+
+        // Si la campaña está pausada pero el contacto está en CALLING (debe transicionar a PAUSED, no a su estado final)
+        const finalStatus = (campaignContext?.status === "PAUSED" && contact.status === "CALLING") ? "PAUSED" : status;
+
         const updateData = {
-            status,
+            status: finalStatus,
             conversationId: webhookData.conversationId || contact.conversationId,
             callDuration: webhookData.callDuration,
             callTranscript: webhookData.transcriptSummary,
@@ -771,8 +797,9 @@ const handleElevenLabsWebhook = async (req, res, next) => {
 
         logger.info("[CampaignWebhook] Preparing contact update", {
             contactId: contact.id,
+            campaignStatus: campaignContext?.status,
             currentStatus: contact.status,
-            newStatus: status,
+            newStatus: finalStatus,
             callDuration: webhookData.callDuration,
         });
 
