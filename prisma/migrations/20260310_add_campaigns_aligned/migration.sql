@@ -267,3 +267,11 @@ END $$;
 -- Add missing campaign coupon template ids array column
 ALTER TABLE "campaigns"
 ADD COLUMN IF NOT EXISTS "coupon_template_ids" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+-- Add PAUSED to existing ContactStatus enum (for databases where enum already exists)
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ContactStatus') THEN
+        ALTER TYPE "ContactStatus" ADD VALUE IF NOT EXISTS 'PAUSED' AFTER 'CALLING';
+    END IF;
+END $$;

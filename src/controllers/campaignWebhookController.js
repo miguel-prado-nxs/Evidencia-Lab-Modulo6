@@ -325,10 +325,14 @@ const extractWebhookData = (payload = {}) => {
         data.conversation_id,
         data.conversationId,
         data.conversation?.id,
+        data.call_id,
+        data.callId,
         metadata.conversation_id,
         metadata.conversationId,
         payload.conversation_id,
         payload.conversationId,
+        payload.call_id,
+        payload.callId,
     );
 
     const campaignContactId = firstNonEmpty(
@@ -339,6 +343,7 @@ const extractWebhookData = (payload = {}) => {
         data.campaignContactId,
         data.campaign_contact_id,
         metadata.campaignContactId,
+        metadata.campaign_contact_id,
         metadata.campaign_contact_id,
     );
 
@@ -471,8 +476,10 @@ const recalculateCampaignMetrics = async (campaignId) => {
     const totalFailed = statusCount.FAILED || 0;
     const couponsVisited = statusCount.VISITED || 0;
     const couponsConverted = statusCount.CONVERTED || 0;
-    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0);
-    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0;
+    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0) + (statusCount.PAUSED || 0);
+
+    const isCampaignActiveOrPaused = campaign && (campaign.status === "ACTIVE" || campaign.status === "PAUSED");
+    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0 && isCampaignActiveOrPaused;
 
     const campaignUpdateData = {
         totalContacts,
@@ -485,7 +492,7 @@ const recalculateCampaignMetrics = async (campaignId) => {
         couponsConverted,
     };
 
-    if (campaign && campaign.status === "ACTIVE" && shouldMarkCompleted) {
+    if (shouldMarkCompleted) {
         campaignUpdateData.status = "COMPLETED";
         campaignUpdateData.completedAt = campaign.completedAt || new Date();
     }
@@ -652,9 +659,21 @@ const handleElevenLabsWebhook = async (req, res, next) => {
 
             contact = await prisma.campaignContact.findFirst({
                 where: {
-                    status: "CALLING",
                     webhookReceivedAt: null,
-                    OR: phoneCandidates.map((phone) => ({ establishmentPhone: phone })),
+                    AND: [
+                        {
+                            OR: [
+                                { status: "CALLING" },
+                                { status: "PAUSED" },
+                                // Durante pausa/reanudar puede quedar como PENDING antes de que llegue webhook.
+                                // Si ya fue despachado (providerBatchId), permitimos matchear para cerrar estado.
+                                { status: "PENDING", providerBatchId: { not: null } },
+                            ],
+                        },
+                        {
+                            OR: phoneCandidates.map((phone) => ({ establishmentPhone: phone })),
+                        },
+                    ],
                 },
                 orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
             });
@@ -685,7 +704,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         });
 
         if (contact.webhookReceivedAt && contact.conversationId === webhookData.conversationId) {
-            if (contact.status === "CALLING") {
+            if (["CALLING", "PAUSED"].includes(contact.status)) {
                 const healedStatus = resolveClosedStatusFromContact(contact);
 
                 await prisma.campaignContact.update({
@@ -761,21 +780,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             select: { status: true },
         });
 
-        // Si la campaña está pausada y el contacto está pausado, no cambiar su estado
-        // El webhook se ackea pero no se actualiza el contacto
-        if (campaignContext?.status === "PAUSED" && contact.status === "PAUSED") {
-            logger.info("[CampaignWebhook] Webhook ignored - campaign is paused", {
-                campaignId: contact.campaignId,
-                contactId: contact.id,
-                conversationId: webhookData.conversationId,
-                contactStatus: contact.status,
-            });
-
-            return res.status(200).json({
-                success: true,
-                message: "Webhook acknowledged but not processed (campaign paused)",
-            });
-        }
+        // Aunque la campaña esté pausada, los cierres de llamada deben procesarse
+        // para evitar perder el resultado y relanzar contactos ya concluidos.
 
         const status = resolveFinalContactStatus({
             callSuccessful: webhookData.callSuccessful,
@@ -784,11 +790,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             transcriptSummary: webhookData.transcriptSummary,
         });
 
-        // Si la campaña está pausada pero el contacto está en CALLING (debe transicionar a PAUSED, no a su estado final)
-        const finalStatus = (campaignContext?.status === "PAUSED" && contact.status === "CALLING") ? "PAUSED" : status;
-
         const updateData = {
-            status: finalStatus,
+            status,
             conversationId: webhookData.conversationId || contact.conversationId,
             callDuration: webhookData.callDuration,
             callTranscript: webhookData.transcriptSummary,
@@ -799,7 +802,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             contactId: contact.id,
             campaignStatus: campaignContext?.status,
             currentStatus: contact.status,
-            newStatus: finalStatus,
+            newStatus: status,
             callDuration: webhookData.callDuration,
         });
 

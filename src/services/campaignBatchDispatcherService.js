@@ -390,6 +390,11 @@ const submitChunkToProvider = async ({
       const recipientData = {
         phone_number: recipient.phoneNumber,
         dynamic_variables: recipient.dynamicVariables,
+        metadata: {
+          campaignId,
+          campaignContactId: recipient.campaignContactId,
+          ...recipient.dynamicVariables
+        },
         conversation_initiation_client_data: {
           dynamic_variables: recipient.dynamicVariables,
         },
@@ -435,6 +440,8 @@ const submitChunkToProvider = async ({
       agentId,
       recipientCount: chunk.length,
       callName: payload.call_name,
+      scheduledTimeUnix: scheduledTimeUnix || null,
+      payloadScheduledTimeUnix: payload.scheduled_time_unix || null,
       agentPhoneNumberId,
       firstRecipient: payload.recipients[0] ? {
         phoneNumber: payload.recipients[0].phone_number,

@@ -62,7 +62,7 @@ const startCampaignSchema = z.object({
 
 const updateContactStatusSchema = z.object({
   body: z.object({
-    status: z.enum(["PENDING", "CALLING", "CALLED", "RESPONDED", "SENT", "DELIVERED", "VISITED", "CONVERTED", "FAILED"]),
+    status: z.enum(["PENDING", "CALLING", "PAUSED", "CALLED", "RESPONDED", "SENT", "DELIVERED", "VISITED", "CONVERTED", "FAILED"]),
     messageId: z.string().optional(),
     errorReason: z.string().optional(),
   }),
