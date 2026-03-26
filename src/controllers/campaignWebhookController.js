@@ -476,10 +476,13 @@ const recalculateCampaignMetrics = async (campaignId) => {
     const totalFailed = statusCount.FAILED || 0;
     const couponsVisited = statusCount.VISITED || 0;
     const couponsConverted = statusCount.CONVERTED || 0;
-    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0) + (statusCount.PAUSED || 0);
+    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0);
+    const pausedContacts = statusCount.PAUSED || 0;
 
     const isCampaignActiveOrPaused = campaign && (campaign.status === "ACTIVE" || campaign.status === "PAUSED");
-    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0 && isCampaignActiveOrPaused;
+    // Solo marcar como COMPLETED si ya no hay contactos PENDING ni CALLING.
+    // Los contactos en PAUSED NO deben permitir que la campaña se marque como COMPLETED automática.
+    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0 && pausedContacts === 0 && isCampaignActiveOrPaused;
 
     const campaignUpdateData = {
         totalContacts,
