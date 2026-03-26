@@ -1051,15 +1051,58 @@ const getCampaignStats = async (campaignId) => {
   };
 };
 
-const pauseCampaign = async (id) => {
-  const campaign = await prisma.campaign.findUnique({ where: { id } });
-  if (!campaign) throw new Error("Campaña no encontrada");
-  if (campaign.status !== "ACTIVE") throw new Error("Solo se pueden pausar campañas activas");
-
-  return prisma.campaign.update({
-    where: { id },
-    data: { status: "PAUSED" },
+const pauseCampaign = async (campaignId) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
   });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "ACTIVE") {
+    const error = new Error(`Campaign must be ACTIVE to pause. Current status: ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Contar contactos que están en CALLING para logging
+  const callingContactsCount = await prisma.campaignContact.count({
+    where: {
+      campaignId,
+      status: "CALLING",
+    },
+  });
+
+  // Congelar llamadas en curso para evitar redials al reanudar
+  const pausedContactsResult = await prisma.campaignContact.updateMany({
+    where: {
+      campaignId,
+      status: "CALLING",
+    },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  const updatedCampaign = await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  logger.info(`Campaign paused: ${campaignId}`, {
+    campaignId,
+    previousStatus: campaign.status,
+    newStatus: updatedCampaign.status,
+    callingContactsCount,
+    pausedContactsCount: pausedContactsResult.count,
+  });
+
+  return updatedCampaign;
 };
 
 const cancelCampaign = async (id) => {
