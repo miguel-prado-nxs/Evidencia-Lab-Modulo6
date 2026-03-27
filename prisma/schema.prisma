@@ -928,6 +928,7 @@ model CampaignContact {
   updatedAt          DateTime        @updatedAt @map("updated_at")
   providerBatchId    String?         @map("provider_batch_id")
   conversationId     String?         @unique @map("conversation_id")
+  callId             String?         @map("call_id")
   callDuration       Int?            @map("call_duration")
   callTranscript     String?         @map("call_transcript")
   webhookReceivedAt  DateTime?       @map("webhook_received_at")
