@@ -939,6 +939,9 @@ model CampaignContact {
   @@index([establishmentId])
   @@index([status])
   @@index([sentAt])
+  @@index([callId])
+  @@index([webhookReceivedAt])
+  @@index([status, webhookReceivedAt])
   @@map("campaign_contacts")
 }
 

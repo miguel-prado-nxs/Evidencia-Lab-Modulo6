@@ -325,14 +325,19 @@ const extractWebhookData = (payload = {}) => {
         data.conversation_id,
         data.conversationId,
         data.conversation?.id,
-        data.call_id,
-        data.callId,
         metadata.conversation_id,
         metadata.conversationId,
         payload.conversation_id,
         payload.conversationId,
+    );
+
+    const callId = firstNonEmpty(
+        data.call_id,
+        data.callId,
         payload.call_id,
         payload.callId,
+        metadata.call_id,
+        metadata.callId,
     );
 
     const campaignContactId = firstNonEmpty(
@@ -402,6 +407,7 @@ const extractWebhookData = (payload = {}) => {
         campaignId,
         campaignContactId,
         conversationId,
+        callId,
         phoneNumber,
         providerBatchId,
         callSuccessful: parsedCallSuccessful,
@@ -634,6 +640,20 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             });
         }
 
+        if (!contact && webhookData.callId) {
+            contact = await prisma.campaignContact.findFirst({
+                where: {
+                    callId: webhookData.callId,
+                    webhookReceivedAt: null,
+                },
+                orderBy: [{ updatedAt: "desc" }],
+            });
+            logger.debug("[CampaignWebhook] Lookup by callId", {
+                callId: webhookData.callId,
+                found: !!contact,
+            });
+        }
+
         if (!contact && webhookData.providerBatchId) {
             const normalizedPhone = normalizePhoneForLookup(webhookData.phoneNumber);
             const phoneCandidates = [webhookData.phoneNumber, normalizedPhone].filter(Boolean);
@@ -859,6 +879,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         const updateData = {
             status,
             conversationId: webhookData.conversationId || contact.conversationId,
+            callId: webhookData.callId || contact.callId,
             callDuration: webhookData.callDuration,
             callTranscript: webhookData.transcriptSummary,
             webhookReceivedAt: new Date(),
