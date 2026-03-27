@@ -331,15 +331,6 @@ const extractWebhookData = (payload = {}) => {
         payload.conversationId,
     );
 
-    const callId = firstNonEmpty(
-        data.call_id,
-        data.callId,
-        payload.call_id,
-        payload.callId,
-        metadata.call_id,
-        metadata.callId,
-    );
-
     const campaignContactId = firstNonEmpty(
         customLlmData.campaignContactId,
         customLlmData.campaign_contact_id,
@@ -407,7 +398,6 @@ const extractWebhookData = (payload = {}) => {
         campaignId,
         campaignContactId,
         conversationId,
-        callId,
         phoneNumber,
         providerBatchId,
         callSuccessful: parsedCallSuccessful,
@@ -636,20 +626,6 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             });
             logger.debug("[CampaignWebhook] Lookup by conversationId", {
                 conversationId: webhookData.conversationId,
-                found: !!contact,
-            });
-        }
-
-        if (!contact && webhookData.callId) {
-            contact = await prisma.campaignContact.findFirst({
-                where: {
-                    callId: webhookData.callId,
-                    webhookReceivedAt: null,
-                },
-                orderBy: [{ updatedAt: "desc" }],
-            });
-            logger.debug("[CampaignWebhook] Lookup by callId", {
-                callId: webhookData.callId,
                 found: !!contact,
             });
         }
@@ -921,7 +897,6 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         const updateData = {
             status,
             conversationId: webhookData.conversationId || contact.conversationId,
-            callId: webhookData.callId || contact.callId,
             callDuration: webhookData.callDuration,
             callTranscript: webhookData.transcriptSummary,
             webhookReceivedAt: new Date(),

@@ -276,8 +276,6 @@ BEGIN
     END IF;
 END $$;
 
--- Add columnn callid & Add performance indexes for webhook processing and callId lookup
-ALTER TABLE "campaign_contacts" ADD COLUMN IF NOT EXISTS "call_id" TEXT;
-CREATE INDEX IF NOT EXISTS "campaign_contacts_call_id_idx" ON "campaign_contacts"("call_id");
+-- Add performance indexes for webhook processing
 CREATE INDEX IF NOT EXISTS "campaign_contacts_webhook_received_at_idx" ON "campaign_contacts"("webhook_received_at");
 CREATE INDEX IF NOT EXISTS "campaign_contacts_status_webhook_received_at_idx" ON "campaign_contacts"("status", "webhook_received_at");
