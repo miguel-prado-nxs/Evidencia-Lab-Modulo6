@@ -944,48 +944,6 @@ model CampaignContact {
   @@map("campaign_contacts")
 }
 
-model CampaignCoupon {
-  id                String            @id @default(uuid())
-  campaignId        String?           @map("campaign_id")
-  code              String            @unique
-  offer             String
-  couponType        String?           @map("coupon_type")
-  percentOff        Int?              @map("percent_off")
-  durationMonths    Int?              @map("duration_months")
-  trialDays         Int?              @map("trial_days")
-  stripePromoId     String?           @map("stripe_promo_id")
-  status            CouponStatus      @default(GENERATED)
-  generatedAt       DateTime          @default(now()) @map("generated_at")
-  sentAt            DateTime?         @map("sent_at")
-  visitedAt         DateTime?         @map("visited_at")
-  convertedAt       DateTime?         @map("converted_at")
-  scenario          String?
-  assignedPhone     String?           @map("assigned_phone")
-  assignedAt        DateTime?         @map("assigned_at")
-  expiresAt         DateTime?         @map("expires_at")
-  source            String?
-  agentId           String?           @map("agent_id")
-  callId            String?           @map("call_id")
-  visitCount        Int               @default(0) @map("visit_count")
-  lastVisitedAt     DateTime?         @map("last_visited_at")
-  conversionData    Json?             @map("conversion_data")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
-  campaignContactId String?           @map("campaign_contact_id")
-  contacts          CampaignContact[]
-  campaign          Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-
-  @@index([campaignId])
-  @@index([code])
-  @@index([status])
-  @@index([couponType])
-  @@index([assignedPhone])
-  @@index([expiresAt])
-  @@index([source])
-  @@index([campaignContactId])
-  @@map("campaign_coupons")
-}
-
 model CouponTemplate {
   id              String     @id @default(uuid())
   couponType      String     @unique @map("coupon_type")
