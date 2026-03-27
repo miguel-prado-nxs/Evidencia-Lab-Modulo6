@@ -1128,6 +1128,7 @@ enum ContactStatus {
   CALLING    // Frontend: "Calling" - en proceso de llamada
   CALLED     // Frontend: "Called" - llamada realizada
   RESPONDED  // Frontend: "Responded" - contacto respondió positivamente
+  PAUSED     // Frontend: "Paused" - campaña pausada
   SENT       // Mensaje/cupón enviado
   DELIVERED  // Mensaje entregado (WhatsApp)
   VISITED    // Visitó landing de cupón
@@ -1139,8 +1140,9 @@ model CampaignCoupon {
   id         String   @id @default(uuid())
   campaignId String?  @map("campaign_id") // Nullable para cupones ad-hoc sin campaña
   
-  // Código único del cupón
-  code       String   @unique
+  // Código del cupón (couponType limpio, ej: PLUS30)
+  // El rastreo individual se hace por id + assignedPhone + campaignContactId
+  code       String
   
   // Oferta (texto descriptivo)
   offer      String   // "+2 meses gratis", "20% descuento"

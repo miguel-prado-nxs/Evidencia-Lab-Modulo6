@@ -8,7 +8,7 @@ const crypto = require("crypto");
  * @returns {string} Código único (ej: "EASY-PLUS30-A3F2X9")
  */
 const generateUniqueCode = (base) => {
-  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+  const suffix = crypto.randomBytes(2).toString("hex").toUpperCase();
   return `${base}-${suffix}`;
 };
 
@@ -130,7 +130,11 @@ const generateCouponForCall = async ({
   let template;
   if (couponType) {
     template = await selectTemplateByCouponType(couponType);
-    logger.info("Template selected by couponType", { couponType, templateId: template.id });
+    logger.info("Template selected strictly by couponType (scenario used for analytics only)", { 
+      couponType, 
+      templateId: template.id,
+      scenario 
+    });
   } else if (scenario) {
     template = await selectTemplateByScenario(scenario, bantScores);
     logger.info("Template selected by scenario", { scenario, templateId: template.id });
@@ -144,26 +148,9 @@ const generateCouponForCall = async ({
     throw new Error(eligibility.reason);
   }
   
-  // 3. Generar código único
-  const baseCode = `EASY-${template.couponType}`;
-  let code;
-  let isUnique = false;
-  let attempts = 0;
-  
-  while (!isUnique && attempts < 10) {
-    code = generateUniqueCode(baseCode);
-    const existing = await prisma.campaignCoupon.findUnique({
-      where: { code }
-    });
-    if (!existing) {
-      isUnique = true;
-    }
-    attempts++;
-  }
-  
-  if (!isUnique) {
-    throw new Error("Failed to generate unique coupon code");
-  }
+  // 3. El código del cupón es EASY-{couponType} (ej: EASY-PLUS30, EASY-50OFF)
+  // Sin sufijos aleatorios — limpio y memorable
+  const code = `EASY-${template.couponType}`;
   
   // 4. Calcular fecha de expiración
   const expiresAt = new Date();
@@ -192,10 +179,13 @@ const generateCouponForCall = async ({
   });
   
   // 6. Personalizar mensaje con datos del prospecto
+  // codigo = couponType limpio (ej: PLUS30) — lo que ve el cliente
+  // couponId = UUID interno — para enlaces de rastreo individual
   const message = renderTemplate(template.messageTemplate, {
     nombre: prospectName,
     negocio: businessName,
     codigo: code,
+    couponId: coupon.id,
     beneficio: template.description || template.name
   });
   
