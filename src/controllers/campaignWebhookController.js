@@ -246,7 +246,17 @@ const hasNoAnswerEvidence = ({ failureReason, transcriptSummary }) => {
     return hasKeywordEvidence({ failureReason, transcriptSummary, keywords: NO_ANSWER_KEYWORDS });
 };
 
-const hasConversationEvidence = ({ callDuration, transcriptSummary }) => {
+const hasVoicemailEvidence = ({ transcriptSummary, failureReason }) => {
+    const voicemailKeywords = ["voicemail", "voice mail", "buzon", "buzón", "answering machine", "beep", "re-record", "interrupted by", "contestador"];
+    return hasKeywordEvidence({ failureReason, transcriptSummary, keywords: voicemailKeywords });
+};
+
+const hasConversationEvidence = ({ callDuration, transcriptSummary, failureReason }) => {
+    // Si detecta buzón, no es conversación real
+    if (hasVoicemailEvidence({ transcriptSummary, failureReason })) {
+        return false;
+    }
+
     if (typeof callDuration === "number" && Number.isFinite(callDuration) && callDuration > 0) {
         return true;
     }
@@ -264,8 +274,13 @@ const resolveFinalContactStatus = ({ callSuccessful, failureReason, callDuration
         return "FAILED";
     }
 
+    // Conversación real es RESPONDED, independiente de callSuccessful
+    if (hasConversationEvidence({ callDuration, transcriptSummary, failureReason })) {
+        return "RESPONDED";
+    }
+
     if (callSuccessful === true) {
-        return hasConversationEvidence({ callDuration, transcriptSummary }) ? "RESPONDED" : "CALLED";
+        return "CALLED";
     }
 
     if (hasNoAnswerEvidence({ failureReason, transcriptSummary })) {
@@ -273,14 +288,14 @@ const resolveFinalContactStatus = ({ callSuccessful, failureReason, callDuration
     }
 
     if (callSuccessful === false) {
-        return hasConversationEvidence({ callDuration, transcriptSummary }) ? "CALLED" : "FAILED";
+        return "FAILED";
     }
 
     if (hasMeaningfulFailureReason(failureReason)) {
         return "CALLED";
     }
 
-    return hasConversationEvidence({ callDuration, transcriptSummary }) ? "RESPONDED" : "CALLED";
+    return "CALLED";
 };
 
 const normalizePhoneForLookup = (value) => {
