@@ -939,6 +939,8 @@ model CampaignContact {
   @@index([establishmentId])
   @@index([status])
   @@index([sentAt])
+  @@index([webhookReceivedAt])
+  @@index([status, webhookReceivedAt])
   @@map("campaign_contacts")
 }
 
@@ -1159,16 +1161,16 @@ enum CampaignType {
 }
 
 enum ContactStatus {
-  PENDING    // Frontend: "Pending"
-  CALLING    // Frontend: "Calling" - en proceso de llamada
-  CALLED     // Frontend: "Called" - llamada realizada
-  RESPONDED  // Frontend: "Responded" - contacto respondió positivamente
+  PENDING    // Frontend: "Pending"    // Frontend: "Pending"
+  CALLING    // Frontend: "Calling" - en proceso de llamada    // Frontend: "Calling" - en proceso de llamada     // Frontend: "Paused" - llamada pausada (congelada)
+  CALLED     // Frontend: "Called" - llamada realizada     // Frontend: "Called" - llamada realizada
+  RESPONDED  // Frontend: "Responded" - contacto respondió positivamente  // Frontend: "Responded" - contacto respondió positivamente
   PAUSED     // Frontend: "Paused" - campaña pausada
-  SENT       // Mensaje/cupón enviado
-  DELIVERED  // Mensaje entregado (WhatsApp)
-  VISITED    // Visitó landing de cupón
-  CONVERTED  // Frontend: "Converted" - se convirtió en cliente
-  FAILED     // Frontend: "Failed" - falló el contacto
+  SENT       // Mensaje/cupón enviado       // Mensaje/cupón enviado
+  DELIVERED  // Mensaje entregado (WhatsApp)  // Mensaje entregado (WhatsApp)
+  VISITED    // Visitó landing de cupón    // Visitó landing de cupón
+  CONVERTED  // Frontend: "Converted" - se convirtió en cliente  // Frontend: "Converted" - se convirtió en cliente
+  FAILED     // Frontend: "Failed" - falló el contacto     // Frontend: "Failed" - falló el contacto
 }
 
 model CampaignCoupon {

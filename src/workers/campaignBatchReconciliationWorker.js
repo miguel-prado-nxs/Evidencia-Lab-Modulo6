@@ -69,7 +69,8 @@ const recalculateCampaignMetrics = async (campaignId) => {
     const couponsVisited = statusCount.VISITED || 0;
     const couponsConverted = statusCount.CONVERTED || 0;
     const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0);
-    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0;
+    const pausedContacts = statusCount.PAUSED || 0;
+    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0 && pausedContacts === 0;
 
     const campaignUpdateData = {
         totalContacts,
@@ -183,8 +184,8 @@ const reconcileContact = async (contact, orphanThreshold) => {
         return { updated: false, reason: "idempotent" };
     }
 
-    if (contact.status !== "CALLING") {
-        return { updated: false, reason: "not_calling" };
+    if (!["CALLING", "PAUSED"].includes(contact.status)) {
+        return { updated: false, reason: "not_calling_or_paused" };
     }
 
     const createdAt = new Date(contact.createdAt);
@@ -193,7 +194,7 @@ const reconcileContact = async (contact, orphanThreshold) => {
     }
 
     const timeoutHours = getOrphanTimeoutHours();
-    const errorReason = `Reconciliation timeout: CALLING without closure for more than ${timeoutHours}h`;
+    const errorReason = `Reconciliation timeout: ${contact.status} without closure for more than ${timeoutHours}h`;
 
     await prisma.campaignContact.update({
         where: { id: contact.id },

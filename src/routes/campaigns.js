@@ -62,7 +62,7 @@ const startCampaignSchema = z.object({
 
 const updateContactStatusSchema = z.object({
   body: z.object({
-    status: z.enum(["PENDING", "CALLING", "CALLED", "RESPONDED", "SENT", "DELIVERED", "VISITED", "CONVERTED", "FAILED"]),
+    status: z.enum(["PENDING", "CALLING", "PAUSED", "CALLED", "RESPONDED", "SENT", "DELIVERED", "VISITED", "CONVERTED", "FAILED"]),
     messageId: z.string().optional(),
     errorReason: z.string().optional(),
   }),
@@ -90,8 +90,6 @@ router.post("/:id/contacts/geo", validate(assignContactsGeoSchema), campaignsCon
 router.post("/:id/start", validate(startCampaignSchema), campaignsController.startCampaign);
 router.post("/:id/pause", campaignsController.pauseCampaign);
 router.post("/:id/resume", campaignsController.resumeCampaign);
-router.post("/:id/pause", campaignsController.pause);
-router.post("/:id/resume", validate(startCampaignSchema), campaignsController.resume);
 router.post("/:id/cancel", campaignsController.cancel);
 router.post("/:id/retry", campaignsController.retry);
 router.get("/:id/contacts", campaignsController.getContacts);
