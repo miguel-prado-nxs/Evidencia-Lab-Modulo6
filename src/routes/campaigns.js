@@ -88,6 +88,8 @@ router.delete("/:id", campaignsController.delete);
 router.post("/:id/contacts", validate(assignContactsSchema), campaignsController.assignContacts);
 router.post("/:id/contacts/geo", validate(assignContactsGeoSchema), campaignsController.assignContactsWithGeo);
 router.post("/:id/start", validate(startCampaignSchema), campaignsController.startCampaign);
+router.post("/:id/pause", campaignsController.pauseCampaign);
+router.post("/:id/resume", campaignsController.resumeCampaign);
 router.post("/:id/pause", campaignsController.pause);
 router.post("/:id/resume", validate(startCampaignSchema), campaignsController.resume);
 router.post("/:id/cancel", campaignsController.cancel);

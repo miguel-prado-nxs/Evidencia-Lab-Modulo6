@@ -96,10 +96,10 @@ const generateAndSendCoupon = async (req, res, next) => {
       from
     } = req.body;
 
-    if (!phone || !prospectName || !businessName || !agentId || !callId) {
+    if (!phone || !prospectName || !businessName || !agentId || !callId || !couponType) {
       return res.status(400).json({
         success: false,
-        error: "phone, prospectName, businessName, agentId, and callId are required"
+        error: "phone, prospectName, businessName, agentId, callId, and couponType are required"
       });
     }
 

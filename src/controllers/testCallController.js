@@ -86,7 +86,12 @@ async function handleTestCall(req, res, next) {
         });
 
     } catch (error) {
-        logger.error("[Test Call] Error al realizar llamada de prueba:", error);
+        logger.error("[Test Call] Error al realizar llamada de prueba", {
+            message: error.message,
+            code: error.code,
+            status: error.response?.status,
+            data: error.response?.data,
+        });
 
         // Si es un error de Axios (del servicio externo)
         if (error.response) {

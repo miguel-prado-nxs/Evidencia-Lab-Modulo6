@@ -356,6 +356,61 @@ const startCampaign = async (req, res, next) => {
   }
 };
 
+const pauseCampaign = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const campaign = await campaignsService.getCampaignById(id);
+
+    // if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "No tienes permisos para pausar esta campaña",
+    //   });
+    // }
+
+    const result = await campaignsService.pauseCampaign(id);
+
+    res.json({
+      success: true,
+      data: result,
+      message: "Campaña pausada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resumeCampaign = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const campaign = await campaignsService.getCampaignById(id);
+
+    // if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "No tienes permisos para reanudar esta campaña",
+    //   });
+    // }
+
+    const result = await campaignsService.resumeCampaign(id);
+
+    let message = "Campaña reanudada exitosamente";
+    if (result.reconciliedContacts > 0) {
+      message += ` (${result.reconciliedContacts} contactos reconciliados)`;
+    }
+
+    res.json({
+      success: true,
+      data: result,
+      message,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const loadCouponTemplates = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -483,6 +538,8 @@ module.exports = {
   assignContacts,
   assignContactsWithGeo,
   startCampaign,
+  pauseCampaign,
+  resumeCampaign,
   getContacts,
   updateContactStatus,
   getStats,

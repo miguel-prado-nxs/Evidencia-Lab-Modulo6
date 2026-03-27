@@ -37,6 +37,7 @@ dynamic_variables: {
     // Información de cupones
     coupons: {
       available: true,
+      couponType: "PLUS30", // NUEVO: Tipo de cupón mandatorio para la campaña
       templates: [
         {
           id: "template-uuid",
@@ -58,6 +59,7 @@ dynamic_variables: {
         enabled: true,
         trigger: "Al final de la llamada si el prospecto muestra interés",
         method: "whatsapp",
+        couponType: "PLUS30", // NUEVO: Tipo de cupón mandatorio para la campaña
         endpoint: "/api/v1/coupons-whatsapp/generate-and-send",
         requiredParams: ["phone", "prospectName", "businessName", "scenario", "agentId", "callId", "campaignId", "campaignContactId", "couponType"]
       }
@@ -76,7 +78,8 @@ dynamic_variables: {
   
   // Acceso rápido a información de cupones
   couponsAvailable: true,
-  couponTypes: ["PLUS30", "50OFF"],
+  couponTypes: ["PLUS30"],
+  couponType: "PLUS30", // NUEVO: Tipo de cupón mandatorio para la campaña
   couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send",
   agentInstructions: "Instrucciones completas para el agente..."
 }
@@ -237,17 +240,12 @@ Eres un agente de ventas para la campaña: "Campaña Primavera 2026"
 Descripción: Campaña de adquisición con cupones especiales
 Oferta: Descuento especial para nuevos clientes
 
-CUPONES DISPONIBLES PARA ENVIAR:
+CUPÓN PARA ENVIAR:
 - PLUS30 (+30 días gratis): 30 días adicionales sin costo
-  Escenarios: closing, price_objection
   Beneficio: 1 meses 30 días trial
 
-- 50OFF (50% descuento): 50% de descuento en primer mes
-  Escenarios: price_objection
-  Beneficio: 50%
-
-AL FINAL DE LA LLAMADA: Si el prospecto está interesado, ofrece enviarle un cupón especial por WhatsApp.
-Especifica qué tipo de cupón es más apropiado según el escenario de la conversación.
+AL FINAL DE LA LLAMADA: Si el prospecto está interesado, ofrece enviarle el cupón PLUS30 por WhatsApp.
+NO decidas qué cupón enviar; usa siempre el tipo PLUS30 proporcionado. El parámetro 'scenario' que envíes en el webhook se usará únicamente para analíticas, no para seleccionar el cupón.
 ```
 
 ## Parámetros Requeridos para Envío

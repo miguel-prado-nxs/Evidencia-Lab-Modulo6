@@ -525,28 +525,28 @@ const startCampaign = async (campaignId, options = {}) => {
   // Obtener configuración de voz del Agent Builder (demo-form-service) para sobrescribir la de ElevenLabs
   let agentBuilderVoiceId = null;
   let agentBuilderPersonalityName = null;
-  
+
   try {
     const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
     const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
-    
+
     // Determinar si es SDR o Calificación basado en el agentId de la campaña
     const sdrAgentId = process.env.ELEVENLABS_SDR_AGENT_ID;
     const qualificationAgentId = process.env.ELEVENLABS_QUALIFICATION_AGENT_ID;
-    
+
     let configType = "SDR"; // Default a SDR
     if (resolvedAgentId === qualificationAgentId) {
       configType = "QUALIFICATION";
     }
-    
+
     const configUrl = `${demoFormUrl}/agent-configs/default/${configType}`;
     logger.info(`[CampaignStart] Detectado tipo de agente: ${configType}. Consultando config en: ${configUrl}`);
-    
+
     const configResponse = await axios.get(configUrl, {
       headers: { "X-API-Key": agentsConfigKey || "" },
       timeout: 5000,
     });
-    
+
     if (configResponse.data?.success && configResponse.data?.data) {
       const data = configResponse.data.data;
       agentBuilderVoiceId = data.openai_voice || data.voice || null;
@@ -666,7 +666,7 @@ const startCampaign = async (campaignId, options = {}) => {
       resolvedAgentProfile.agentName ||
       campaign.agentConfigName ||
       "Asesor EasyOrder";
-      
+
     // Prioridad 1: Agent Builder, Prioridad 2: ElevenLabs, Prioridad 3: Contact Data
     const personalityName =
       agentBuilderPersonalityName ||
@@ -1021,17 +1021,6 @@ const getCampaignStats = async (campaignId) => {
   };
 };
 
-const pauseCampaign = async (id) => {
-  const campaign = await prisma.campaign.findUnique({ where: { id } });
-  if (!campaign) throw new Error("Campaña no encontrada");
-  if (campaign.status !== "ACTIVE") throw new Error("Solo se pueden pausar campañas activas");
-
-  return prisma.campaign.update({
-    where: { id },
-    data: { status: "PAUSED" },
-  });
-};
-
 const cancelCampaign = async (id) => {
   const campaign = await prisma.campaign.findUnique({ where: { id } });
   if (!campaign) throw new Error("Campaña no encontrada");
@@ -1078,6 +1067,408 @@ const retryCampaignContacts = async (campaignId, options = {}) => {
   };
 };
 
+const pauseCampaign = async (campaignId) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+  });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "ACTIVE") {
+    const error = new Error(`Campaign must be ACTIVE to pause. Current status: ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Actualizar todos los contactos CALLING a PAUSED
+  const pausedContactsResult = await prisma.campaignContact.updateMany({
+    where: {
+      campaignId,
+      status: "CALLING",
+    },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  logger.info(`Contacts paused during campaign pause`, {
+    campaignId,
+    pausedCount: pausedContactsResult.count,
+  });
+
+  const updatedCampaign = await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  logger.info(`Campaign paused: ${campaignId}`, {
+    campaignId,
+    previousStatus: campaign.status,
+    newStatus: updatedCampaign.status,
+    pausedContactsCount: pausedContactsResult.count,
+  });
+
+  return updatedCampaign;
+};
+
+const resumeCampaign = async (campaignId) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+  });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "PAUSED") {
+    const error = new Error(`Campaign must be PAUSED to resume. Current status: ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Reconciliar contactos que quedaron stuck en CALLING
+  // Estos son contactos cuya llamada pudo haber completado mientras la campaña estaba pausada
+  const stuckCallingContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "PAUSED",
+    },
+    select: {
+      id: true,
+      webhookReceivedAt: true,
+      conversationId: true,
+      createdAt: true,
+    },
+  });
+
+  // Reconciliar contactos stuck
+  let reconciliedCount = 0;
+  if (stuckCallingContacts.length > 0) {
+    const now = new Date();
+    const CALLING_TIMEOUT_MINUTES = 30; // Si estuvo CALLING más de 30 min sin webhook, resetear a PENDING
+
+    for (const contact of stuckCallingContacts) {
+      const timeInCallingMs = now.getTime() - new Date(contact.createdAt).getTime();
+      const timeInCallingMinutes = timeInCallingMs / (1000 * 60);
+
+      // Si el webhook fue recibido, marcar como CALLED (la llamada se completó)
+      if (contact.webhookReceivedAt) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "CALLED" },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → CALLED (webhook received)`);
+      }
+      // Si pasó más tiempo que el timeout sin webhook, resetear a PENDING para reintentar
+      else if (timeInCallingMinutes > CALLING_TIMEOUT_MINUTES && !contact.conversationId) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING" },
+        });
+        reconciliedCount++;
+        logger.warn(`Contact ${contact.id} reconciled: PAUSED → PENDING (timeout, no webhook)`);
+      }
+      // Si tiene conversationId pero no webhook, mantener como PENDING para reintentar (la llamada se interrumpió durante pausa)
+      else if (contact.conversationId) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING", conversationId: null },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → PENDING (pending retry)`);
+      } else {
+        // Sin webhook y sin conversationId después de timeout, resetear a PENDING
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING" },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → PENDING (no webhook, no conversation)`);
+      }
+    }
+  }
+
+  // Obtener contactos pending que no se han llamado todavía
+  const pendingContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "PENDING",
+    },
+    select: {
+      id: true,
+      campaignId: true,
+      establishmentId: true,
+      establishmentName: true,
+      establishmentPhone: true,
+      establishmentData: true,
+    },
+  });
+
+  if (pendingContacts.length === 0 && stuckCallingContacts.length === 0) {
+    logger.warn(`No pending contacts found to resume for campaign ${campaignId}`);
+  }
+
+  // Si hay pendientes, re-despachar llamadas para que continúen automáticamente
+  if (pendingContacts.length > 0) {
+    const startResult = await startCampaign(campaignId, {
+      agentId: campaign.agentConfigId,
+    });
+
+    logger.info(`Campaign resumed with redispatch: ${campaignId}`, {
+      campaignId,
+      previousStatus: campaign.status,
+      newStatus: startResult.status,
+      pendingContactsCount: pendingContacts.length,
+      stuckCallingContactsCount: stuckCallingContacts.length,
+      reconciliedContactsCount: reconciliedCount,
+      dispatchedRecipients: startResult.dispatch?.dispatchedRecipients,
+    });
+
+    return {
+      campaignId,
+      status: startResult.status,
+      startedAt: startResult.startedAt,
+      dispatch: startResult.dispatch,
+      pendingContacts: pendingContacts.length,
+      stuckCallingContacts: stuckCallingContacts.length,
+      reconciliedContacts: reconciliedCount,
+    };
+  }
+
+  const updatedCampaign = await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "ACTIVE",
+    },
+  });
+
+  logger.info(`Campaign resumed without redispatch: ${campaignId}`, {
+    campaignId,
+    previousStatus: campaign.status,
+    newStatus: updatedCampaign.status,
+    pendingContactsCount: pendingContacts.length,
+    stuckCallingContactsCount: stuckCallingContacts.length,
+    reconciliedContactsCount: reconciliedCount,
+  });
+
+  return {
+    ...updatedCampaign,
+    pendingContacts: pendingContacts.length,
+    stuckCallingContacts: stuckCallingContacts.length,
+    reconciliedContacts: reconciliedCount,
+  };
+};
+
+const pauseCampaign = async (campaignId) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+  });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "ACTIVE") {
+    const error = new Error(`Campaign must be ACTIVE to pause. Current status: ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Actualizar todos los contactos CALLING a PAUSED
+  const pausedContactsResult = await prisma.campaignContact.updateMany({
+    where: {
+      campaignId,
+      status: "CALLING",
+    },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  logger.info(`Contacts paused during campaign pause`, {
+    campaignId,
+    pausedCount: pausedContactsResult.count,
+  });
+
+  const updatedCampaign = await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "PAUSED",
+    },
+  });
+
+  logger.info(`Campaign paused: ${campaignId}`, {
+    campaignId,
+    previousStatus: campaign.status,
+    newStatus: updatedCampaign.status,
+    pausedContactsCount: pausedContactsResult.count,
+  });
+
+  return updatedCampaign;
+};
+
+const resumeCampaign = async (campaignId) => {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+  });
+
+  if (!campaign) {
+    const error = new Error("Campaign not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "PAUSED") {
+    const error = new Error(`Campaign must be PAUSED to resume. Current status: ${campaign.status}`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Reconciliar contactos que quedaron stuck en CALLING
+  // Estos son contactos cuya llamada pudo haber completado mientras la campaña estaba pausada
+  const stuckCallingContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "PAUSED",
+    },
+    select: {
+      id: true,
+      webhookReceivedAt: true,
+      conversationId: true,
+      createdAt: true,
+    },
+  });
+
+  // Reconciliar contactos stuck
+  let reconciliedCount = 0;
+  if (stuckCallingContacts.length > 0) {
+    const now = new Date();
+    const CALLING_TIMEOUT_MINUTES = 30; // Si estuvo CALLING más de 30 min sin webhook, resetear a PENDING
+
+    for (const contact of stuckCallingContacts) {
+      const timeInCallingMs = now.getTime() - new Date(contact.createdAt).getTime();
+      const timeInCallingMinutes = timeInCallingMs / (1000 * 60);
+
+      // Si el webhook fue recibido, marcar como CALLED (la llamada se completó)
+      if (contact.webhookReceivedAt) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "CALLED" },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → CALLED (webhook received)`);
+      }
+      // Si pasó más tiempo que el timeout sin webhook, resetear a PENDING para reintentar
+      else if (timeInCallingMinutes > CALLING_TIMEOUT_MINUTES && !contact.conversationId) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING" },
+        });
+        reconciliedCount++;
+        logger.warn(`Contact ${contact.id} reconciled: PAUSED → PENDING (timeout, no webhook)`);
+      }
+      // Si tiene conversationId pero no webhook, mantener como PENDING para reintentar (la llamada se interrumpió durante pausa)
+      else if (contact.conversationId) {
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING", conversationId: null },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → PENDING (pending retry)`);
+      } else {
+        // Sin webhook y sin conversationId después de timeout, resetear a PENDING
+        await prisma.campaignContact.update({
+          where: { id: contact.id },
+          data: { status: "PENDING" },
+        });
+        reconciliedCount++;
+        logger.info(`Contact ${contact.id} reconciled: PAUSED → PENDING (no webhook, no conversation)`);
+      }
+    }
+  }
+
+  // Obtener contactos pending que no se han llamado todavía
+  const pendingContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId,
+      status: "PENDING",
+    },
+    select: {
+      id: true,
+      campaignId: true,
+      establishmentId: true,
+      establishmentName: true,
+      establishmentPhone: true,
+      establishmentData: true,
+    },
+  });
+
+  if (pendingContacts.length === 0 && stuckCallingContacts.length === 0) {
+    logger.warn(`No pending contacts found to resume for campaign ${campaignId}`);
+  }
+
+  // Si hay pendientes, re-despachar llamadas para que continúen automáticamente
+  if (pendingContacts.length > 0) {
+    const startResult = await startCampaign(campaignId, {
+      agentId: campaign.agentConfigId,
+    });
+
+    logger.info(`Campaign resumed with redispatch: ${campaignId}`, {
+      campaignId,
+      previousStatus: campaign.status,
+      newStatus: startResult.status,
+      pendingContactsCount: pendingContacts.length,
+      stuckCallingContactsCount: stuckCallingContacts.length,
+      reconciliedContactsCount: reconciliedCount,
+      dispatchedRecipients: startResult.dispatch?.dispatchedRecipients,
+    });
+
+    return {
+      campaignId,
+      status: startResult.status,
+      startedAt: startResult.startedAt,
+      dispatch: startResult.dispatch,
+      pendingContacts: pendingContacts.length,
+      stuckCallingContacts: stuckCallingContacts.length,
+      reconciliedContacts: reconciliedCount,
+    };
+  }
+
+  const updatedCampaign = await prisma.campaign.update({
+    where: { id: campaignId },
+    data: {
+      status: "ACTIVE",
+    },
+  });
+
+  logger.info(`Campaign resumed without redispatch: ${campaignId}`, {
+    campaignId,
+    previousStatus: campaign.status,
+    newStatus: updatedCampaign.status,
+    pendingContactsCount: pendingContacts.length,
+    stuckCallingContactsCount: stuckCallingContacts.length,
+    reconciliedContactsCount: reconciliedCount,
+  });
+
+  return {
+    ...updatedCampaign,
+    pendingContacts: pendingContacts.length,
+    stuckCallingContacts: stuckCallingContacts.length,
+    reconciliedContacts: reconciliedCount,
+  };
+};
+
 module.exports = {
   createCampaign,
   getCampaignById,
@@ -1093,4 +1484,6 @@ module.exports = {
   pauseCampaign,
   cancelCampaign,
   retryCampaignContacts,
+  pauseCampaign,
+  resumeCampaign,
 };

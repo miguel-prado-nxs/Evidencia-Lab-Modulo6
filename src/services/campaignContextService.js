@@ -69,6 +69,7 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
       // Información de cupones
       coupons: {
         available: templates.length > 0,
+        couponType: campaign.couponPrefix || templates[0]?.couponType || null,
         templates: templates.map(t => ({
           id: t.id,
           type: t.couponType,
@@ -84,7 +85,7 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
           mediaUrl: t.mediaUrl
         })),
         totalGenerated: campaign._count.coupons,
-        sendInstructions: buildCouponSendInstructions(templates)
+        sendInstructions: buildCouponSendInstructions(templates, campaign.couponPrefix)
       },
       
       // Instrucciones para el agente
@@ -121,7 +122,7 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
  * @param {Array} templates - Templates de cupones disponibles
  * @returns {object} Instrucciones de envío
  */
-const buildCouponSendInstructions = (templates) => {
+const buildCouponSendInstructions = (templates, campaignCouponType = null) => {
   if (templates.length === 0) {
     return {
       enabled: false,
@@ -129,15 +130,18 @@ const buildCouponSendInstructions = (templates) => {
     };
   }
 
+  const primaryType = campaignCouponType || templates[0]?.couponType;
+
   return {
     enabled: true,
     trigger: "Al final de la llamada si el prospecto muestra interés",
     method: "whatsapp",
+    couponType: primaryType,
     templates: templates.map(t => ({
       type: t.couponType,
       name: t.name,
       scenarios: t.scenarios,
-      instruction: `Enviar cupón ${t.couponType} (${t.name}) si el prospecto está interesado en ${t.scenarios.join(' o ')}`
+      instruction: `Enviar cupón ${t.couponType} (${t.name}) si el prospecto está interesado`
     })),
     endpoint: "/api/v1/coupons-whatsapp/generate-and-send",
     requiredParams: [
@@ -172,14 +176,16 @@ const buildAgentInstructions = (campaign, templates) => {
   }
 
   if (templates.length > 0) {
-    instructions += `CUPONES DISPONIBLES PARA ENVIAR:\n`;
-    templates.forEach(t => {
-      instructions += `- ${t.couponType} (${t.name}): ${t.description || 'Sin descripción'}\n`;
-      instructions += `  Escenarios: ${t.scenarios.join(', ')}\n`;
-      instructions += `  Beneficio: ${t.percentOff ? t.percentOff + '%' : ''} ${t.durationMonths ? t.durationMonths + ' meses' : ''} ${t.trialDays ? t.trialDays + ' días trial' : ''}\n`;
-    });
-    instructions += `\nAL FINAL DE LA LLAMADA: Si el prospecto está interesado, ofrece enviarle un cupón especial por WhatsApp.\n`;
-    instructions += `Especifica qué tipo de cupón es más apropiado según el escenario de la conversación.\n`;
+    const primaryType = campaign.couponPrefix || templates[0]?.couponType;
+    
+    instructions += `CUPÓN PARA ENVIAR:\n`;
+    const t = templates.find(temp => temp.couponType === primaryType) || templates[0];
+    
+    instructions += `- ${t.couponType} (${t.name}): ${t.description || 'Sin descripción'}\n`;
+    instructions += `  Beneficio: ${t.percentOff ? t.percentOff + '%' : ''} ${t.durationMonths ? t.durationMonths + ' meses' : ''} ${t.trialDays ? t.trialDays + ' días trial' : ''}\n`;
+    
+    instructions += `\nAL FINAL DE LA LLAMADA: Si el prospecto está interesado, ofrece enviarle el cupón ${t.couponType} por WhatsApp.\n`;
+    instructions += `NO decidas qué cupón enviar; usa siempre el tipo ${t.couponType} proporcionado. El parámetro 'scenario' que envíes en el webhook se usará únicamente para analíticas, no para seleccionar el cupón.\n`;
   }
 
   return instructions;
@@ -231,6 +237,7 @@ const enrichDynamicVariablesWithCampaignContext = async (
       campaignContext: context,
       couponsAvailable: context.coupons.available,
       couponTypes: context.coupons.templates.map(t => t.type),
+      couponType: context.coupons.couponType,
       agentInstructions: context.agentInstructions,
       couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send"
     };

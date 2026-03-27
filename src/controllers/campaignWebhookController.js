@@ -160,7 +160,27 @@ const hasMeaningfulFailureReason = (reason) => {
     return normalized !== "summary couldn't be generated for this call.";
 };
 
-const NEGATIVE_OUTCOME_KEYWORDS = [
+const HARD_FAILURE_KEYWORDS = [
+    "invalid number",
+    "number not found",
+    "blocked",
+    "blacklist",
+    "forbidden",
+    "unauthorized",
+    "failed to connect",
+    "network error",
+    "carrier error",
+    "not reachable",
+    "numero invalido",
+    "número inválido",
+    "numero no existe",
+    "número no existe",
+    "bloqueado",
+    "bloqueada",
+    "spam",
+];
+
+const NO_ANSWER_KEYWORDS = [
     "reject",
     "rejected",
     "declined",
@@ -191,9 +211,6 @@ const NEGATIVE_OUTCOME_KEYWORDS = [
     "corto",
     "cortó",
     "contestador",
-    "spam",
-    "bloque",
-    "bloqueó",
 ];
 
 const normalizeText = (value) => {
@@ -208,7 +225,7 @@ const normalizeText = (value) => {
         .trim();
 };
 
-const hasNegativeOutcomeEvidence = ({ failureReason, transcriptSummary }) => {
+const hasKeywordEvidence = ({ failureReason, transcriptSummary, keywords }) => {
     const mergedText = [failureReason, transcriptSummary]
         .map(normalizeText)
         .filter(Boolean)
@@ -218,7 +235,15 @@ const hasNegativeOutcomeEvidence = ({ failureReason, transcriptSummary }) => {
         return false;
     }
 
-    return NEGATIVE_OUTCOME_KEYWORDS.some((keyword) => mergedText.includes(normalizeText(keyword)));
+    return keywords.some((keyword) => mergedText.includes(normalizeText(keyword)));
+};
+
+const hasHardFailureEvidence = ({ failureReason, transcriptSummary }) => {
+    return hasKeywordEvidence({ failureReason, transcriptSummary, keywords: HARD_FAILURE_KEYWORDS });
+};
+
+const hasNoAnswerEvidence = ({ failureReason, transcriptSummary }) => {
+    return hasKeywordEvidence({ failureReason, transcriptSummary, keywords: NO_ANSWER_KEYWORDS });
 };
 
 const hasConversationEvidence = ({ callDuration, transcriptSummary }) => {
@@ -235,7 +260,7 @@ const hasConversationEvidence = ({ callDuration, transcriptSummary }) => {
 };
 
 const resolveFinalContactStatus = ({ callSuccessful, failureReason, callDuration, transcriptSummary }) => {
-    if (hasNegativeOutcomeEvidence({ failureReason, transcriptSummary })) {
+    if (hasHardFailureEvidence({ failureReason, transcriptSummary })) {
         return "FAILED";
     }
 
@@ -243,12 +268,16 @@ const resolveFinalContactStatus = ({ callSuccessful, failureReason, callDuration
         return hasConversationEvidence({ callDuration, transcriptSummary }) ? "RESPONDED" : "CALLED";
     }
 
+    if (hasNoAnswerEvidence({ failureReason, transcriptSummary })) {
+        return "CALLED";
+    }
+
     if (callSuccessful === false) {
-        return "FAILED";
+        return hasConversationEvidence({ callDuration, transcriptSummary }) ? "CALLED" : "FAILED";
     }
 
     if (hasMeaningfulFailureReason(failureReason)) {
-        return "FAILED";
+        return "CALLED";
     }
 
     return hasConversationEvidence({ callDuration, transcriptSummary }) ? "RESPONDED" : "CALLED";
@@ -726,14 +755,40 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             }
         }
 
+        // Verificar estado de la campaña
+        const campaignContext = await prisma.campaign.findUnique({
+            where: { id: contact.campaignId },
+            select: { status: true },
+        });
+
+        // Si la campaña está pausada y el contacto está pausado, no cambiar su estado
+        // El webhook se ackea pero no se actualiza el contacto
+        if (campaignContext?.status === "PAUSED" && contact.status === "PAUSED") {
+            logger.info("[CampaignWebhook] Webhook ignored - campaign is paused", {
+                campaignId: contact.campaignId,
+                contactId: contact.id,
+                conversationId: webhookData.conversationId,
+                contactStatus: contact.status,
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Webhook acknowledged but not processed (campaign paused)",
+            });
+        }
+
         const status = resolveFinalContactStatus({
             callSuccessful: webhookData.callSuccessful,
             failureReason: webhookData.failureReason,
             callDuration: webhookData.callDuration,
             transcriptSummary: webhookData.transcriptSummary,
         });
+
+        // Si la campaña está pausada pero el contacto está en CALLING (debe transicionar a PAUSED, no a su estado final)
+        const finalStatus = (campaignContext?.status === "PAUSED" && contact.status === "CALLING") ? "PAUSED" : status;
+
         const updateData = {
-            status,
+            status: finalStatus,
             conversationId: webhookData.conversationId || contact.conversationId,
             callDuration: webhookData.callDuration,
             callTranscript: webhookData.transcriptSummary,
@@ -742,8 +797,9 @@ const handleElevenLabsWebhook = async (req, res, next) => {
 
         logger.info("[CampaignWebhook] Preparing contact update", {
             contactId: contact.id,
+            campaignStatus: campaignContext?.status,
             currentStatus: contact.status,
-            newStatus: status,
+            newStatus: finalStatus,
             callDuration: webhookData.callDuration,
         });
 
