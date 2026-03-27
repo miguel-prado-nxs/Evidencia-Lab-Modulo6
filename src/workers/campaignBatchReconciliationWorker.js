@@ -184,8 +184,8 @@ const reconcileContact = async (contact, orphanThreshold) => {
         return { updated: false, reason: "idempotent" };
     }
 
-    if (contact.status !== "CALLING") {
-        return { updated: false, reason: "not_calling" };
+    if (!["CALLING", "PAUSED"].includes(contact.status)) {
+        return { updated: false, reason: "not_calling_or_paused" };
     }
 
     const createdAt = new Date(contact.createdAt);
@@ -194,7 +194,7 @@ const reconcileContact = async (contact, orphanThreshold) => {
     }
 
     const timeoutHours = getOrphanTimeoutHours();
-    const errorReason = `Reconciliation timeout: CALLING without closure for more than ${timeoutHours}h`;
+    const errorReason = `Reconciliation timeout: ${contact.status} without closure for more than ${timeoutHours}h`;
 
     await prisma.campaignContact.update({
         where: { id: contact.id },

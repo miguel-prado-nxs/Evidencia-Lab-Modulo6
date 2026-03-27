@@ -660,6 +660,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             const normalizedPhone = normalizePhoneForLookup(webhookData.phoneNumber);
             const phoneCandidates = [webhookData.phoneNumber, normalizedPhone].filter(Boolean);
 
+            // Búsqueda primaria: contactos sin webhook previo y en estado de espera
             contact = await prisma.campaignContact.findFirst({
                 where: {
                     webhookReceivedAt: null,
@@ -668,8 +669,6 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                             OR: [
                                 { status: "CALLING" },
                                 { status: "PAUSED" },
-                                // Durante pausa/reanudar puede quedar como PENDING antes de que llegue webhook.
-                                // Si ya fue despachado (providerBatchId), permitimos matchear para cerrar estado.
                                 { status: "PENDING", providerBatchId: { not: null } },
                             ],
                         },
@@ -680,6 +679,46 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                 },
                 orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
             });
+
+            // Búsqueda secundaria: si el webhook ya fue recibido (webhook duplicado/retry)
+            // Matcheamos por phone en contactos que ya tienen webhookReceivedAt reciente
+            if (!contact) {
+                contact = await prisma.campaignContact.findFirst({
+                    where: {
+                        AND: [
+                            {
+                                OR: [
+                                    // Solo status finales o con evidencia de llamada
+                                    { status: "CALLED" },
+                                    { status: "RESPONDED" },
+                                    { status: "FAILED" },
+                                    { status: "PENDING", providerBatchId: { not: null } },
+                                ],
+                            },
+                            {
+                                OR: phoneCandidates.map((phone) => ({ establishmentPhone: phone })),
+                            },
+                            // Webhook reciente (últimos 5 min) - excluye null
+                            {
+                                webhookReceivedAt: {
+                                    not: null,
+                                    gte: new Date(Date.now() - 5 * 60 * 1000),
+                                },
+                            },
+                        ],
+                    },
+                    orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
+                });
+
+                if (contact) {
+                    logger.debug("[CampaignWebhook] Lookup by phone fallback (with recent webhook)", {
+                        phoneCandidates,
+                        found: true,
+                        currentStatus: contact.status,
+                        webhookReceivedAt: contact.webhookReceivedAt,
+                    });
+                }
+            }
 
             logger.debug("[CampaignWebhook] Lookup by phone fallback", {
                 phoneCandidates,
@@ -706,47 +745,71 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             currentConversationId: contact.conversationId,
         });
 
-        if (contact.webhookReceivedAt && contact.conversationId === webhookData.conversationId) {
-            if (["CALLING", "PAUSED"].includes(contact.status)) {
-                const healedStatus = resolveClosedStatusFromContact(contact);
+        // Detectar y manejar webhooks duplicados/replays (idempotencia)
+        // Puede suceder si:
+        // 1. ElevenLabs reintenta el webhook
+        // 2. El contacto ya tiene webhookReceivedAt establecido
+        if (contact.webhookReceivedAt) {
+            // Si el conversationId coincide, es claramente un webhook duplicado
+            if (contact.conversationId === webhookData.conversationId) {
+                // Solo hacer heal si el contacto sigue en un estado "stuck"
+                if (["CALLING", "PAUSED"].includes(contact.status)) {
+                    const healedStatus = resolveClosedStatusFromContact(contact);
 
-                await prisma.campaignContact.update({
-                    where: { id: contact.id },
-                    data: {
-                        status: healedStatus,
-                    },
-                });
+                    await prisma.campaignContact.update({
+                        where: { id: contact.id },
+                        data: {
+                            status: healedStatus,
+                        },
+                    });
 
-                logger.warn("[CampaignWebhook] Healed inconsistent CALLING state on idempotent webhook", {
+                    logger.warn("[CampaignWebhook] Healed inconsistent contact state on idempotent webhook", {
+                        campaignId: contact.campaignId,
+                        contactId: contact.id,
+                        conversationId: webhookData.conversationId,
+                        previousStatus: contact.status,
+                        newStatus: healedStatus,
+                        webhookReceivedAt: contact.webhookReceivedAt,
+                    });
+
+                    setImmediate(() => {
+                        recalculateCampaignMetrics(contact.campaignId).catch((error) => {
+                            logger.error("[CampaignWebhook] Failed to recalculate campaign metrics after idempotent heal", {
+                                campaignId: contact.campaignId,
+                                contactId: contact.id,
+                                error: error.message,
+                            });
+                        });
+                    });
+                }
+
+                logger.info("[CampaignWebhook] Idempotent webhook (same contact/conversation)", {
                     campaignId: contact.campaignId,
                     contactId: contact.id,
                     conversationId: webhookData.conversationId,
-                    previousStatus: "CALLING",
-                    newStatus: healedStatus,
-                    webhookReceivedAt: contact.webhookReceivedAt,
+                    alreadyReceivedAt: contact.webhookReceivedAt,
                 });
 
-                setImmediate(() => {
-                    recalculateCampaignMetrics(contact.campaignId).catch((error) => {
-                        logger.error("[CampaignWebhook] Failed to recalculate campaign metrics after idempotent heal", {
-                            campaignId: contact.campaignId,
-                            contactId: contact.id,
-                            error: error.message,
-                        });
-                    });
+                return res.status(200).json({
+                    success: true,
+                    message: "Webhook already processed",
                 });
             }
 
-            logger.info("[CampaignWebhook] Idempotent webhook (same contact/conversation)", {
+            // Si el conversationId NO coincide pero ya tiene webhookReceivedAt,
+            // podría ser un caso de contacto reutilizado en el mismo batch
+            logger.warn("[CampaignWebhook] Webhook received for contact with previous webhook but different conversationId", {
                 campaignId: contact.campaignId,
                 contactId: contact.id,
-                conversationId: webhookData.conversationId,
+                newConversationId: webhookData.conversationId,
+                previousConversationId: contact.conversationId,
                 alreadyReceivedAt: contact.webhookReceivedAt,
             });
 
+            // No procesamos este webhook para evitar sobrescribir datos válidos
             return res.status(200).json({
                 success: true,
-                message: "Webhook already processed",
+                message: "Webhook for contact with different conversationId",
             });
         }
 
