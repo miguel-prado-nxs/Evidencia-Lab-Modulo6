@@ -746,6 +746,48 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             });
         }
 
+        // Búsqueda terciaria ultra-permisiva: último recurso para los webhooks que se escapan
+        // Sin restricciones de status ni webhook - solo phone + campaignId
+        if (!contact && webhookData.phoneNumber) {
+            const normalizedPhone = normalizePhoneForLookup(webhookData.phoneNumber);
+            const phoneCandidates = [webhookData.phoneNumber, normalizedPhone].filter(Boolean);
+
+            contact = await prisma.campaignContact.findFirst({
+                where: {
+                    AND: [
+                        {
+                            OR: [
+                                { status: "PENDING" },
+                                { status: "CALLING" },
+                                { status: "PAUSED" },
+                                { status: "CALLED" },
+                                { status: "RESPONDED" },
+                                { status: "SENT" },
+                                { status: "DELIVERED" },
+                                { status: "VISITED" },
+                                { status: "CONVERTED" },
+                                { status: "FAILED" },
+                            ],
+                        },
+                        {
+                            OR: phoneCandidates.map((phone) => ({ establishmentPhone: phone })),
+                        },
+                    ],
+                },
+                orderBy: [{ sentAt: "desc" }, { updatedAt: "desc" }],
+            });
+
+            if (contact) {
+                logger.warn("[CampaignWebhook] Lookup by phone (tertiary fallback - ultra-permissive)", {
+                    phoneCandidates,
+                    found: true,
+                    currentStatus: contact.status,
+                    webhookReceivedAt: contact.webhookReceivedAt,
+                    action: "ultra_permissive_lookup",
+                });
+            }
+        }
+
         if (!contact) {
             logger.warn("[CampaignWebhook] Contact not found for webhook", {
                 campaignContactId: webhookData.campaignContactId,
