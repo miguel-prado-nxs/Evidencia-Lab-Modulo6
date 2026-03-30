@@ -9,7 +9,7 @@ const generateCouponCode = (prefix = "COUPON") => {
 };
 
 const createCoupon = async (data) => {
-  const { campaignId, code, offer } = data;
+  const { campaignId, code, offer, validFrom, validUntil, couponTemplateId } = data;
 
   if (!campaignId || !offer) {
     throw new Error("campaignId and offer are required");
@@ -33,20 +33,50 @@ const createCoupon = async (data) => {
     throw new Error(`Coupon with code ${couponCode} already exists`);
   }
 
+  // Calcular fechas de validez si no se proporcionan
+  let validityDates = { validFrom: null, validUntil: null };
+  
+  if (couponTemplateId) {
+    // Si hay template, usar sus configuraciones
+    const template = await prisma.couponTemplate.findUnique({
+      where: { id: couponTemplateId }
+    });
+    
+    if (template) {
+      validityDates = validityService.calculateCouponValidityDates(template);
+    }
+  }
+
+  // Sobrescribir con fechas proporcionadas si existen
+  if (validFrom) {
+    validityDates.validFrom = new Date(validFrom);
+  }
+  if (validUntil) {
+    validityDates.validUntil = new Date(validUntil);
+  }
+
   const coupon = await prisma.campaignCoupon.create({
     data: {
       campaignId,
       code: couponCode,
       offer,
       status: "GENERATED",
+      validFrom: validityDates.validFrom,
+      validUntil: validityDates.validUntil,
     },
   });
 
-  logger.info(`Coupon created: ${coupon.code}`, { couponId: coupon.id, campaignId });
+  logger.info(`Coupon created: ${coupon.code}`, { 
+    couponId: coupon.id, 
+    campaignId,
+    validFrom: validityDates.validFrom,
+    validUntil: validityDates.validUntil
+  });
+  
   return coupon;
 };
 
-const generateBulkCoupons = async (campaignId, count, offerTemplate) => {
+const generateBulkCoupons = async (campaignId, count, offerTemplate, options = {}) => {
   if (!campaignId || !count || !offerTemplate) {
     throw new Error("campaignId, count, and offerTemplate are required");
   }
@@ -61,6 +91,27 @@ const generateBulkCoupons = async (campaignId, count, offerTemplate) => {
 
   if (!campaign) {
     throw new Error("Campaign not found");
+  }
+
+  // Calcular fechas de validez si se proporciona un template
+  let validityDates = { validFrom: null, validUntil: null };
+  
+  if (options.couponTemplateId) {
+    const template = await prisma.couponTemplate.findUnique({
+      where: { id: options.couponTemplateId }
+    });
+    
+    if (template) {
+      validityDates = validityService.calculateCouponValidityDates(template);
+    }
+  }
+
+  // Sobrescribir con fechas proporcionadas si existen
+  if (options.validFrom) {
+    validityDates.validFrom = new Date(options.validFrom);
+  }
+  if (options.validUntil) {
+    validityDates.validUntil = new Date(options.validUntil);
   }
 
   const coupons = [];
@@ -92,6 +143,8 @@ const generateBulkCoupons = async (campaignId, count, offerTemplate) => {
         code: couponCode,
         offer: offerTemplate,
         status: "GENERATED",
+        validFrom: validityDates.validFrom,
+        validUntil: validityDates.validUntil,
       },
     });
 

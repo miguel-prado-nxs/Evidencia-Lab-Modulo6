@@ -6,7 +6,7 @@ const logger = require("../config/logger");
 
 const create = async (req, res, next) => {
   try {
-    const { campaignId, code, offer } = req.body;
+    const { campaignId, code, offer, validFrom, validUntil, couponTemplateId } = req.body;
 
     const campaign = await campaignsService.getCampaignById(campaignId);
 
@@ -21,11 +21,15 @@ const create = async (req, res, next) => {
       campaignId,
       code,
       offer,
+      validFrom,
+      validUntil,
+      couponTemplateId,
     });
 
     res.status(201).json({
       success: true,
       data: coupon,
+      message: "Cupón creado exitosamente",
     });
   } catch (error) {
     next(error);
@@ -34,7 +38,7 @@ const create = async (req, res, next) => {
 
 const generateBulk = async (req, res, next) => {
   try {
-    const { campaignId, count, offerTemplate } = req.body;
+    const { campaignId, count, offerTemplate, validFrom, validUntil, couponTemplateId } = req.body;
 
     const campaign = await campaignsService.getCampaignById(campaignId);
 
@@ -45,7 +49,11 @@ const generateBulk = async (req, res, next) => {
       });
     }
 
-    const coupons = await couponService.generateBulkCoupons(campaignId, count, offerTemplate);
+    const coupons = await couponService.generateBulkCoupons(campaignId, count, offerTemplate, {
+      validFrom,
+      validUntil,
+      couponTemplateId,
+    });
 
     res.status(201).json({
       success: true,
