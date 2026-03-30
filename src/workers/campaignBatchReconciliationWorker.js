@@ -86,7 +86,7 @@ const recalculateCampaignMetrics = async (campaignId) => {
         couponsConverted,
     };
 
-8    let updatedStatus = undefined;
+    let updatedStatus = undefined;
 
     // Detectar si una campaña SCHEDULED ya llegó a su hora y convertirla a ACTIVE
     if (campaign && campaign.status === "SCHEDULED" && campaign.scheduledAt && new Date() >= campaign.scheduledAt) {
@@ -96,7 +96,7 @@ const recalculateCampaignMetrics = async (campaignId) => {
     if (shouldMarkCompleted || (updatedStatus === "ACTIVE" && pendingContacts === 0 && totalContacts > 0 && pausedContacts === 0)) {
         campaignUpdateData.status = "COMPLETED";
         campaignUpdateData.completedAt = campaign.completedAt || new Date();
-555555555555555555    } else if (updatedStatus === "ACTIVE") {
+    } else if (updatedStatus === "ACTIVE") {
         campaignUpdateData.status = "ACTIVE";
     }
 
