@@ -81,26 +81,38 @@ const fetchAgentProfile = async (agentId) => {
 };
 
 const normalizeScheduledTimeUnix = (scheduledTimeUnix) => {
+  // Log for debugging
+  console.log('[normalizeScheduledTimeUnix] Input:', scheduledTimeUnix, 'Type:', typeof scheduledTimeUnix);
+
   if (scheduledTimeUnix === null || scheduledTimeUnix === undefined) {
+    console.log('[normalizeScheduledTimeUnix] Input is null/undefined, returning undefined (immediate execution)');
     return undefined;
   }
 
   let parsed = Number.parseInt(String(scheduledTimeUnix), 10);
+  console.log('[normalizeScheduledTimeUnix] Parsed:', parsed);
+
   if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.log('[normalizeScheduledTimeUnix] Not finite or <= 0, returning undefined');
     return undefined;
   }
 
   // ElevenLabs expects epoch seconds. Normalize robustly from ms/us/ns if needed.
   while (parsed > 9_999_999_999) {
+    console.log('[normalizeScheduledTimeUnix] Dividing by 1000:', parsed);
     parsed = Math.floor(parsed / 1000);
   }
 
   // If it's in the past or nearly now, treat as immediate call (no scheduling).
   const nowUnix = Math.floor(Date.now() / 1000);
+  console.log('[normalizeScheduledTimeUnix] Now:', nowUnix, 'Scheduled:', parsed, 'Diff:', parsed - nowUnix, 'seconds');
+
   if (parsed <= nowUnix + 30) {
+    console.log('[normalizeScheduledTimeUnix] Scheduled time is in the past or within 30 seconds, returning undefined (immediate execution)');
     return undefined;
   }
 
+  console.log('[normalizeScheduledTimeUnix] Valid scheduled time, returning:', parsed);
   return parsed;
 };
 
@@ -521,6 +533,28 @@ const startCampaign = async (campaignId, options = {}) => {
     const error = new Error(`Cannot start campaign with status ${campaign.status}`);
     error.statusCode = 409;
     throw error;
+  }
+
+  // Auto-activate SCHEDULED campaigns if their scheduled time has passed
+  // If campaign is SCHEDULED and time has passed, clear scheduledTimeUnix to mark as ACTIVE
+  if (campaign.status === "SCHEDULED") {
+    const now = new Date();
+    const scheduledAt = campaign.scheduledAt ? new Date(campaign.scheduledAt) : null;
+
+    if (scheduledAt && scheduledAt <= now) {
+      logger.info("[CampaignStart] Auto-activating SCHEDULED campaign (scheduled time has passed)", {
+        campaignId,
+        scheduledAt,
+        now,
+      });
+      // Clear resolvedScheduledTimeUnix to force ACTIVE status below
+      resolvedScheduledTimeUnix = null;
+    } else if (scheduledAt && scheduledAt > now) {
+      // Campaign is scheduled for future time - don't activate yet
+      const error = new Error(`Campaign is scheduled to start at ${scheduledAt.toISOString()}. Current time: ${now.toISOString()}`);
+      error.statusCode = 409;
+      throw error;
+    }
   }
 
   const resolvedAgentId = agentId || campaign.agentConfigId;

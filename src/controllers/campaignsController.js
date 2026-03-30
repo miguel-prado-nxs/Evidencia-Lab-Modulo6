@@ -329,6 +329,14 @@ const startCampaign = async (req, res, next) => {
       agentPhoneNumberId,
     } = req.body || {};
 
+    console.log('[startCampaign] Controller received:', {
+      campaignId: id,
+      scheduledTimeUnix,
+      scheduledTimeUnixType: typeof scheduledTimeUnix,
+      agentId,
+      fullBody: req.body
+    });
+
     const campaign = await campaignsService.getCampaignById(id);
 
     // if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
@@ -345,6 +353,8 @@ const startCampaign = async (req, res, next) => {
       scheduledTimeUnix,
       agentPhoneNumberId,
     });
+
+    console.log('[startCampaign] Result status:', result.status, 'Scheduled:', result.scheduledAt);
 
     res.json({
       success: true,
