@@ -799,12 +799,19 @@ const startCampaign = async (campaignId, options = {}) => {
     .map((recipient) => recipient.campaignContactId)
     .filter(Boolean);
 
+  // Determinar estado según si está programada o no
+  const campaignStatus = resolvedScheduledTimeUnix ? "SCHEDULED" : "ACTIVE";
+  const contactStatus = resolvedScheduledTimeUnix ? "SCHEDULED" : "CALLING";
+
   await prisma.$transaction([
     prisma.campaign.update({
       where: { id: campaignId },
       data: {
-        status: "ACTIVE",
+        status: campaignStatus,
         startedAt: new Date(),
+        scheduledAt: resolvedScheduledTimeUnix
+          ? new Date(resolvedScheduledTimeUnix * 1000)
+          : null,
       },
     }),
     prisma.campaignContact.updateMany({
@@ -815,7 +822,7 @@ const startCampaign = async (campaignId, options = {}) => {
         status: "PENDING",
       },
       data: {
-        status: "CALLING",
+        status: contactStatus,
       },
     }),
     ...Array.from(invalidContactReasons.entries()).map(([contactId, reason]) =>
@@ -832,6 +839,7 @@ const startCampaign = async (campaignId, options = {}) => {
   logger.info("Campaign started with batch dispatch", {
     campaignId,
     agentId: resolvedAgentId,
+    status: campaignStatus,
     totalRecipients: recipients.length,
     requestedScheduledTimeUnix: scheduledTimeUnix || null,
     resolvedScheduledTimeUnix: resolvedScheduledTimeUnix || null,
@@ -842,8 +850,9 @@ const startCampaign = async (campaignId, options = {}) => {
 
   return {
     campaignId,
-    status: "ACTIVE",
+    status: campaignStatus,
     startedAt: new Date().toISOString(),
+    scheduledFor: resolvedScheduledTimeUnix ? new Date(resolvedScheduledTimeUnix * 1000).toISOString() : null,
     dispatch: dispatchResult,
   };
 };

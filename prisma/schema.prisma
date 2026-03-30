@@ -894,6 +894,7 @@ model Campaign {
   createdBy         String?           @map("created_by")
   partnerId         String?           @map("partner_id")
   startedAt         DateTime?         @map("started_at")
+  scheduledAt       DateTime?         @map("scheduled_at")
   completedAt       DateTime?         @map("completed_at")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
@@ -1106,6 +1107,7 @@ enum TwentySyncJobStatus {
 
 enum CampaignStatus {
   DRAFT
+  SCHEDULED
   ACTIVE
   PAUSED
   COMPLETED
@@ -1120,6 +1122,7 @@ enum CampaignType {
 
 enum ContactStatus {
   PENDING    // Frontend: "Pending"    // Frontend: "Pending"
+  SCHEDULED  // Frontend: "Scheduled" - esperando ser disparado en la hora programada
   CALLING    // Frontend: "Calling" - en proceso de llamada    // Frontend: "Calling" - en proceso de llamada     // Frontend: "Paused" - llamada pausada (congelada)
   CALLED     // Frontend: "Called" - llamada realizada     // Frontend: "Called" - llamada realizada
   RESPONDED  // Frontend: "Responded" - contacto respondió positivamente  // Frontend: "Responded" - contacto respondió positivamente
