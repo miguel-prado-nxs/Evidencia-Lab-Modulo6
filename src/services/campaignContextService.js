@@ -35,6 +35,9 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
           id: { in: campaign.couponTemplateIds },
           active: true
         },
+        orderBy: {
+          priority: 'desc'
+        },
         select: {
           id: true,
           couponType: true,

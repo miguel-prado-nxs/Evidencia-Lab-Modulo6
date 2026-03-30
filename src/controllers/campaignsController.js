@@ -473,6 +473,7 @@ const validateBeforeStart = async (req, res, next) => {
   }
 };
 
+<<<<<<< HEAD
 const getCouponBreakdown = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -484,12 +485,67 @@ const getCouponBreakdown = async (req, res, next) => {
     res.json({
       success: true,
       data: breakdown
+=======
+const pause = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const campaign = await campaignsService.pauseCampaign(id);
+    res.json({
+      success: true,
+      data: campaign,
+      message: "Campaña pausada exitosamente",
+>>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
     });
   } catch (error) {
     next(error);
   }
 };
 
+<<<<<<< HEAD
+=======
+const cancel = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const campaign = await campaignsService.cancelCampaign(id);
+    res.json({
+      success: true,
+      data: campaign,
+      message: "Campaña cancelada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resume = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await campaignsService.startCampaign(id, req.body || {});
+    res.json({
+      success: true,
+      data: result,
+      message: "Campaña reanudada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const retry = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { includeFailed, includeStaleCalling } = req.body || {};
+    const result = await campaignsService.retryCampaignContacts(id, {
+      includeFailed: includeFailed !== false,
+      includeStaleCalling: includeStaleCalling !== false,
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+>>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
 module.exports = {
   create,
   list,
@@ -508,5 +564,12 @@ module.exports = {
   loadCouponTemplates,
   getCampaignSendPreview,
   validateBeforeStart,
+<<<<<<< HEAD
   getCouponBreakdown,
+=======
+  pause,
+  cancel,
+  resume,
+  retry,
+>>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
 };

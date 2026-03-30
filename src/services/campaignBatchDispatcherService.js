@@ -363,7 +363,9 @@ const persistBatchDispatchResult = async ({
       return prisma.campaignContact.update({
         where: { id: contact.id },
         data: {
+          status: "CALLING",
           providerBatchId,
+          sentAt: new Date(),
           establishmentData,
         },
       });
@@ -390,6 +392,11 @@ const submitChunkToProvider = async ({
       const recipientData = {
         phone_number: recipient.phoneNumber,
         dynamic_variables: recipient.dynamicVariables,
+        metadata: {
+          campaignId,
+          campaignContactId: recipient.campaignContactId,
+          ...recipient.dynamicVariables
+        },
         conversation_initiation_client_data: {
           dynamic_variables: recipient.dynamicVariables,
         },
@@ -435,6 +442,8 @@ const submitChunkToProvider = async ({
       agentId,
       recipientCount: chunk.length,
       callName: payload.call_name,
+      scheduledTimeUnix: scheduledTimeUnix || null,
+      payloadScheduledTimeUnix: payload.scheduled_time_unix || null,
       agentPhoneNumberId,
       firstRecipient: payload.recipients[0] ? {
         phoneNumber: payload.recipients[0].phone_number,
@@ -577,6 +586,22 @@ const submitCampaignBatch = async ({
       chunkSize: chunk.length,
       chunkCount: chunks.length,
     });
+
+    // Check if campaign was paused or cancelled mid-batch
+    const currentCampaign = await prisma.campaign.findUnique({ 
+      where: { id: campaignId },
+      select: { status: true }
+    });
+
+    if (currentCampaign && (currentCampaign.status === "PAUSED" || currentCampaign.status === "CANCELLED")) {
+      logger.info("[BatchDispatcher] Campaign was paused or cancelled. Stopping chunk dispatch.", {
+        campaignId,
+        status: currentCampaign.status,
+        chunksSent: index,
+        remainingChunks: chunks.length - index,
+      });
+      break;
+    }
 
     const chunkResult = await submitChunkToProvider({
       campaignId,

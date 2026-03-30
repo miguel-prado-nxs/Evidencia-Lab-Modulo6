@@ -20,12 +20,12 @@ const generateUniqueCode = (base) => {
  */
 const renderTemplate = (template, data) => {
   let rendered = template;
-  
+
   Object.keys(data).forEach(key => {
     const regex = new RegExp(`{{${key}}}`, 'g');
     rendered = rendered.replace(regex, data[key] || '');
   });
-  
+
   return rendered;
 };
 
@@ -130,10 +130,10 @@ const generateCouponForCall = async ({
   let template;
   if (couponType) {
     template = await selectTemplateByCouponType(couponType);
-    logger.info("Template selected strictly by couponType (scenario used for analytics only)", { 
-      couponType, 
+    logger.info("Template selected strictly by couponType (scenario used for analytics only)", {
+      couponType,
       templateId: template.id,
-      scenario 
+      scenario
     });
   } else if (scenario) {
     template = await selectTemplateByScenario(scenario, bantScores);
@@ -141,21 +141,21 @@ const generateCouponForCall = async ({
   } else {
     throw new Error("Either couponType or scenario is required to select a template");
   }
-  
+
   // 2. Verificar elegibilidad
   const eligibility = await checkEligibility(phone, template.couponType);
   if (!eligibility.eligible) {
     throw new Error(eligibility.reason);
   }
-  
+
   // 3. El código del cupón es EASY-{couponType} (ej: EASY-PLUS30, EASY-50OFF)
   // Sin sufijos aleatorios — limpio y memorable
   const code = `EASY-${template.couponType}`;
-  
+
   // 4. Calcular fecha de expiración
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + template.expiresHours);
-  
+
   // 5. Crear cupón con trazabilidad de campaña
   const coupon = await prisma.campaignCoupon.create({
     data: {
@@ -177,7 +177,7 @@ const generateCouponForCall = async ({
       status: 'GENERATED'
     }
   });
-  
+
   // 6. Personalizar mensaje con datos del prospecto
   // codigo = couponType limpio (ej: PLUS30) — lo que ve el cliente
   // couponId = UUID interno — para enlaces de rastreo individual
@@ -188,7 +188,7 @@ const generateCouponForCall = async ({
     couponId: coupon.id,
     beneficio: template.description || template.name
   });
-  
+
   logger.info(`Coupon generated for call`, {
     couponId: coupon.id,
     code: coupon.code,
@@ -200,7 +200,7 @@ const generateCouponForCall = async ({
     campaignId,
     campaignContactId
   });
-  
+
   return {
     coupon,
     message,
