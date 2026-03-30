@@ -452,7 +452,7 @@ const recalculateCampaignMetrics = async (campaignId) => {
     const [campaign, statusGroups, couponGroups] = await Promise.all([
         prisma.campaign.findUnique({
             where: { id: campaignId },
-            select: { status: true, completedAt: true },
+            select: { status: true, completedAt: true, scheduledAt: true },
         }),
         prisma.campaignContact.groupBy({
             by: ["status"],
@@ -487,11 +487,11 @@ const recalculateCampaignMetrics = async (campaignId) => {
     const totalFailed = statusCount.FAILED || 0;
     const couponsVisited = statusCount.VISITED || 0;
     const couponsConverted = statusCount.CONVERTED || 0;
-    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0);
+    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0) + (statusCount.SCHEDULED || 0);
     const pausedContacts = statusCount.PAUSED || 0;
 
     const isCampaignActiveOrPaused = campaign && (campaign.status === "ACTIVE" || campaign.status === "PAUSED");
-    // Solo marcar como COMPLETED si ya no hay contactos PENDING ni CALLING.
+    // Solo marcar como COMPLETED si ya no hay contactos PENDING, CALLING ni SCHEDULED.
     // Los contactos en PAUSED NO deben permitir que la campaña se marque como COMPLETED automática.
     const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0 && pausedContacts === 0 && isCampaignActiveOrPaused;
 
@@ -506,9 +506,18 @@ const recalculateCampaignMetrics = async (campaignId) => {
         couponsConverted,
     };
 
-    if (shouldMarkCompleted) {
+    let updatedStatus = undefined;
+
+    // Detectar si una campaña SCHEDULED ya llegó a su hora y convertirla a ACTIVE
+    if (campaign && campaign.status === "SCHEDULED" && campaign.scheduledAt && new Date() >= campaign.scheduledAt) {
+        updatedStatus = "ACTIVE";
+    }
+
+    if (shouldMarkCompleted || (updatedStatus === "ACTIVE" && pendingContacts === 0 && totalContacts > 0 && pausedContacts === 0)) {
         campaignUpdateData.status = "COMPLETED";
         campaignUpdateData.completedAt = campaign.completedAt || new Date();
+    } else if (updatedStatus === "ACTIVE") {
+        campaignUpdateData.status = "ACTIVE";
     }
 
     await prisma.campaign.update({
