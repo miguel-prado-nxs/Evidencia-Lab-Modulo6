@@ -157,35 +157,98 @@ const buildCouponSendInstructions = (templates, campaignCouponType = null) => {
 
 /**
  * Construye instrucciones para el agente de ElevenLabs
+ * Soporta modo híbrido: cupón principal por defecto + alternativos por escenario
  * @param {object} campaign - Datos de la campaña
- * @param {Array} templates - Templates de cupones
+ * @param {Array} templates - Templates de cupones (primero = principal)
  * @returns {string} Instrucciones para el agente
  */
 const buildAgentInstructions = (campaign, templates) => {
-  let instructions = `Eres un agente de ventas para la campaña: "${campaign.name}"\n\n`;
-  
-  if (campaign.description) {
-    instructions += `Descripción: ${campaign.description}\n\n`;
-  }
+  const primaryType = campaign.couponPrefix || templates[0]?.couponType;
+  const primaryTemplate = templates.find(t => t.couponType === primaryType) || templates[0];
+  const alternativeTemplates = templates.filter(t => t.couponType !== primaryType);
+  const isHybrid = alternativeTemplates.length > 0;
+
+  let instructions = `Campaña activa: "${campaign.name}"\n`;
 
   if (campaign.offer) {
-    instructions += `Oferta: ${campaign.offer}\n\n`;
+    instructions += `Oferta de campaña: ${campaign.offer}\n`;
   }
 
-  if (templates.length > 0) {
-    const primaryType = campaign.couponPrefix || templates[0]?.couponType;
-    
-    instructions += `CUPÓN PARA ENVIAR:\n`;
-    const t = templates.find(temp => temp.couponType === primaryType) || templates[0];
-    
-    instructions += `- ${t.couponType} (${t.name}): ${t.description || 'Sin descripción'}\n`;
-    instructions += `  Beneficio: ${t.percentOff ? t.percentOff + '%' : ''} ${t.durationMonths ? t.durationMonths + ' meses' : ''} ${t.trialDays ? t.trialDays + ' días trial' : ''}\n`;
-    
-    instructions += `\nAL FINAL DE LA LLAMADA: Si el prospecto está interesado, ofrece enviarle el cupón ${t.couponType} por WhatsApp.\n`;
-    instructions += `NO decidas qué cupón enviar; usa siempre el tipo ${t.couponType} proporcionado. El parámetro 'scenario' que envíes en el webhook se usará únicamente para analíticas, no para seleccionar el cupón.\n`;
+  instructions += `\n`;
+
+  if (templates.length === 0) {
+    instructions += `No hay cupones disponibles para esta campaña.\n`;
+    return instructions;
   }
+
+  if (isHybrid) {
+    // Modo híbrido: principal + alternativos con selección inteligente
+    instructions += `SELECCIÓN DE CUPONES (MODO HÍBRIDO)\n`;
+    instructions += `${'='.repeat(45)}\n\n`;
+
+    instructions += `CUPÓN PRINCIPAL (usar por defecto):\n`;
+    instructions += `  Tipo: ${primaryTemplate.couponType}\n`;
+    instructions += `  Nombre: ${primaryTemplate.name}\n`;
+    instructions += `  Beneficio: ${_formatOffer(primaryTemplate)}\n`;
+    if (primaryTemplate.scenarios?.length > 0) {
+      instructions += `  Escenarios: ${primaryTemplate.scenarios.join(', ')}\n`;
+    }
+
+    instructions += `\nCUPONES ALTERNATIVOS (usar SOLO si el contexto lo justifica):\n`;
+    alternativeTemplates.forEach(t => {
+      instructions += `\n  [${t.couponType}] ${t.name}\n`;
+      instructions += `  Beneficio: ${_formatOffer(t)}\n`;
+      if (t.scenarios?.length > 0) {
+        instructions += `  Activar cuando: ${t.scenarios.join(' | ')}\n`;
+      }
+    });
+
+    instructions += `\nÁRBOL DE DECISIÓN:\n`;
+    instructions += `  price_objection → Busca un alternativo con ese escenario (ej: 50OFF)\n`;
+    instructions += `  upgrade_interest / multiple_branches → Busca alternativo de upgrade (ej: UPGRADEPRO)\n`;
+    instructions += `  trial_ending / active_free_user → Busca alternativo de trial (ej: TRIAL14)\n`;
+    instructions += `  referral → Busca alternativo de referido (ej: REFER)\n`;
+    instructions += `  abandoned_conversation / cold_lead → Busca alternativo de recuperación (ej: COMEBACK)\n`;
+    instructions += `  Cualquier otro caso → Usa el PRINCIPAL: ${primaryType}\n`;
+
+    instructions += `\nREGLAS OBLIGATORIAS:\n`;
+    instructions += `  1. Por defecto SIEMPRE ofrece el cupón PRINCIPAL: ${primaryType}\n`;
+    instructions += `  2. Solo cambia a alternativo si la conversación encaja claramente en su escenario\n`;
+    instructions += `  3. NUNCA inventes un couponType que no esté en la lista anterior\n`;
+    instructions += `  4. NUNCA envíes el cupón sin confirmación verbal del prospecto\n`;
+    instructions += `  5. Envía solo UN cupón por llamada\n`;
+  } else {
+    // Modo simple: un solo cupón
+    instructions += `CUPÓN A ENVIAR:\n`;
+    instructions += `  Tipo: ${primaryTemplate.couponType}\n`;
+    instructions += `  Nombre: ${primaryTemplate.name}\n`;
+    instructions += `  Beneficio: ${_formatOffer(primaryTemplate)}\n`;
+    if (primaryTemplate.scenarios?.length > 0) {
+      instructions += `  Escenarios: ${primaryTemplate.scenarios.join(', ')}\n`;
+    }
+    instructions += `\nAL FINAL DE LA LLAMADA: Si el prospecto está interesado, ofrece enviarle el cupón ${primaryTemplate.couponType} por WhatsApp.\n`;
+    instructions += `Usa siempre couponType: "${primaryTemplate.couponType}". El campo 'scenario' es solo para analíticas.\n`;
+  }
+
+  instructions += `\nPARAMETROS DEL WEBHOOK:\n`;
+  instructions += `  couponType: [tipo elegido según árbol de decisión]\n`;
+  instructions += `  scenario: [escenario detectado en la conversación]\n`;
+  instructions += `  phone, prospectName, businessName, agentId, callId, campaignId, campaignContactId\n`;
 
   return instructions;
+};
+
+/**
+ * Formatea la oferta de un template en texto legible
+ * @param {object} template
+ * @returns {string}
+ */
+const _formatOffer = (template) => {
+  const parts = [];
+  if (template.percentOff) parts.push(`${template.percentOff}% descuento`);
+  if (template.durationMonths) parts.push(`${template.durationMonths} mes(es)`);
+  if (template.trialDays) parts.push(`${template.trialDays} días trial`);
+  return parts.length > 0 ? parts.join(' + ') : (template.description || template.name);
 };
 
 /**

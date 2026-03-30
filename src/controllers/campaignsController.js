@@ -473,6 +473,23 @@ const validateBeforeStart = async (req, res, next) => {
   }
 };
 
+const getCouponBreakdown = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const campaign = await campaignsService.getCampaignById(id);
+
+    const breakdown = await campaignsService.getCouponBreakdown(id);
+
+    res.json({
+      success: true,
+      data: breakdown
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -491,4 +508,5 @@ module.exports = {
   loadCouponTemplates,
   getCampaignSendPreview,
   validateBeforeStart,
+  getCouponBreakdown,
 };

@@ -2,6 +2,16 @@
 
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 
+## [Unreleased] - 2026-03-30
+
+### Agregado
+- **Analytics de Cupones por Tipo**:
+  - Nuevo endpoint `GET /api/v1/campaigns/:id/coupon-breakdown` para obtener desglose detallado de cupones por tipo.
+  - Métricas incluidas: enviados, visitados, convertidos, tasas de conversión y visitas totales.
+  - Soporte para análisis de campañas con múltiples tipos de cupones (híbrido: principal + alternativos).
+  - Documentación completa en `docs/COUPON_BREAKDOWN_ANALYTICS.md`.
+  - Script de prueba: `test-coupon-breakdown.js`.
+
 ## [Unreleased] - 2026-03-20
 
 ### Agregado

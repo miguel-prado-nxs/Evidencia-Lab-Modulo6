@@ -553,6 +553,81 @@ Authorization: Bearer {jwt_token}
 
 ---
 
+### 12. Obtener Desglose de Cupones por Tipo
+
+**GET** `/api/v1/campaigns/:id/coupon-breakdown`
+
+Obtiene analytics detallados de distribución de cupones por tipo con métricas de rendimiento. Útil para campañas con múltiples tipos de cupones (híbrido: cupón principal + alternativos).
+
+**Headers:**
+```
+Authorization: Bearer {jwt_token}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "campaignId": "cm123abc",
+    "campaignName": "Adquisición Q1 2026",
+    "breakdown": [
+      {
+        "couponType": "TRIAL14",
+        "name": "14 días gratis",
+        "description": "Prueba gratuita de 14 días",
+        "offer": "14 días trial",
+        "metrics": {
+          "sent": 45,
+          "visited": 12,
+          "converted": 5,
+          "visitRate": "26.67",
+          "conversionRate": "11.11",
+          "totalVisits": 18
+        }
+      },
+      {
+        "couponType": "50OFF",
+        "name": "50% de descuento",
+        "description": "50% de descuento en primer mes",
+        "offer": "50%",
+        "metrics": {
+          "sent": 23,
+          "visited": 8,
+          "converted": 3,
+          "visitRate": "34.78",
+          "conversionRate": "13.04",
+          "totalVisits": 11
+        }
+      }
+    ],
+    "totals": {
+      "sent": 68,
+      "visited": 20,
+      "converted": 8,
+      "visitRate": "29.41",
+      "conversionRate": "11.76",
+      "totalVisits": 29
+    },
+    "generatedAt": "2026-03-30T18:16:00.000Z"
+  }
+}
+```
+
+**Casos de Uso:**
+- Comparar efectividad de diferentes tipos de cupones
+- Identificar qué cupones tienen mejor tasa de conversión
+- Analizar rendimiento de cupones alternativos vs principal
+- Generar reportes de A/B testing
+
+**Notas:**
+- Resultados ordenados por cantidad enviada (descendente)
+- Incluye totales agregados de todos los tipos
+- Retorna array vacío si no hay cupones enviados
+- Ver `docs/COUPON_BREAKDOWN_ANALYTICS.md` para detalles completos
+
+---
+
 ## Endpoints de Cupones
 
 ### 1. Crear Cupón

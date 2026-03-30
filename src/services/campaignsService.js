@@ -1208,6 +1208,144 @@ const resumeCampaign = async (campaignId) => {
   };
 };
 
+/**
+ * Get coupon breakdown analytics by type for a campaign
+ * @param {string} campaignId - Campaign ID
+ * @returns {Promise<object>} Breakdown of coupons by type with metrics
+ */
+const getCouponBreakdown = async (campaignId) => {
+  // Get campaign to verify it exists
+  const campaign = await getCampaignById(campaignId);
+
+  // Group coupons by type with aggregated metrics
+  const breakdown = await prisma.campaignCoupon.groupBy({
+    by: ["couponType"],
+    where: { 
+      campaignId,
+      couponType: { not: null }
+    },
+    _count: {
+      _all: true,
+    },
+    _sum: {
+      visitCount: true,
+    },
+  });
+
+  // Get conversion counts per coupon type
+  const conversionsByType = await prisma.campaignCoupon.groupBy({
+    by: ["couponType"],
+    where: {
+      campaignId,
+      status: "CONVERTED",
+      couponType: { not: null }
+    },
+    _count: {
+      _all: true,
+    },
+  });
+
+  // Get visited counts per coupon type
+  const visitedByType = await prisma.campaignCoupon.groupBy({
+    by: ["couponType"],
+    where: {
+      campaignId,
+      status: "VISITED",
+      couponType: { not: null }
+    },
+    _count: {
+      _all: true,
+    },
+  });
+
+  // Map conversions and visits to coupon types
+  const conversionsMap = {};
+  conversionsByType.forEach((item) => {
+    conversionsMap[item.couponType] = item._count._all;
+  });
+
+  const visitedMap = {};
+  visitedByType.forEach((item) => {
+    visitedMap[item.couponType] = item._count._all;
+  });
+
+  // Get template details for each coupon type
+  const couponTypes = breakdown.map((item) => item.couponType);
+  const templates = await prisma.couponTemplate.findMany({
+    where: {
+      couponType: { in: couponTypes },
+    },
+    select: {
+      couponType: true,
+      name: true,
+      description: true,
+      percentOff: true,
+      durationMonths: true,
+      trialDays: true,
+    },
+  });
+
+  const templatesMap = {};
+  templates.forEach((template) => {
+    templatesMap[template.couponType] = template;
+  });
+
+  // Build enriched breakdown with metrics
+  const enrichedBreakdown = breakdown.map((item) => {
+    const sent = item._count._all;
+    const visited = visitedMap[item.couponType] || 0;
+    const converted = conversionsMap[item.couponType] || 0;
+    const template = templatesMap[item.couponType];
+
+    return {
+      couponType: item.couponType,
+      name: template?.name || item.couponType,
+      description: template?.description || null,
+      offer: template
+        ? `${template.percentOff ? template.percentOff + "%" : ""} ${
+            template.durationMonths ? template.durationMonths + " meses" : ""
+          } ${template.trialDays ? template.trialDays + " días trial" : ""}`.trim()
+        : null,
+      metrics: {
+        sent,
+        visited,
+        converted,
+        visitRate: sent > 0 ? ((visited / sent) * 100).toFixed(2) : "0.00",
+        conversionRate: sent > 0 ? ((converted / sent) * 100).toFixed(2) : "0.00",
+        totalVisits: item._sum.visitCount || 0,
+      },
+    };
+  });
+
+  // Sort by sent count descending
+  enrichedBreakdown.sort((a, b) => b.metrics.sent - a.metrics.sent);
+
+  // Calculate totals
+  const totals = {
+    sent: enrichedBreakdown.reduce((sum, item) => sum + item.metrics.sent, 0),
+    visited: enrichedBreakdown.reduce((sum, item) => sum + item.metrics.visited, 0),
+    converted: enrichedBreakdown.reduce((sum, item) => sum + item.metrics.converted, 0),
+    totalVisits: enrichedBreakdown.reduce((sum, item) => sum + item.metrics.totalVisits, 0),
+  };
+
+  totals.visitRate = totals.sent > 0 ? ((totals.visited / totals.sent) * 100).toFixed(2) : "0.00";
+  totals.conversionRate = totals.sent > 0 ? ((totals.converted / totals.sent) * 100).toFixed(2) : "0.00";
+
+  logger.info("Coupon breakdown retrieved", {
+    campaignId,
+    couponTypes: enrichedBreakdown.length,
+    totalSent: totals.sent,
+  });
+
+  return {
+    campaignId,
+    campaignName: campaign.name,
+    breakdown: enrichedBreakdown,
+    totals,
+    generatedAt: new Date().toISOString(),
+  };
+};
+
 module.exports = {
   createCampaign,
   getCampaignById,
@@ -1222,4 +1360,5 @@ module.exports = {
   getCampaignStats,
   pauseCampaign,
   resumeCampaign,
+  getCouponBreakdown,
 };
