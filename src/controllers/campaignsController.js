@@ -473,7 +473,6 @@ const validateBeforeStart = async (req, res, next) => {
   }
 };
 
-<<<<<<< HEAD
 const getCouponBreakdown = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -485,7 +484,12 @@ const getCouponBreakdown = async (req, res, next) => {
     res.json({
       success: true,
       data: breakdown
-=======
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const pause = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -494,15 +498,12 @@ const pause = async (req, res, next) => {
       success: true,
       data: campaign,
       message: "Campaña pausada exitosamente",
->>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
     });
   } catch (error) {
     next(error);
   }
 };
 
-<<<<<<< HEAD
-=======
 const cancel = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -544,8 +545,6 @@ const retry = async (req, res, next) => {
     next(error);
   }
 };
-
->>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
 module.exports = {
   create,
   list,
@@ -564,12 +563,9 @@ module.exports = {
   loadCouponTemplates,
   getCampaignSendPreview,
   validateBeforeStart,
-<<<<<<< HEAD
   getCouponBreakdown,
-=======
   pause,
   cancel,
   resume,
   retry,
->>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
 };

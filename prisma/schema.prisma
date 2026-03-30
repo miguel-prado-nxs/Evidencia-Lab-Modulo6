@@ -958,6 +958,9 @@ model CouponTemplate {
   maxPerUser      Int        @default(1) @map("max_per_user")
   expiresHours    Int        @default(48) @map("expires_hours")
   validFor        String[]   @default([]) @map("valid_for")
+  validFromHour   Int?       @map("valid_from_hour")   // Hora de inicio (0-23)
+  validUntilHour  Int?       @map("valid_until_hour")  // Hora de fin (0-23)
+  validDays       String[]   @default([]) @map("valid_days") // ["monday", "tuesday", etc.]
   active          Boolean    @default(true)
   priority        Int        @default(0)
   createdAt       DateTime   @default(now()) @map("created_at")
@@ -1161,6 +1164,8 @@ model CampaignCoupon {
   assignedPhone String?   @map("assigned_phone")  // Teléfono del prospecto
   assignedAt    DateTime? @map("assigned_at")     // Cuándo se asignó
   expiresAt     DateTime? @map("expires_at")      // 48h desde asignación
+  validFrom     DateTime? @map("valid_from")      // Fecha/hora desde cuándo es válido
+  validUntil    DateTime? @map("valid_until")     // Fecha/hora hasta cuándo es válido
   
   // Atribución (nuevos campos)
   source            String?   // "agent_call", "crm_chat", "campaign"

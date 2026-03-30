@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Cupones - EasyOrder Partners</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #1a202c;
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-card h3 {
+            color: #718096;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            color: #1a202c;
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-card.active .value {
+            color: #48bb78;
+        }
+
+        .stat-card.expiring .value {
+            color: #ed8936;
+        }
+
+        .stat-card.expired .value {
+            color: #f56565;
+        }
+
+        .filters {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .filter-group label {
+            color: #4a5568;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .filter-group select,
+        .filter-group input {
+            padding: 0.5rem 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            transition: border-color 0.2s;
+        }
+
+        .filter-group select:focus,
+        .filter-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-left: auto;
+        }
+
+        .refresh-btn:hover {
+            background: #5a67d8;
+        }
+
+        .refresh-btn:active {
+            transform: scale(0.98);
+        }
+
+        .coupons-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .coupon-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .coupon-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .coupon-card.expiring::before {
+            background: linear-gradient(90deg, #ed8936 0%, #f6ad55 100%);
+        }
+
+        .coupon-card.critical::before {
+            background: linear-gradient(90deg, #f56565 0%, #fc8181 100%);
+        }
+
+        .coupon-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .coupon-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .coupon-code {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1a202c;
+            font-family: 'Courier New', monospace;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-badge.active {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-badge.sent {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .status-badge.visited {
+            background: #feebc8;
+            color: #7c2d12;
+        }
+
+        .coupon-offer {
+            color: #4a5568;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+
+        .time-remaining {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .time-remaining-label {
+            color: #718096;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .time-remaining-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #48bb78;
+            font-family: 'Courier New', monospace;
+        }
+
+        .time-remaining-value.warning {
+            color: #ed8936;
+        }
+
+        .time-remaining-value.critical {
+            color: #f56565;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 9999px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #48bb78 0%, #38a169 100%);
+            transition: width 1s linear;
+        }
+
+        .progress-fill.warning {
+            background: linear-gradient(90deg, #ed8936 0%, #dd6b20 100%);
+        }
+
+        .progress-fill.critical {
+            background: linear-gradient(90deg, #f56565 0%, #e53e3e 100%);
+        }
+
+        .coupon-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            font-size: 0.75rem;
+            color: #718096;
+        }
+
+        .meta-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .meta-label {
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .meta-value {
+            color: #1a202c;
+            font-weight: 500;
+        }
+
+        .empty-state {
+            background: white;
+            border-radius: 12px;
+            padding: 4rem 2rem;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        .empty-state h3 {
+            color: #1a202c;
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .empty-state p {
+            color: #718096;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: white;
+            font-size: 1.25rem;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #fed7d7;
+            color: #742a2a;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            border-left: 4px solid #f56565;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 1rem;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+
+            .coupons-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .filters {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .refresh-btn {
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <span>🎟️</span>
+                Monitor de Cupones en Tiempo Real
+            </h1>
+            <p>Seguimiento de validez y expiración de cupones activos</p>
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card active">
+                <h3>Cupones Activos</h3>
+                <div class="value" id="activeCount">-</div>
+            </div>
+            <div class="stat-card expiring">
+                <h3>Por Expirar (&lt;24h)</h3>
+                <div class="value" id="expiringCount">-</div>
+            </div>
+            <div class="stat-card expired">
+                <h3>Críticos (&lt;1h)</h3>
+                <div class="value" id="criticalCount">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Tiempo Promedio</h3>
+                <div class="value" id="avgTime" style="font-size: 1.5rem;">-</div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <div class="filter-group">
+                <label for="campaignFilter">Campaña</label>
+                <select id="campaignFilter">
+                    <option value="">Todas las campañas</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="statusFilter">Estado</label>
+                <select id="statusFilter">
+                    <option value="">Todos los estados</option>
+                    <option value="GENERATED">Generados</option>
+                    <option value="SENT">Enviados</option>
+                    <option value="VISITED">Visitados</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="searchFilter">Buscar código</label>
+                <input type="text" id="searchFilter" placeholder="Ej: WEEKEND50">
+            </div>
+            <button class="refresh-btn" onclick="loadCoupons()">
+                🔄 Actualizar
+            </button>
+        </div>
+
+        <div id="errorContainer"></div>
+        <div id="couponsContainer" class="loading">
+            <div class="loading-spinner"></div>
+            <div>Cargando cupones...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+        const API_TOKEN = localStorage.getItem('api_token') || '';
+        
+        let coupons = [];
+        let updateInterval = null;
+
+        // Cargar cupones desde la API
+        async function loadCoupons() {
+            try {
+                const campaignId = document.getElementById('campaignFilter').value;
+                const url = `${API_BASE_URL}/api/v1/coupons/active-with-time${campaignId ? '?campaignId=' + campaignId : ''}`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${API_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                coupons = data.data || [];
+                
+                renderCoupons();
+                updateStats();
+                
+                // Limpiar errores
+                document.getElementById('errorContainer').innerHTML = '';
+            } catch (error) {
+                console.error('Error loading coupons:', error);
+                document.getElementById('errorContainer').innerHTML = `
+                    <div class="error-message">
+                        <strong>Error al cargar cupones:</strong> ${error.message}
+                    </div>
+                `;
+                document.getElementById('couponsContainer').innerHTML = '';
+            }
+        }
+
+        // Renderizar cupones
+        function renderCoupons() {
+            const container = document.getElementById('couponsContainer');
+            const statusFilter = document.getElementById('statusFilter').value;
+            const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+
+            let filtered = coupons.filter(coupon => {
+                const matchesStatus = !statusFilter || coupon.status === statusFilter;
+                const matchesSearch = !searchFilter || coupon.code.toLowerCase().includes(searchFilter);
+                return matchesStatus && matchesSearch;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>No hay cupones activos</h3>
+                        <p>No se encontraron cupones que coincidan con los filtros seleccionados</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="coupons-grid">
+                    ${filtered.map(coupon => renderCouponCard(coupon)).join('')}
+                </div>
+            `;
+        }
+
+        // Renderizar tarjeta de cupón
+        function renderCouponCard(coupon) {
+            const validity = coupon.validity || {};
+            const timeRemaining = validity.timeRemaining || 0;
+            const hours = Math.floor(timeRemaining / (1000 * 60 * 60));
+            
+            let cardClass = '';
+            let progressClass = '';
+            let timeClass = '';
+            
+            if (hours < 1) {
+                cardClass = 'critical';
+                progressClass = 'critical';
+                timeClass = 'critical';
+            } else if (hours < 24) {
+                cardClass = 'expiring';
+                progressClass = 'warning';
+                timeClass = 'warning';
+            }
+
+            const totalTime = coupon.validUntil && coupon.validFrom 
+                ? new Date(coupon.validUntil) - new Date(coupon.validFrom)
+                : timeRemaining;
+            const progress = totalTime > 0 ? (timeRemaining / totalTime) * 100 : 0;
+
+            const statusMap = {
+                'GENERATED': 'active',
+                'SENT': 'sent',
+                'VISITED': 'visited'
+            };
+
+            return `
+                <div class="coupon-card ${cardClass}">
+                    <div class="coupon-header">
+                        <div class="coupon-code">${coupon.code}</div>
+                        <div class="status-badge ${statusMap[coupon.status] || 'active'}">
+                            ${coupon.status}
+                        </div>
+                    </div>
+                    
+                    <div class="coupon-offer">${coupon.offer || 'Sin descripción'}</div>
+                    
+                    <div class="time-remaining">
+                        <div class="time-remaining-label">⏱️ Tiempo Restante</div>
+                        <div class="time-remaining-value ${timeClass}">
+                            ${validity.timeRemainingFormatted || 'N/A'}
+                        </div>
+                    </div>
+                    
+                    <div class="progress-bar">
+                        <div class="progress-fill ${progressClass}" style="width: ${Math.max(0, Math.min(100, progress))}%"></div>
+                    </div>
+                    
+                    <div class="coupon-meta">
+                        <div class="meta-item">
+                            <div class="meta-label">Válido desde</div>
+                            <div class="meta-value">
+                                ${coupon.validFrom ? new Date(coupon.validFrom).toLocaleString('es-MX', { 
+                                    month: 'short', 
+                                    day: 'numeric', 
+                                    hour: '2-digit', 
+                                    minute: '2-digit' 
+                                }) : 'N/A'}
+                            </div>
+                        </div>
+                        <div class="meta-item">
+                            <div class="meta-label">Expira</div>
+                            <div class="meta-value">
+                                ${validity.expiresAt ? new Date(validity.expiresAt).toLocaleString('es-MX', { 
+                                    month: 'short', 
+                                    day: 'numeric', 
+                                    hour: '2-digit', 
+                                    minute: '2-digit' 
+                                }) : 'N/A'}
+                            </div>
+                        </div>
+                        ${coupon.assignedPhone ? `
+                        <div class="meta-item">
+                            <div class="meta-label">Asignado a</div>
+                            <div class="meta-value">${coupon.assignedPhone}</div>
+                        </div>
+                        ` : ''}
+                        ${coupon.campaign ? `
+                        <div class="meta-item">
+                            <div class="meta-label">Campaña</div>
+                            <div class="meta-value">${coupon.campaign.name}</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Actualizar estadísticas
+        function updateStats() {
+            const now = Date.now();
+            const oneHour = 60 * 60 * 1000;
+            const oneDay = 24 * oneHour;
+
+            const active = coupons.length;
+            const expiring = coupons.filter(c => {
+                const remaining = c.validity?.timeRemaining || 0;
+                return remaining > 0 && remaining < oneDay;
+            }).length;
+            const critical = coupons.filter(c => {
+                const remaining = c.validity?.timeRemaining || 0;
+                return remaining > 0 && remaining < oneHour;
+            }).length;
+
+            const avgTimeMs = coupons.reduce((sum, c) => sum + (c.validity?.timeRemaining || 0), 0) / (coupons.length || 1);
+            const avgHours = Math.floor(avgTimeMs / oneHour);
+            const avgTime = avgHours > 24 
+                ? `${Math.floor(avgHours / 24)}d ${avgHours % 24}h`
+                : `${avgHours}h`;
+
+            document.getElementById('activeCount').textContent = active;
+            document.getElementById('expiringCount').textContent = expiring;
+            document.getElementById('criticalCount').textContent = critical;
+            document.getElementById('avgTime').textContent = avgTime;
+        }
+
+        // Actualizar tiempo restante cada segundo
+        function updateTimeRemaining() {
+            coupons.forEach(coupon => {
+                if (coupon.validity && coupon.validity.expiresAt) {
+                    const now = new Date();
+                    const expiresAt = new Date(coupon.validity.expiresAt);
+                    const timeRemaining = expiresAt - now;
+                    
+                    coupon.validity.timeRemaining = Math.max(0, timeRemaining);
+                    coupon.validity.timeRemainingFormatted = formatTimeRemaining(timeRemaining);
+                }
+            });
+            
+            renderCoupons();
+            updateStats();
+        }
+
+        // Formatear tiempo restante
+        function formatTimeRemaining(ms) {
+            if (ms <= 0) return 'Expirado';
+            
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+            
+            if (days > 0) {
+                return `${days}d ${hours % 24}h`;
+            } else if (hours > 0) {
+                return `${hours}h ${minutes % 60}m`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${seconds % 60}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
+        // Event listeners
+        document.getElementById('statusFilter').addEventListener('change', renderCoupons);
+        document.getElementById('searchFilter').addEventListener('input', renderCoupons);
+        document.getElementById('campaignFilter').addEventListener('change', loadCoupons);
+
+        // Inicializar
+        loadCoupons();
+        
+        // Actualizar cada segundo
+        updateInterval = setInterval(updateTimeRemaining, 1000);
+        
+        // Recargar cupones cada 30 segundos
+        setInterval(loadCoupons, 30000);
+    </script>
+</body>
+</html>

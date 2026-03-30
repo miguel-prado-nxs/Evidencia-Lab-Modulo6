@@ -373,6 +373,74 @@ const checkEligibility = async (req, res, next) => {
   }
 };
 
+/**
+ * Obtiene cupones activos con tiempo restante en tiempo real
+ */
+const getActiveWithTimeRemaining = async (req, res, next) => {
+  try {
+    const { campaignId } = req.query;
+
+    if (campaignId) {
+      const campaign = await campaignsService.getCampaignById(campaignId);
+
+      if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+        return res.status(403).json({
+          success: false,
+          error: "No tienes permisos para ver los cupones de esta campaña",
+        });
+      }
+    }
+
+    const coupons = await couponService.getActiveCouponsWithTimeRemaining({ campaignId });
+
+    res.json({
+      success: true,
+      data: coupons,
+      count: coupons.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Marca cupones expirados automáticamente
+ */
+const markExpired = async (req, res, next) => {
+  try {
+    const count = await couponService.markExpiredCoupons();
+
+    res.json({
+      success: true,
+      data: {
+        expiredCount: count
+      },
+      message: `${count} cupones marcados como expirados`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Valida si un cupón puede ser usado en este momento
+ */
+const validateForUse = async (req, res, next) => {
+  try {
+    const { code } = req.params;
+
+    const result = await couponService.validateCouponForUse(code);
+
+    res.json({
+      success: result.valid,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   generateBulk,
@@ -386,5 +454,8 @@ module.exports = {
   getStats,
   generateForCall,
   redeemCoupon,
-  checkEligibility
+  checkEligibility,
+  getActiveWithTimeRemaining,
+  markExpired,
+  validateForUse
 };

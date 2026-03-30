@@ -1387,7 +1387,6 @@ const resumeCampaign = async (campaignId) => {
     closedWithoutWebhookContacts: closedWithoutWebhookCount,
   };
 };
-<<<<<<< HEAD
 
 /**
  * Get coupon breakdown analytics by type for a campaign
@@ -1527,8 +1526,6 @@ const getCouponBreakdown = async (campaignId) => {
   };
 };
 
-=======
->>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
 module.exports = {
   createCampaign,
   getCampaignById,
@@ -1543,10 +1540,7 @@ module.exports = {
   getCampaignStats,
   pauseCampaign,
   resumeCampaign,
-<<<<<<< HEAD
   getCouponBreakdown,
-=======
   cancelCampaign,
   retryCampaignContacts,
->>>>>>> a3ba4c25a7a4df01513eecfbb023c0273618858c
 };
