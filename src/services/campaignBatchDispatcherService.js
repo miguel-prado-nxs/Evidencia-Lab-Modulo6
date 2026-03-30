@@ -317,6 +317,7 @@ const persistBatchDispatchResult = async ({
   providerBatchId,
   rawProviderResponse,
   recipients,
+  scheduledTimeUnix
 }) => {
   const campaignContactIds = recipients
     .map((recipient) => recipient.campaignContactId)
@@ -342,6 +343,8 @@ const persistBatchDispatchResult = async ({
   });
 
   const submittedAt = new Date().toISOString();
+  // Determinar si es CALLING (inmediato) o SCHEDULED (programado a futuro)
+  const isScheduled = Boolean(scheduledTimeUnix);
 
   await prisma.$transaction(
     contacts.map((contact) => {
@@ -363,7 +366,7 @@ const persistBatchDispatchResult = async ({
       return prisma.campaignContact.update({
         where: { id: contact.id },
         data: {
-          status: "CALLING",
+          status: isScheduled ? "SCHEDULED" : "CALLING",
           providerBatchId,
           sentAt: new Date(),
           establishmentData,
@@ -479,6 +482,7 @@ const submitChunkToProvider = async ({
       providerBatchId,
       rawProviderResponse: response.data,
       recipients: chunk,
+      scheduledTimeUnix,
     });
 
     return {
