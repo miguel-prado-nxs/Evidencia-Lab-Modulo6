@@ -848,17 +848,6 @@ const startCampaign = async (campaignId, options = {}) => {
           : null,
       },
     }),
-    prisma.campaignContact.updateMany({
-      where: {
-        id: { in: dispatchedContactIds },
-        campaignId,
-        providerBatchId: { not: null },
-        status: "PENDING",
-      },
-      data: {
-        status: contactStatus,
-      },
-    }),
     ...Array.from(invalidContactReasons.entries()).map(([contactId, reason]) =>
       prisma.campaignContact.update({
         where: { id: contactId },

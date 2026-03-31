@@ -106,16 +106,18 @@ const recalculateCampaignMetrics = async (campaignId) => {
     });
 
     if (campaign && campaign.status === "SCHEDULED" && updatedStatus === "ACTIVE") {
+        // Cuando una campaña SCHEDULED se activa, los contactos SCHEDULED ya fueron despachados a ElevenLabs
+        // Solo necesitamos cambiar su estado a CALLING para que puedan recibir webhooks
         await prisma.campaignContact.updateMany({
             where: {
                 campaignId: campaignId,
                 status: "SCHEDULED"
             },
             data: {
-                status: "PENDING"
+                status: "CALLING"
             }
         });
-        logger.info(`[CampaignReconciliationWorker] Campaign ${campaignId} activated. Contacts moved to PENDING.`);
+        logger.info(`[CampaignReconciliationWorker] Campaign ${campaignId} activated. Contacts moved from SCHEDULED to CALLING.`);
     }
 };
 
