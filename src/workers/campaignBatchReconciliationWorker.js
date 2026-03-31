@@ -104,6 +104,19 @@ const recalculateCampaignMetrics = async (campaignId) => {
         where: { id: campaignId },
         data: campaignUpdateData,
     });
+
+    if (campaign && campaign.status === "SCHEDULED" && updatedStatus === "ACTIVE") {
+        await prisma.campaignContact.updateMany({
+            where: {
+                campaignId: campaignId,
+                status: "SCHEDULED"
+            },
+            data: {
+                status: "PENDING"
+            }
+        });
+        logger.info(`[CampaignReconciliationWorker] Campaign ${campaignId} activated. Contacts moved to PENDING.`);
+    }
 };
 
 const appendReconciliationErrorMessage = (establishmentData, errorMessage) => {
