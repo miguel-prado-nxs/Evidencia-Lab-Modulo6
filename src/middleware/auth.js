@@ -18,9 +18,18 @@ const authenticateJWT = async (req, res, next) => {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, config.auth.jwtSecret);
 
-    // Buscar usuario en la base de datos
+    // Buscar usuario en la base de datos (soportar tanto userId como id para compatibilidad)
+    const userId = decoded.userId || decoded.id;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "Token inválido: falta ID de usuario",
+      });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
+      where: { id: userId },
       include: { partner: true },
     });
 
