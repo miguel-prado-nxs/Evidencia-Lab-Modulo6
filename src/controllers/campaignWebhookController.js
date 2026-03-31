@@ -20,7 +20,16 @@ const isSupportedCampaignWebhookEvent = (eventType) => {
     }
 
     const normalized = eventType.toLowerCase();
-    return normalized.includes("post_call") || normalized.includes("ended");
+    return (
+        normalized.includes("post_call") ||
+        normalized.includes("ended") ||
+        normalized.includes("failed") ||
+        normalized.includes("rejected") ||
+        normalized.includes("missed") ||
+        normalized.includes("no_answer") ||
+        normalized.includes("unanswered") ||
+        normalized.includes("error")
+    );
 };
 
 const parseSignatureHeader = (signatureHeader = "") => {
