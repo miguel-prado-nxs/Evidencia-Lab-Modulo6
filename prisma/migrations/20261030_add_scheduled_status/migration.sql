@@ -21,3 +21,8 @@ ADD COLUMN IF NOT EXISTS "scheduled_at" TIMESTAMP(3);
 
 -- Add index for scheduled_at
 CREATE INDEX IF NOT EXISTS "campaigns_scheduled_at_idx" ON "campaigns"("scheduled_at");
+
+-- Add valid_from_hour and valid_until_hour columns to coupon_templates table
+ALTER TABLE "coupon_templates"
+ADD COLUMN IF NOT EXISTS "valid_from_hour" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "valid_until_hour" TIMESTAMP(3);

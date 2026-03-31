@@ -962,8 +962,8 @@ model CouponTemplate {
   priority         Int        @default(0)
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
-  valid_from_hour  Int?
-  valid_until_hour Int?
+  valid_from_hour  DateTime?
+  valid_until_hour DateTime?
   valid_days       String[]   @default([])
   campaigns        Campaign[]
 
