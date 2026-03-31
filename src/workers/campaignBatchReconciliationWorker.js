@@ -6,7 +6,7 @@ let intervalId = null;
 let isCycleRunning = false;
 
 const DEFAULT_INTERVAL_MS = 60 * 1000;
-const DEFAULT_ORPHAN_TIMEOUT_HOURS = 4;
+const DEFAULT_ORPHAN_TIMEOUT_HOURS = 0.25; // 15 minutos
 
 const getIntervalMs = () => {
     const parsed = Number.parseInt(process.env.CAMPAIGN_RECONCILIATION_INTERVAL_MS || "", 10);
@@ -219,20 +219,42 @@ const reconcileContact = async (contact, orphanThreshold) => {
     }
 
     const timeoutHours = getOrphanTimeoutHours();
-    const errorReason = `Reconciliation timeout: ${contact.status} without closure for more than ${timeoutHours}h`;
+    let errorReason = `Reconciliation timeout: ${contact.status} without closure for more than ${timeoutHours}h`;
+    let newStatus = "FAILED";
+    let action = "orphan_timeout_failed";
+
+    // Si tiene conversationId pero no webhookReceivedAt, y se pasó el timeout
+    // verificamos si tiene datos o fue cortada inmediatamente (duración 0, sin transcripción)
+    if (contact.conversationId) {
+        const hasData = contact.callDuration != null || contact.callTranscript != null;
+        if (!hasData) {
+            errorReason = "Call terminated immediately by provider (no data received)";
+            action = "orphan_terminated_immediately";
+        } else {
+            // Si tiene conversationId y datos parciales pero el webhook se perdió, completamos.
+            newStatus = "CALLED";
+            errorReason = null;
+            action = "orphan_healed_with_partial_data";
+        }
+    }
+
+    const updateData = {
+        status: newStatus,
+    };
+
+    if (errorReason) {
+        updateData.errorReason = errorReason;
+        updateData.establishmentData = appendReconciliationErrorMessage(contact.establishmentData, errorReason);
+    }
 
     await prisma.campaignContact.update({
         where: { id: contact.id },
-        data: {
-            status: "FAILED",
-            errorReason,
-            establishmentData: appendReconciliationErrorMessage(contact.establishmentData, errorReason),
-        },
+        data: updateData,
     });
 
-    logger.warn("[CampaignReconciliationWorker] Orphan contact moved to FAILED", {
+    logger.warn(`[CampaignReconciliationWorker] Orphan contact moved to ${newStatus}`, {
         ...context,
-        action: "orphan_timeout_failed",
+        action,
         errorReason,
     });
 
@@ -301,6 +323,8 @@ const runCycle = async () => {
                         status: true,
                         errorReason: true,
                         conversationId: true,
+                        callDuration: true,
+                        callTranscript: true,
                         webhookReceivedAt: true,
                         createdAt: true,
                         establishmentData: true,
