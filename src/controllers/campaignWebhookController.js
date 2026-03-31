@@ -322,7 +322,9 @@ const normalizePhoneForLookup = (value) => {
         return null;
     }
 
-    return trimmed.startsWith("+") ? `+${digits}` : digits;
+    // Retornamos los últimos 10 dígitos para hacer match con el formato local,
+    // ignorando el código de país (ej. +52) que agrega ElevenLabs
+    return digits.length >= 10 ? digits.slice(-10) : digits;
 };
 
 const extractWebhookData = (payload = {}) => {
