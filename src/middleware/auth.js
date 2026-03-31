@@ -78,8 +78,18 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, config.auth.jwtSecret);
 
+      // Soportar tanto userId como id para compatibilidad
+      const userId = decoded.userId || decoded.id;
+      
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "Token inválido: falta ID de usuario",
+        });
+      }
+
       const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
+        where: { id: userId },
         include: { partner: true },
       });
 
@@ -242,12 +252,15 @@ const optionalAuth = async (req, res, next) => {
       const token = authHeader.split(" ")[1];
       try {
         const decoded = jwt.verify(token, config.auth.jwtSecret);
-        const user = await prisma.user.findUnique({
-          where: { id: decoded.userId },
-          include: { partner: true },
-        });
-        if (user) {
-          req.user = user;
+        const userId = decoded.userId || decoded.id;
+        if (userId) {
+          const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { partner: true },
+          });
+          if (user) {
+            req.user = user;
+          }
         }
       } catch {
         // Token inválido, continuar sin autenticación

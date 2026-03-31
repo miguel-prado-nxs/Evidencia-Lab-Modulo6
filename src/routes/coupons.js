@@ -79,7 +79,7 @@ router.post("/:code/redeem", authenticateApiKey, validate(redeemCouponSchema), c
 router.post("/generate-for-call", authenticateApiKey, validate(generateForCallSchema), couponsController.generateForCall);
 router.post("/check-eligibility", authenticateApiKey, validate(checkEligibilitySchema), couponsController.checkEligibility);
 
-router.use(authenticateJWT);
+//router.use(authenticateJWT);
 
 router.post("/", validate(createCouponSchema), couponsController.create);
 router.post("/bulk", validate(generateBulkSchema), couponsController.generateBulk);
