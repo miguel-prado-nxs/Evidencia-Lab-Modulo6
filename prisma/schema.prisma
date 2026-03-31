@@ -894,11 +894,11 @@ model Campaign {
   createdBy         String?           @map("created_by")
   partnerId         String?           @map("partner_id")
   startedAt         DateTime?         @map("started_at")
-  scheduledAt       DateTime?         @map("scheduled_at")
   completedAt       DateTime?         @map("completed_at")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
   couponTemplateIds String[]          @default([]) @map("coupon_template_ids")
+  scheduledAt       DateTime?         @map("scheduled_at")
   contacts          CampaignContact[]
   coupons           CampaignCoupon[]
   couponTemplate    CouponTemplate?   @relation(fields: [couponPrefix], references: [id])
@@ -908,6 +908,7 @@ model Campaign {
   @@index([createdBy])
   @@index([partnerId])
   @@index([createdAt(sort: Desc)])
+  @@index([scheduledAt])
   @@map("campaigns")
 }
 
@@ -940,34 +941,79 @@ model CampaignContact {
   @@index([establishmentId])
   @@index([status])
   @@index([sentAt])
-  @@index([webhookReceivedAt])
-  @@index([status, webhookReceivedAt])
   @@map("campaign_contacts")
 }
 
 model CouponTemplate {
-  id              String     @id @default(uuid())
-  couponType      String     @unique @map("coupon_type")
-  name            String
-  description     String?
-  scenarios       String[]   @default([])
-  percentOff      Int?       @map("percent_off")
-  durationMonths  Int?       @map("duration_months")
-  trialDays       Int?       @map("trial_days")
-  messageTemplate String     @map("message_template")
-  mediaUrl        String?    @map("media_url")
-  maxPerUser      Int        @default(1) @map("max_per_user")
-  expiresHours    Int        @default(48) @map("expires_hours")
-  validFor        String[]   @default([]) @map("valid_for")
-  active          Boolean    @default(true)
-  priority        Int        @default(0)
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
-  campaigns       Campaign[]
+  id               String     @id @default(uuid())
+  couponType       String     @unique @map("coupon_type")
+  name             String
+  description      String?
+  scenarios        String[]   @default([])
+  percentOff       Int?       @map("percent_off")
+  durationMonths   Int?       @map("duration_months")
+  trialDays        Int?       @map("trial_days")
+  messageTemplate  String     @map("message_template")
+  mediaUrl         String?    @map("media_url")
+  maxPerUser       Int        @default(1) @map("max_per_user")
+  expiresHours     Int        @default(48) @map("expires_hours")
+  validFor         String[]   @default([]) @map("valid_for")
+  active           Boolean    @default(true)
+  priority         Int        @default(0)
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  valid_from_hour  Int?
+  valid_until_hour Int?
+  valid_days       String[]   @default([])
+  campaigns        Campaign[]
 
   @@index([couponType])
   @@index([active])
   @@map("coupon_templates")
+}
+
+model CampaignCoupon {
+  id                String            @id @default(uuid())
+  campaignId        String?           @map("campaign_id")
+  code              String
+  offer             String
+  couponType        String?           @map("coupon_type")
+  percentOff        Int?              @map("percent_off")
+  durationMonths    Int?              @map("duration_months")
+  trialDays         Int?              @map("trial_days")
+  stripePromoId     String?           @map("stripe_promo_id")
+  status            CouponStatus      @default(GENERATED)
+  generatedAt       DateTime          @default(now()) @map("generated_at")
+  sentAt            DateTime?         @map("sent_at")
+  visitedAt         DateTime?         @map("visited_at")
+  convertedAt       DateTime?         @map("converted_at")
+  scenario          String?
+  assignedPhone     String?           @map("assigned_phone")
+  assignedAt        DateTime?         @map("assigned_at")
+  expiresAt         DateTime?         @map("expires_at")
+  source            String?
+  agentId           String?           @map("agent_id")
+  callId            String?           @map("call_id")
+  visitCount        Int               @default(0) @map("visit_count")
+  lastVisitedAt     DateTime?         @map("last_visited_at")
+  conversionData    Json?             @map("conversion_data")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  campaignContactId String?           @map("campaign_contact_id")
+  valid_from        DateTime?
+  valid_until       DateTime?
+  contacts          CampaignContact[]
+  campaign          Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([code])
+  @@index([status])
+  @@index([couponType])
+  @@index([assignedPhone])
+  @@index([expiresAt])
+  @@index([source])
+  @@index([campaignContactId])
+  @@map("campaign_coupons")
 }
 
 enum UserRole {
@@ -1121,78 +1167,17 @@ enum CampaignType {
 }
 
 enum ContactStatus {
-  PENDING    // Frontend: "Pending"    // Frontend: "Pending"
-  SCHEDULED  // Frontend: "Scheduled" - esperando ser disparado en la hora programada
-  CALLING    // Frontend: "Calling" - en proceso de llamada    // Frontend: "Calling" - en proceso de llamada     // Frontend: "Paused" - llamada pausada (congelada)
-  CALLED     // Frontend: "Called" - llamada realizada     // Frontend: "Called" - llamada realizada
-  RESPONDED  // Frontend: "Responded" - contacto respondió positivamente  // Frontend: "Responded" - contacto respondió positivamente
-  PAUSED     // Frontend: "Paused" - campaña pausada
-  SENT       // Mensaje/cupón enviado       // Mensaje/cupón enviado
-  DELIVERED  // Mensaje entregado (WhatsApp)  // Mensaje entregado (WhatsApp)
-  VISITED    // Visitó landing de cupón    // Visitó landing de cupón
-  CONVERTED  // Frontend: "Converted" - se convirtió en cliente  // Frontend: "Converted" - se convirtió en cliente
-  FAILED     // Frontend: "Failed" - falló el contacto     // Frontend: "Failed" - falló el contacto
-}
-
-model CampaignCoupon {
-  id         String   @id @default(uuid())
-  campaignId String?  @map("campaign_id") // Nullable para cupones ad-hoc sin campaña
-  
-  // Código del cupón (couponType limpio, ej: PLUS30)
-  // El rastreo individual se hace por id + assignedPhone + campaignContactId
-  code       String
-  
-  // Oferta (texto descriptivo)
-  offer      String   // "+2 meses gratis", "20% descuento"
-  
-  // Configuración Stripe (nuevos campos)
-  couponType     String?  @map("coupon_type")      // PLUS30, 50OFF, TRIAL14, etc.
-  percentOff     Int?     @map("percent_off")      // 0-100
-  durationMonths Int?     @map("duration_months")  // 1, 2, 3...
-  trialDays      Int?     @map("trial_days")       // Para extensión de trial
-  stripePromoId  String?  @map("stripe_promo_id")  // ID del Promotion Code en Stripe
-  
-  // Tracking
-  status        CouponStatus @default(GENERATED)
-  generatedAt   DateTime     @default(now()) @map("generated_at")
-  sentAt        DateTime?    @map("sent_at")
-  visitedAt     DateTime?    @map("visited_at")
-  convertedAt   DateTime?    @map("converted_at")
-  
-  // Tracking avanzado (nuevos campos)
-  scenario      String?   // "bant_high", "price_objection", "trial_ending"
-  assignedPhone String?   @map("assigned_phone")  // Teléfono del prospecto
-  assignedAt    DateTime? @map("assigned_at")     // Cuándo se asignó
-  expiresAt     DateTime? @map("expires_at")      // 48h desde asignación
-  
-  // Atribución (nuevos campos)
-  source            String?   // "agent_call", "crm_chat", "campaign"
-  agentId           String?   @map("agent_id")              // ID del agente que lo generó
-  callId            String?   @map("call_id")               // ID de la llamada ElevenLabs
-  campaignContactId String?   @map("campaign_contact_id")   // ID del contacto de campaña para trazabilidad
-  
-  // Metadata
-  visitCount    Int      @default(0) @map("visit_count")
-  lastVisitedAt DateTime? @map("last_visited_at")
-  
-  // Datos de conversión (si aplica)
-  conversionData Json?   @map("conversion_data")
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  
-  campaign    Campaign?         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contacts    CampaignContact[]
-  
-  @@index([campaignId])
-  @@index([code])
-  @@index([status])
-  @@index([couponType])
-  @@index([assignedPhone])
-  @@index([expiresAt])
-  @@index([source])
-  @@index([campaignContactId])
-  @@map("campaign_coupons")
+  PENDING
+  SCHEDULED
+  CALLING
+  PAUSED
+  CALLED
+  RESPONDED
+  SENT
+  DELIVERED
+  VISITED
+  CONVERTED
+  FAILED
 }
 
 enum CouponStatus {

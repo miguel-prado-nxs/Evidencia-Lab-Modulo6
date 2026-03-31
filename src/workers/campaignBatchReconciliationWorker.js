@@ -241,12 +241,19 @@ const runCycle = async () => {
     try {
         const campaigns = await prisma.campaign.findMany({
             where: {
-                status: { in: ["ACTIVE", "SCHEDULED"] },
-                contacts: {
-                    some: {
-                        providerBatchId: { not: null },
+                OR: [
+                    {
+                        status: "ACTIVE",
+                        contacts: {
+                            some: {
+                                providerBatchId: { not: null },
+                            },
+                        },
                     },
-                },
+                    {
+                        status: "SCHEDULED",
+                    },
+                ],
             },
             select: {
                 id: true,
