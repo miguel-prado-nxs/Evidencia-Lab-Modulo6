@@ -689,7 +689,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                             OR: [
                                 { status: "CALLING" },
                                 { status: "PAUSED" },
-                                { status: "PENDING", providerBatchId: { not: null } },
+                                { status: "PENDING" },
+                                { status: "SCHEDULED" },
                             ],
                         },
                         {
@@ -712,7 +713,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                                     { status: "CALLED" },
                                     { status: "RESPONDED" },
                                     { status: "FAILED" },
-                                    { status: "PENDING", providerBatchId: { not: null } },
+                                    { status: "PENDING" },
+                                    { status: "SCHEDULED" },
                                 ],
                             },
                             {
@@ -758,6 +760,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                         {
                             OR: [
                                 { status: "PENDING" },
+                                { status: "SCHEDULED" },
                                 { status: "CALLING" },
                                 { status: "PAUSED" },
                                 { status: "CALLED" },
