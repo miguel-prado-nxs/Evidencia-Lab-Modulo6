@@ -17,7 +17,7 @@ const getIntervalMs = () => {
 };
 
 const getOrphanTimeoutHours = () => {
-    const parsed = Number.parseInt(process.env.CAMPAIGN_CALLING_TIMEOUT_HOURS || "", 10);
+    const parsed = Number.parseFloat(process.env.CAMPAIGN_CALLING_TIMEOUT_HOURS || "");
     if (!Number.isFinite(parsed) || parsed <= 0) {
         return DEFAULT_ORPHAN_TIMEOUT_HOURS;
     }
