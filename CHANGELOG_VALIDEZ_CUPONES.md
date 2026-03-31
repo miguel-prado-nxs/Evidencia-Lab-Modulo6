@@ -1,6 +1,37 @@
 # Changelog - Sistema de Validez Temporal de Cupones
 
-## 📅 Fecha: 30 de Marzo, 2026
+**Fecha**: 31 de Marzo, 2026  
+**Versión**: 1.1.0  
+**Autor**: Sistema de IA Cascade
+
+---
+
+## 🧹 Actualización 1.1.0 - Limpieza de Backend (31 Mar 2026)
+
+### Cambios Realizados
+
+**Archivos Eliminados:**
+- ❌ `public/coupon-monitor.html` - Monitor HTML standalone (movido al frontend)
+- ❌ `docs/COUPON_MONITOR_UI.md` - Documentación del monitor HTML
+- ❌ Middleware `express.static("public")` en `src/app.js`
+
+**Razón:**
+El monitor de cupones ahora está completamente integrado en el frontend de Next.js (`web-easyorder-ventas`) como componente React. El archivo HTML standalone ya no es necesario.
+
+**Backend Limpio:**
+El backend ahora solo contiene:
+- ✅ Servicios de validez temporal (`couponValidityService.js`)
+- ✅ Controladores con endpoints API
+- ✅ Rutas de cupones
+- ✅ Lógica de negocio
+- ✅ Documentación técnica
+
+**Frontend (web-easyorder-ventas):**
+- ✅ Componente `CouponMonitor.tsx` integrado en `/coupons`
+- ✅ Pestaña "Monitor" en el apartado de cupones
+- ✅ UI moderna con React y Tailwind CSS
+
+---
 
 ## 🎯 Objetivo Completado
 

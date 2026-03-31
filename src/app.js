@@ -82,9 +82,6 @@ app.use(
 );
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Servir archivos estáticos desde public
-app.use(express.static("public"));
-
 // Rate limiting
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
