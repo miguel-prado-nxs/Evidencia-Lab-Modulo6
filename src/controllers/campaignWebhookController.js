@@ -8,6 +8,7 @@ const SUPPORTED_EVENT_TYPES = new Set([
     "call_ended",
     "conversation_ended",
     "conversation.ended",
+    "call_initiation_failure",
 ]);
 
 const isSupportedCampaignWebhookEvent = (eventType) => {
@@ -436,6 +437,7 @@ const extractWebhookData = (payload = {}) => {
         ),
         failureReason:
             firstNonEmpty(
+                data.failure_reason,
                 data.analysis?.failure_reason,
                 data.analysis?.termination_reason,
                 data.analysis?.reason,
