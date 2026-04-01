@@ -17,6 +17,7 @@ const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 const { enqueueSync } = require("./twenty/twentySyncService");
+const { logEnrichmentEvent } = require("./enrichmentService");
 
 /**
  * Agregar un establecimiento a contactos del usuario de ventas
@@ -95,6 +96,16 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     });
 
     logger.info(`[VentasEnrichment] Contacto agregado: ${establishment.name} por partner ${partnerId}`);
+
+    // Log de evento de enriquecimiento (non-blocking)
+    logEnrichmentEvent({
+      establishmentId: estabId,
+      source: 'BUSINESS_PANEL',
+      levelReached: 'CONTACT',
+      enrichmentSnapshot: { notes },
+      enrichedBy: partnerId,
+      enrichedByType: 'USER',
+    }).catch(() => {});
 
     // Encolar sincronizacion con Twenty CRM (non-blocking)
     // IMPORTANTE: Usar UUID del establishment
@@ -257,6 +268,21 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     }
 
     logger.info(`[VentasEnrichment] Contacto convertido a prospecto: ${establishment.name} por partner ${partnerId}`);
+
+    // Log de evento de enriquecimiento (non-blocking)
+    logEnrichmentEvent({
+      establishmentId: estabId,
+      source: 'BUSINESS_PANEL',
+      levelReached: 'PROSPECT',
+      enrichmentSnapshot: {
+        decisionMakerName: contactData.decisionMakerName,
+        decisionMakerPhone: contactData.decisionMakerPhone,
+        decisionMakerWhatsApp: contactData.decisionMakerWhatsApp,
+        decisionMakerEmail: contactData.decisionMakerEmail,
+      },
+      enrichedBy: partnerId,
+      enrichedByType: 'USER',
+    }).catch(() => {});
 
     // Encolar sincronizacion con Twenty CRM (non-blocking)
     enqueueSync({
