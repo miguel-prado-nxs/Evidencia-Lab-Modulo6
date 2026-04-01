@@ -1163,9 +1163,10 @@ enum CampaignStatus {
 }
 
 enum CampaignType {
-  ACQUISITION
-  NURTURING
-  REACTIVATION
+  DISCOVERY
+  ACTIVATION
+  QUALIFICATION
+  CONVERSION
 }
 
 enum ContactStatus {
