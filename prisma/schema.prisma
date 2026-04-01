@@ -958,6 +958,9 @@ model CouponTemplate {
   maxPerUser       Int        @default(1) @map("max_per_user")
   expiresHours     Int        @default(48) @map("expires_hours")
   validFor         String[]   @default([]) @map("valid_for")
+  validFrom       DateTime?  @map("valid_from")        // Fecha y hora de inicio de validez
+  validUntil      DateTime?  @map("valid_until")       // Fecha y hora de fin de validez
+  validDays       String[]   @default([]) @map("valid_days") // ["monday", "tuesday", etc.]
   active           Boolean    @default(true)
   priority         Int        @default(0)
   createdAt        DateTime   @default(now()) @map("created_at")

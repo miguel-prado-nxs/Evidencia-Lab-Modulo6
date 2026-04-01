@@ -96,6 +96,7 @@ router.get("/:id/contacts", campaignsController.getContacts);
 router.patch("/contacts/:contactId/status", validate(updateContactStatusSchema), campaignsController.updateContactStatus);
 
 router.get("/:id/stats", campaignsController.getStats);
+router.get("/:id/coupon-breakdown", campaignsController.getCouponBreakdown);
 
 router.post("/:id/load-coupon-templates", validate(loadCouponTemplatesSchema), campaignsController.loadCouponTemplates);
 router.get("/:id/send-preview", campaignsController.getCampaignSendPreview);

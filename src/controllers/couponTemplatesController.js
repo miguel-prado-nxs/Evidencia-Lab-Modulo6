@@ -70,6 +70,9 @@ const create = async (req, res, next) => {
       mediaUrl,
       maxPerUser,
       expiresHours,
+      validFrom,
+      validUntil,
+      validDays,
       validFor,
       priority
     } = req.body;
@@ -87,6 +90,9 @@ const create = async (req, res, next) => {
         mediaUrl,
         maxPerUser: maxPerUser || 1,
         expiresHours: expiresHours || 48,
+        validFrom: validFrom ? new Date(validFrom) : undefined,
+        validUntil: validUntil ? new Date(validUntil) : undefined,
+        validDays: validDays || [],
         validFor: validFor || [],
         priority: priority || 0
       }
@@ -119,6 +125,9 @@ const update = async (req, res, next) => {
       mediaUrl,
       maxPerUser,
       expiresHours,
+      validFrom,
+      validUntil,
+      validDays,
       validFor,
       active,
       priority
@@ -135,6 +144,9 @@ const update = async (req, res, next) => {
     if (mediaUrl !== undefined) updateData.mediaUrl = mediaUrl;
     if (maxPerUser !== undefined) updateData.maxPerUser = maxPerUser;
     if (expiresHours !== undefined) updateData.expiresHours = expiresHours;
+    if (validFrom !== undefined) updateData.validFrom = new Date(validFrom);
+    if (validUntil !== undefined) updateData.validUntil = new Date(validUntil);
+    if (validDays !== undefined) updateData.validDays = validDays;
     if (validFor !== undefined) updateData.validFor = validFor;
     if (active !== undefined) updateData.active = active;
     if (priority !== undefined) updateData.priority = priority;

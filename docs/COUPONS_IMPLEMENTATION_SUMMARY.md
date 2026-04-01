@@ -154,6 +154,12 @@
 | `/coupon-templates/:type` | PATCH | JWT | Actualiza template |
 | `/coupon-templates/:type` | DELETE | JWT | Elimina template |
 
+### Analytics (Nuevo - 2026-03-30)
+
+| Endpoint | Método | Auth | Descripción |
+|----------|--------|------|-------------|
+| `/campaigns/:id/coupon-breakdown` | GET | JWT | Desglose de cupones por tipo con métricas |
+
 ---
 
 ## 🔗 Integraciones Pendientes

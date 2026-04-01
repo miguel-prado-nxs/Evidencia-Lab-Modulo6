@@ -1,6 +1,7 @@
 const prisma = require("../config/database");
 const logger = require("../config/logger");
 const crypto = require("crypto");
+const validityService = require("./couponValidityService");
 
 const generateCouponCode = (prefix = "COUPON") => {
   const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase();
@@ -8,7 +9,7 @@ const generateCouponCode = (prefix = "COUPON") => {
 };
 
 const createCoupon = async (data) => {
-  const { campaignId, code, offer } = data;
+  const { campaignId, code, offer, validFrom, validUntil, couponTemplateId } = data;
 
   if (!campaignId || !offer) {
     throw new Error("campaignId and offer are required");
@@ -32,20 +33,50 @@ const createCoupon = async (data) => {
     throw new Error(`Coupon with code ${couponCode} already exists`);
   }
 
+  // Calcular fechas de validez si no se proporcionan
+  let validityDates = { validFrom: null, validUntil: null };
+  
+  if (couponTemplateId) {
+    // Si hay template, usar sus configuraciones
+    const template = await prisma.couponTemplate.findUnique({
+      where: { id: couponTemplateId }
+    });
+    
+    if (template) {
+      validityDates = validityService.calculateCouponValidityDates(template);
+    }
+  }
+
+  // Sobrescribir con fechas proporcionadas si existen
+  if (validFrom) {
+    validityDates.validFrom = new Date(validFrom);
+  }
+  if (validUntil) {
+    validityDates.validUntil = new Date(validUntil);
+  }
+
   const coupon = await prisma.campaignCoupon.create({
     data: {
       campaignId,
       code: couponCode,
       offer,
       status: "GENERATED",
+      validFrom: validityDates.validFrom,
+      validUntil: validityDates.validUntil,
     },
   });
 
-  logger.info(`Coupon created: ${coupon.code}`, { couponId: coupon.id, campaignId });
+  logger.info(`Coupon created: ${coupon.code}`, { 
+    couponId: coupon.id, 
+    campaignId,
+    validFrom: validityDates.validFrom,
+    validUntil: validityDates.validUntil
+  });
+  
   return coupon;
 };
 
-const generateBulkCoupons = async (campaignId, count, offerTemplate) => {
+const generateBulkCoupons = async (campaignId, count, offerTemplate, options = {}) => {
   if (!campaignId || !count || !offerTemplate) {
     throw new Error("campaignId, count, and offerTemplate are required");
   }
@@ -60,6 +91,27 @@ const generateBulkCoupons = async (campaignId, count, offerTemplate) => {
 
   if (!campaign) {
     throw new Error("Campaign not found");
+  }
+
+  // Calcular fechas de validez si se proporciona un template
+  let validityDates = { validFrom: null, validUntil: null };
+  
+  if (options.couponTemplateId) {
+    const template = await prisma.couponTemplate.findUnique({
+      where: { id: options.couponTemplateId }
+    });
+    
+    if (template) {
+      validityDates = validityService.calculateCouponValidityDates(template);
+    }
+  }
+
+  // Sobrescribir con fechas proporcionadas si existen
+  if (options.validFrom) {
+    validityDates.validFrom = new Date(options.validFrom);
+  }
+  if (options.validUntil) {
+    validityDates.validUntil = new Date(options.validUntil);
   }
 
   const coupons = [];
@@ -91,6 +143,8 @@ const generateBulkCoupons = async (campaignId, count, offerTemplate) => {
         code: couponCode,
         offer: offerTemplate,
         status: "GENERATED",
+        validFrom: validityDates.validFrom,
+        validUntil: validityDates.validUntil,
       },
     });
 
@@ -140,7 +194,7 @@ const getCouponById = async (id) => {
 };
 
 const listCoupons = async (filters = {}) => {
-  const { campaignId, status, page = 1, limit = 50 } = filters;
+  const { campaignId, status, page = 1, limit = 50, includeValidity = false } = filters;
 
   const where = {};
   if (campaignId) where.campaignId = campaignId;
@@ -165,8 +219,13 @@ const listCoupons = async (filters = {}) => {
     prisma.campaignCoupon.count({ where }),
   ]);
 
+  // Enriquecer con información de validez si se solicita
+  const enrichedCoupons = includeValidity
+    ? coupons.map(validityService.enrichCouponWithValidity)
+    : coupons;
+
   return {
-    coupons,
+    coupons: enrichedCoupons,
     pagination: {
       total,
       page,
@@ -350,6 +409,94 @@ const getCouponStats = async (couponId) => {
   };
 };
 
+/**
+ * Obtiene cupones activos con tiempo restante en tiempo real
+ * @param {Object} filters - Filtros de búsqueda
+ * @returns {Promise<Array>} Cupones activos ordenados por tiempo restante
+ */
+const getActiveCouponsWithTimeRemaining = async (filters = {}) => {
+  const { campaignId } = filters;
+  
+  const where = {
+    status: { in: ["GENERATED", "SENT", "VISITED"] }
+  };
+  
+  if (campaignId) where.campaignId = campaignId;
+  
+  const coupons = await prisma.campaignCoupon.findMany({
+    where,
+    include: {
+      campaign: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+  
+  return validityService.getActiveCouponsWithTimeRemaining(coupons);
+};
+
+/**
+ * Marca cupones expirados automáticamente
+ * @returns {Promise<number>} Número de cupones marcados como expirados
+ */
+const markExpiredCoupons = async () => {
+  return validityService.markExpiredCoupons(prisma);
+};
+
+/**
+ * Valida si un cupón puede ser usado en este momento
+ * @param {string} code - Código del cupón
+ * @returns {Promise<Object>} Resultado de validación con detalles
+ */
+const validateCouponForUse = async (code) => {
+  const coupon = await prisma.campaignCoupon.findUnique({
+    where: { code },
+  });
+  
+  if (!coupon) {
+    return {
+      valid: false,
+      reason: "Cupón no encontrado",
+    };
+  }
+  
+  if (coupon.status === "EXPIRED") {
+    return {
+      valid: false,
+      reason: "Cupón expirado",
+      coupon,
+    };
+  }
+  
+  if (coupon.status === "CONVERTED") {
+    return {
+      valid: false,
+      reason: "Cupón ya fue utilizado",
+      coupon,
+    };
+  }
+  
+  const validity = validityService.checkCouponValidity(coupon);
+  
+  if (!validity.isValid) {
+    return {
+      valid: false,
+      reason: validity.reason,
+      coupon,
+      validity,
+    };
+  }
+  
+  return {
+    valid: true,
+    coupon,
+    validity,
+  };
+};
+
 module.exports = {
   createCoupon,
   generateBulkCoupons,
@@ -362,4 +509,7 @@ module.exports = {
   getAvailableCoupons,
   getCouponStats,
   generateCouponCode,
+  getActiveCouponsWithTimeRemaining,
+  markExpiredCoupons,
+  validateCouponForUse,
 };
