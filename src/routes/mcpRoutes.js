@@ -30,6 +30,10 @@ function mountMcpAgent(agentKey, createServer) {
   // Sin auth middleware: ElevenLabs no envía headers custom en tool calls
   router.all(`/${agentKey}`, async (req, res) => {
     try {
+      // ElevenLabs envía solo Accept: application/json — el SDK requiere text/event-stream
+      if (!req.headers.accept?.includes("text/event-stream")) {
+        req.headers.accept = "application/json, text/event-stream";
+      }
       const server = createServer();
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
