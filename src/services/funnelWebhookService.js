@@ -11,6 +11,17 @@ const { logEnrichmentEvent } = require("./enrichmentService");
 const whatsappService = require("./whatsappService");
 
 const AGENT_PARTNER_ID = process.env.AGENT_SYSTEM_PARTNER_ID || "AGENT_FUNNEL";
+
+// Mapea outcomes de agentes al call_status permitido por el check constraint:
+// ('completed', 'no_answer', 'voicemail', 'failed')
+function toCallStatus(outcome) {
+  if (!outcome) return "completed";
+  const o = outcome.toUpperCase();
+  if (o === "NO_ANSWER") return "no_answer";
+  if (o === "VOICEMAIL") return "voicemail";
+  if (o === "WRONG_NUMBER" || o === "FAILED") return "failed";
+  return "completed";
+}
 const CALENDLY_TOKEN = process.env.CALENDLY_API_TOKEN;
 const CALENDLY_EVENT_TYPE_URI =
   process.env.CALENDLY_EVENT_TYPE_URI ||
@@ -118,12 +129,12 @@ async function endDiscoveryCall({
     create: {
       establishmentId,
       callSummary,
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       enrichmentStatus: "discovery_completed",
     },
     update: {
       callSummary,
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       enrichmentStatus: "discovery_completed",
     },
   });
@@ -276,12 +287,12 @@ async function endActivationCall({
     where: { establishmentId },
     create: {
       establishmentId,
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       callSummary,
       enrichmentStatus: "activation_completed",
     },
     update: {
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       callSummary,
       enrichmentStatus: "activation_completed",
     },
@@ -550,14 +561,14 @@ async function endAndClose({
     where: { establishmentId },
     create: {
       establishmentId,
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       callSummary,
       enrichmentStatus: "qualification_completed",
       qualification_completed: true,
       qualification_notes: callSummary,
     },
     update: {
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       callSummary,
       enrichmentStatus: "qualification_completed",
       qualification_completed: true,
@@ -766,13 +777,13 @@ async function endConversionCall({
     where: { establishmentId },
     create: {
       establishmentId,
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       callSummary,
       enrichmentStatus: "conversion_completed",
       ...(isWon ? { clientStatus: "active", clientSince: new Date() } : {}),
     },
     update: {
-      callStatus: outcome,
+      callStatus: toCallStatus(outcome),
       callSummary,
       enrichmentStatus: "conversion_completed",
       ...(isWon ? { clientStatus: "active", clientSince: new Date() } : {}),
