@@ -967,7 +967,6 @@ model CouponTemplate {
   updatedAt        DateTime   @updatedAt @map("updated_at")
   valid_from_hour  DateTime?
   valid_until_hour DateTime?
-  valid_days       String[]   @default([])
   campaigns        Campaign[]
 
   @@index([couponType])
