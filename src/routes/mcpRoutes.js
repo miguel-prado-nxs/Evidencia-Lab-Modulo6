@@ -27,7 +27,8 @@ const activeTransports = {
 function mountMcpAgent(agentKey, createServer) {
 
   // ── Streamable HTTP stateless (cada request es independiente) ───────────────
-  router.all(`/${agentKey}`, validateEnrichmentAgent, async (req, res) => {
+  // Sin auth middleware: ElevenLabs no envía headers custom en tool calls
+  router.all(`/${agentKey}`, async (req, res) => {
     try {
       const server = createServer();
       const transport = new StreamableHTTPServerTransport({
