@@ -1,5 +1,4 @@
 const express = require("express");
-const { randomUUID } = require("crypto");
 const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
 const { SSEServerTransport } = require("@modelcontextprotocol/sdk/server/sse.js");
 const { validateEnrichmentAgent } = require("../middleware/enrichmentAgent");
@@ -10,9 +9,6 @@ const { createConversionServer } = require("../mcp/conversionMcp");
 const logger = require("../config/logger");
 
 const router = express.Router();
-
-// Sessions for Streamable HTTP (stateful)
-const httpSessions = new Map(); // sessionId -> { server, transport }
 
 // Active SSE transports (legacy SSE fallback)
 const activeTransports = {
@@ -30,47 +26,18 @@ const activeTransports = {
  */
 function mountMcpAgent(agentKey, createServer) {
 
-  // ── Streamable HTTP (POST único, soporta sesiones y stateless) ──────────────
+  // ── Streamable HTTP stateless (cada request es independiente) ───────────────
   router.all(`/${agentKey}`, validateEnrichmentAgent, async (req, res) => {
     try {
-      const sessionId = req.headers["mcp-session-id"];
-
-      // Reutilizar sesión existente
-      if (sessionId && httpSessions.has(sessionId)) {
-        const { transport } = httpSessions.get(sessionId);
-        await transport.handleRequest(req, res, req.body);
-        return;
-      }
-
-      // Nueva sesión (initialize) o stateless
-      const isInit =
-        req.method === "POST" &&
-        req.body?.method === "initialize";
-
-      if (req.method === "POST" && !isInit && sessionId) {
-        logger.warn(`[MCP:${agentKey}] Session not found`, { sessionId });
-        return res.status(404).json({ jsonrpc: "2.0", error: { code: -32001, message: "Session not found" }, id: null });
-      }
-
       const server = createServer();
       const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (sid) => {
-          httpSessions.set(sid, { server, transport });
-          logger.info(`[MCP:${agentKey}] HTTP session initialized`, { sessionId: sid });
-          // Limpiar sesión tras 30 min de inactividad
-          setTimeout(() => {
-            httpSessions.delete(sid);
-            logger.info(`[MCP:${agentKey}] HTTP session expired`, { sessionId: sid });
-          }, 30 * 60 * 1000);
-        },
+        sessionIdGenerator: undefined,
       });
-
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
-      logger.info(`[MCP:${agentKey}] Streamable HTTP request handled`);
+      logger.info(`[MCP:${agentKey}] HTTP request handled`, { method: req.body?.method });
     } catch (err) {
-      logger.error(`[MCP:${agentKey}] Streamable HTTP error`, { error: err.message });
+      logger.error(`[MCP:${agentKey}] HTTP error`, { error: err.message });
       if (!res.headersSent) res.status(500).json({ error: err.message });
     }
   });
