@@ -5,10 +5,11 @@ const crypto = require("crypto");
 /**
  * Genera un código de cupón único con formato: BASE-SUFFIX
  * @param {string} base - Base del código (ej: "EASY-PLUS30")
+ * @param {string} [contactId] - ID de contacto opcional para asegurar unicidad
  * @returns {string} Código único (ej: "EASY-PLUS30-A3F2X9")
  */
-const generateUniqueCode = (base) => {
-  const suffix = crypto.randomBytes(2).toString("hex").toUpperCase();
+const generateUniqueCode = (base, contactId = null) => {
+  const suffix = contactId ? contactId.slice(-4).toUpperCase() : crypto.randomBytes(2).toString("hex").toUpperCase();
   return `${base}-${suffix}`;
 };
 
@@ -148,9 +149,10 @@ const generateCouponForCall = async ({
     throw new Error(eligibility.reason);
   }
 
-  // 3. El código del cupón es EASY-{couponType} (ej: EASY-PLUS30, EASY-50OFF)
-  // Sin sufijos aleatorios — limpio y memorable
-  const code = `EASY-${template.couponType}`;
+  // 3. El código del cupón es EASY-{couponType}-XXXX (ej: EASY-PLUS30-A3F2)
+  // Sufijo basado en el ID del contacto para garantizar unicidad
+  const baseCode = `EASY-${template.couponType}`;
+  const code = generateUniqueCode(baseCode, campaignContactId);
 
   // 4. Calcular fecha de expiración
   const expiresAt = new Date();
