@@ -1190,3 +1190,41 @@ enum CouponStatus {
   CONVERTED
   EXPIRED
 }
+
+model CampaignEnrichment {
+  id                 String   @id @default(uuid())
+  establishmentId    String   @map("establishment_id")
+
+  source             String   @map("source") @db.VarChar(30)
+  // CAMPAIGN | BUSINESS_PANEL | PARTNER_PORTAL | ADMIN_PANEL | SDR_CALL
+
+  campaignId         String?  @map("campaign_id")
+  campaignContactId  String?  @map("campaign_contact_id")
+  conversationId     String?  @map("conversation_id")
+
+  agentStage         String?  @map("agent_stage") @db.VarChar(20)
+  // SDR | DISCOVERY | ACTIVATION | QUALIFICATION | CONVERSION | null
+
+  levelReached       String?  @map("level_reached") @db.VarChar(20)
+  // CONTACT | PROSPECT | LEAD | CLIENT
+
+  enrichmentSnapshot Json?    @map("enrichment_snapshot")
+
+  enrichedBy         String?  @map("enriched_by")
+  enrichedByType     String?  @map("enriched_by_type") @db.VarChar(20)
+  // USER | AGENT | PARTNER | SYSTEM
+
+  notes              String?
+
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([establishmentId])
+  @@index([source])
+  @@index([campaignId])
+  @@index([agentStage])
+  @@index([levelReached])
+  @@index([conversationId])
+  @@index([enrichedBy])
+  @@index([createdAt(sort: Desc)])
+  @@map("campaign_enrichments")
+}

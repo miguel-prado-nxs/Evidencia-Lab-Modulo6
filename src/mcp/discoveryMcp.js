@@ -1,0 +1,73 @@
+const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
+const { z } = require("zod");
+const svc = require("../services/funnelWebhookService");
+
+function createDiscoveryServer() {
+  const server = new McpServer({ name: "funnel-discovery", version: "1.0.0" });
+
+  server.tool(
+    "save_discovery_data",
+    "Guarda temporalmente la información de descubrimiento capturada durante la conversación. Llamar cada vez que se obtiene un nuevo dato.",
+    {
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
+      establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
+      contact_name: z.string().optional().describe("Nombre del contacto"),
+      business_type: z.string().optional().describe("Tipo de negocio"),
+      pain_point: z.string().optional().describe("Principal problema identificado"),
+      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Nivel de interés evaluado"),
+      notes: z.string().optional().describe("Notas adicionales"),
+    },
+    async ({ conversation_id, establishment_id, contact_name, business_type, pain_point, interest_level, notes }) => {
+      try {
+        const result = await svc.saveDiscoveryData({
+          conversationId: conversation_id,
+          establishmentId: establishment_id,
+          contactName: contact_name,
+          businessType: business_type,
+          painPoint: pain_point,
+          interestLevel: interest_level,
+          notes,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
+      }
+    }
+  );
+
+  server.tool(
+    "end_discovery_call",
+    "Guarda el resultado final de la conversación de Discovery y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
+    {
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
+      establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
+      outcome: z.enum(["ADVANCE_TO_ACTIVATION", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("Resultado de la conversación"),
+      contact_name: z.string().optional(),
+      business_type: z.string().optional(),
+      pain_point: z.string().optional(),
+      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional(),
+      call_summary: z.string().describe("Resumen breve de la conversación"),
+    },
+    async ({ conversation_id, establishment_id, outcome, contact_name, business_type, pain_point, interest_level, call_summary }) => {
+      try {
+        const result = await svc.endDiscoveryCall({
+          conversationId: conversation_id,
+          establishmentId: establishment_id,
+          outcome,
+          contactName: contact_name,
+          businessType: business_type,
+          painPoint: pain_point,
+          interestLevel: interest_level,
+          callSummary: call_summary,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
+      }
+    }
+  );
+
+  return server;
+}
+
+module.exports = { createDiscoveryServer };

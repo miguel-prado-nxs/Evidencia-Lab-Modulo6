@@ -64,6 +64,22 @@ async function saveCallResult(establishmentId, data) {
       null // Sin partnerId específico - es el agente SDR
     );
 
+    // Log de evento de enriquecimiento en campaign_enrichments (non-blocking)
+    enrichmentService.logEnrichmentEvent({
+      establishmentId,
+      source: 'SDR_CALL',
+      agentStage: 'SDR',
+      levelReached: enrichment?.level || null,
+      enrichmentSnapshot: {
+        decisionMaker,
+        callSummary,
+        callStatus,
+        enrichmentStatus,
+        strategy,
+      },
+      enrichedByType: 'AGENT',
+    }).catch(() => {});
+
     // Registrar la interacción SDR como metadatos adicionales
     await logSDRInteraction(establishmentId, {
       callStatus,

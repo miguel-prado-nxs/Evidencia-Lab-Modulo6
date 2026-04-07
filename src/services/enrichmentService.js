@@ -390,6 +390,18 @@ async function createOrUpdateEnrichment(establishmentId, data, partnerId) {
       }
     }
 
+    // Log de evento de enriquecimiento (non-blocking)
+    if (partnerId) {
+      logEnrichmentEvent({
+        establishmentId: estabId,
+        source: 'PARTNER_PORTAL',
+        levelReached: level,
+        enrichmentSnapshot: data,
+        enrichedBy: partnerId,
+        enrichedByType: 'PARTNER',
+      }).catch(() => {});
+    }
+
     // Encolar sincronizacion con Twenty CRM (non-blocking)
     // Se ejecuta DESPUÉS de la auto-promoción para garantizar que los registros existan
     if (partnerId) {
@@ -1396,10 +1408,49 @@ async function getScheduledMeetings(partnerId, startDate, endDate) {
   }
 }
 
+/**
+ * Registrar un evento de enriquecimiento en campaign_enrichments (fire-and-forget)
+ * @param {Object} options
+ */
+async function logEnrichmentEvent({
+  establishmentId,
+  source,
+  campaignId = null,
+  campaignContactId = null,
+  conversationId = null,
+  agentStage = null,
+  levelReached = null,
+  enrichmentSnapshot = null,
+  enrichedBy = null,
+  enrichedByType = null,
+  notes = null,
+}) {
+  try {
+    await prisma.campaignEnrichment.create({
+      data: {
+        establishmentId,
+        source,
+        campaignId,
+        campaignContactId,
+        conversationId,
+        agentStage,
+        levelReached,
+        enrichmentSnapshot,
+        enrichedBy,
+        enrichedByType,
+        notes,
+      },
+    });
+  } catch (err) {
+    logger.warn('[CampaignEnrichment] Error logging event (no crítico):', { error: err.message });
+  }
+}
+
 module.exports = {
   calculateLevel,
   getEnrichmentByEstablishment,
   createOrUpdateEnrichment,
+  logEnrichmentEvent,
   bulkImportEnrichments,
   getStatsByLevel,
   getStatsByLevelForPartner,
