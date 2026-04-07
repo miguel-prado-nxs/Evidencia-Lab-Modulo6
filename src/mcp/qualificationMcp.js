@@ -45,19 +45,28 @@ function createQualificationServer() {
 
   server.tool(
     "send_coupon_whatsapp",
-    "Envía un cupón de prueba exclusivo por WhatsApp al prospecto. SOLO si califica y acepta recibirlo.",
+    "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
     {
       conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
-      phone: z.string().describe("Teléfono del prospecto ({{prospectPhone}})"),
-      coupon: z.object({
-        text: z.string().optional().describe("Mensaje personalizado del cupón"),
-        promo_code: z.string().describe("Código promocional"),
-        promo_url: z.string().optional().describe("URL del cupón"),
-      }).describe("Datos del cupón"),
+      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      phone: z.string().describe("Teléfono del prospecto"),
+      coupon_type: z.string().optional().describe("Tipo de cupón elegido según árbol de decisión (ej: PLUS30, 50OFF, TRIAL14, UPGRADEPRO, REFER, COMEBACK). Si no se especifica, se usa el cupón principal de la campaña."),
+      scenario: z.string().optional().describe("Escenario detectado en la conversación (ej: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead). Se usa para analíticas y para seleccionar template si no se especificó coupon_type."),
+      prospect_name: z.string().optional().describe("Nombre del prospecto para personalizar el mensaje"),
+      business_name: z.string().optional().describe("Nombre del negocio"),
     },
-    async ({ conversation_id, phone, coupon }) => {
+    async ({ conversation_id, establishment_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
-        const result = await svc.sendCouponWhatsapp({ conversationId: conversation_id, phone, coupon });
+        const result = await svc.sendCouponWhatsapp({
+          conversationId: conversation_id,
+          establishmentId: establishment_id,
+          phone,
+          coupon: {},
+          couponType: coupon_type,
+          scenario,
+          prospectName: prospect_name,
+          businessName: business_name,
+        });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };

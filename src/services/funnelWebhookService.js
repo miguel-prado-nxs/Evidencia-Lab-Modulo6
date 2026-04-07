@@ -59,6 +59,41 @@ async function upsertEnrichmentSnapshot(establishmentId, stage, data) {
 }
 
 // ============================================================
+// WHATSAPP: Mensaje informativo básico (para Discovery)
+// ============================================================
+
+async function sendWhatsappInfo({
+  conversationId,
+  establishmentId,
+  phone,
+  prospectName,
+  businessName,
+}) {
+  if (!phone) throw new Error("phone requerido");
+
+  const saludo = prospectName ? `¡Hola ${prospectName}!` : "¡Hola!";
+
+  const message =
+    `${saludo}\n` +
+    `Soy el asistente de EasyOrder. Ayudamos a negocios de comida a digitalizar y organizar mejor sus pedidos.\n` +
+    `Visítanos en https://easyorder.mx para conocernos.\n` +
+    `¡Que tengas un buen día!`;
+
+  const result = await whatsappService.sendWhatsAppMessage({
+    to: phone,
+    message,
+  });
+
+  logger.info("[FunnelWebhook:Discovery] sendWhatsappInfo", {
+    phone,
+    establishmentId,
+    success: result.success,
+  });
+
+  return result;
+}
+
+// ============================================================
 // DISCOVERY
 // ============================================================
 
@@ -156,7 +191,7 @@ async function endDiscoveryCall({
     },
     enrichedByType: "AGENT",
     notes: `Discovery outcome: ${outcome}`,
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Discovery] endDiscoveryCall", {
     establishmentId,
@@ -264,7 +299,7 @@ async function scheduleDemo({
     enrichmentSnapshot: { demoDate: startTime, featuresOfInterest },
     enrichedByType: "AGENT",
     notes: "Demo agendada desde Activation Agent",
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Activation] scheduleDemo", {
     establishmentId,
@@ -307,7 +342,7 @@ async function endActivationCall({
     enrichmentSnapshot: { outcome, demoDate, callSummary },
     enrichedByType: "AGENT",
     notes: `Activation outcome: ${outcome}`,
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Activation] endActivationCall", {
     establishmentId,
@@ -371,31 +406,113 @@ async function saveQualificationResult({
   return { success: true };
 }
 
-async function sendCouponWhatsapp({ conversationId, phone, coupon }) {
-  if (!phone || !coupon?.promo_code)
-    throw new Error("phone y coupon.promo_code requeridos");
+async function sendCouponWhatsapp({
+  conversationId,
+  phone,
+  coupon,
+  establishmentId,
+  campaignId,
+  campaignContactId,
+  couponType,
+  scenario,
+  prospectName,
+  businessName,
+}) {
+  if (!phone) throw new Error("phone requerido");
 
-  const promoUrl = coupon.promo_url || "https://easyorder.mx/c/ezp";
-  const promoCode = coupon.promo_code;
+  let resolvedCampaignId = campaignId;
+  let resolvedContactId = campaignContactId;
+  let resolvedCouponType = couponType;
+  let resolvedProspectName = prospectName;
+  let resolvedBusinessName = businessName;
 
-  const message =
-    coupon.text ||
-    `🎉 *¡Tu cupón exclusivo de EasyOrder está listo!*\n\n` +
-    `Código: *${promoCode}*\n` +
-    `Actívalo aquí: ${promoUrl}\n\n` +
-    `_Válido por 48 horas. ¡Aprovéchalo!_`;
+  // Si no viene campaignId, buscar campaña activa del establishment
+  if (!resolvedCampaignId && establishmentId) {
+    const activeContact = await prisma.campaignContact.findFirst({
+      where: {
+        establishmentId,
+        status: "CALLING",
+        campaign: { status: "ACTIVE" },
+      },
+      include: {
+        campaign: {
+          select: { id: true, couponPrefix: true, couponTemplateIds: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-  const result = await whatsappService.sendWhatsAppMessage({
-    to: phone,
-    message,
-  });
+    if (activeContact) {
+      resolvedCampaignId = activeContact.campaignId;
+      resolvedContactId = activeContact.id;
+      if (!resolvedCouponType && activeContact.campaign?.couponPrefix) {
+        resolvedCouponType = activeContact.campaign.couponPrefix;
+      }
+    }
+  }
 
-  logger.info("[FunnelWebhook:Qualification] sendCouponWhatsapp", {
-    phone,
-    promoCode,
-    success: result.success,
-  });
-  return result;
+  // Fallback de couponType
+  if (!resolvedCouponType && !scenario) {
+    resolvedCouponType = "PLUS30"; // Tipo por defecto si no se puede resolver
+  }
+
+  // Obtener nombre si no viene
+  if (!resolvedProspectName && establishmentId) {
+    const enrichment = await prisma.establishmentEnrichment.findUnique({
+      where: { establishmentId },
+      select: { decisionMakerName: true },
+    });
+    resolvedProspectName = enrichment?.decisionMakerName || "Cliente";
+  }
+
+  // Generar cupón real
+  const couponWhatsappService = require("./couponWhatsappService");
+
+  try {
+    const result = await couponWhatsappService.generateAndSendCoupon({
+      phone,
+      prospectName: resolvedProspectName || "Cliente",
+      businessName: resolvedBusinessName || "Tu negocio",
+      scenario: scenario || "qualification_offer",
+      agentId: "mcp-qualification-agent",
+      callId: conversationId || "unknown",
+      campaignId: resolvedCampaignId,
+      campaignContactId: resolvedContactId,
+      couponType: resolvedCouponType,
+    });
+
+    logger.info("[FunnelWebhook:Qualification] sendCouponWhatsapp - cupón real generado", {
+      phone,
+      couponId: result.coupon?.id,
+      couponCode: result.coupon?.code,
+      couponType: resolvedCouponType,
+      campaignId: resolvedCampaignId,
+      success: result.success,
+    });
+
+    return {
+      success: result.success,
+      couponCode: result.coupon?.code,
+      couponId: result.coupon?.id,
+      messageId: result.messageId,
+    };
+  } catch (err) {
+    logger.error("[FunnelWebhook:Qualification] Error generando cupón real", {
+      error: err.message,
+      phone,
+      couponType: resolvedCouponType,
+    });
+
+    // Fallback: mensaje genérico para no dejar al agente colgado
+    const fallbackMessage =
+      `¡Gracias por tu interés en EasyOrder!\n\n` +
+      `Nuestro equipo te contactará pronto con una oferta especial.\n\n` +
+      `Visítanos en https://easyorder.mx`;
+
+    await whatsappService.sendWhatsAppMessage({ to: phone, message: fallbackMessage });
+
+    return { success: false, error: err.message, fallbackSent: true };
+  }
 }
 
 async function getCalendlyAvailability({ daysAhead = 7 } = {}) {
@@ -515,7 +632,7 @@ async function scheduleCalendlyDemo({
     enrichmentSnapshot: { demoDate: startTime, bantScores, fpdi },
     enrichedByType: "AGENT",
     notes: "Demo agendada desde Qualification Agent",
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Qualification] scheduleCalendlyDemo", {
     establishmentId,
@@ -587,7 +704,7 @@ async function endAndClose({
     enrichmentSnapshot: { outcome, qualificationScore, couponSent, callSummary },
     enrichedByType: "AGENT",
     notes: `Qualification outcome: ${outcome}, Score: ${qualificationScore}`,
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Qualification] endAndClose", {
     establishmentId,
@@ -639,7 +756,7 @@ async function calculateROI({
     await upsertEnrichmentSnapshot(establishmentId, "conversion", {
       conversationId,
       roiCalculation: roi,
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   logger.info("[FunnelWebhook:Conversion] calculateROI", {
@@ -685,7 +802,7 @@ async function saveDealTerms({
       ...(monthlyPrice ? { purchaseAmount: monthlyPrice } : {}),
       ...(startDate ? { purchaseDate: new Date(startDate) } : {}),
     },
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Conversion] saveDealTerms", {
     establishmentId,
@@ -752,7 +869,7 @@ async function scheduleOnboarding({
     enrichmentSnapshot: { onboardingDate, planSelected, specialRequirements },
     enrichedByType: "AGENT",
     notes: "Onboarding agendado desde Conversion Agent",
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Conversion] scheduleOnboarding", {
     establishmentId,
@@ -799,7 +916,7 @@ async function endConversionCall({
     enrichmentSnapshot: { outcome, planClosed, monthlyRevenue, callSummary },
     enrichedByType: "AGENT",
     notes: `Conversion outcome: ${outcome}${planClosed ? `, plan: ${planClosed}` : ""}`,
-  }).catch(() => {});
+  }).catch(() => { });
 
   logger.info("[FunnelWebhook:Conversion] endConversionCall", {
     establishmentId,
@@ -883,6 +1000,7 @@ module.exports = {
   // Discovery
   saveDiscoveryData,
   endDiscoveryCall,
+  sendWhatsappInfo,
   // Activation
   saveActivationData,
   confirmOrUpdateEmail,

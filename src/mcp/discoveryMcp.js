@@ -67,7 +67,31 @@ function createDiscoveryServer() {
     }
   );
 
-  return server;
+  server.tool(
+    "send_whatsapp_info",
+    "Envía un mensaje informativo básico de EasyOrder por WhatsApp al prospecto. SIEMPRE ejecutar al finalizar la llamada, sin importar el resultado (incluso buzón de voz o sin respuesta).",
+    {
+      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      phone: z.string().describe("Teléfono del prospecto"),
+      prospect_name: z.string().optional().describe("Nombre del prospecto (si se obtuvo)"),
+      business_name: z.string().optional().describe("Nombre del negocio (si se obtuvo)"),
+    },
+    async ({ conversation_id, establishment_id, phone, prospect_name, business_name }) => {
+      try {
+        const result = await svc.sendWhatsappInfo({
+          conversationId: conversation_id,
+          establishmentId: establishment_id,
+          phone,
+          prospectName: prospect_name,
+          businessName: business_name,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
+      }
+    }
+  );
 }
 
 module.exports = { createDiscoveryServer };
