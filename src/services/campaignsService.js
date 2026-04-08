@@ -788,10 +788,10 @@ const startCampaign = async (campaignId, options = {}) => {
         phone: phoneNumber,
         phone_number: phoneNumber,
         phoneNumber: phoneNumber,
-        // Contexto de campaña para ElevenLabs
-        campaignContext: contactSpecificContext,
-        couponsAvailable: contactSpecificContext?.coupons?.available || false,
-        couponTypes: contactSpecificContext?.coupons?.templates?.map(t => t.type) || [],
+        // Contexto de campaña para ElevenLabs (Convertidos a string para evitar "CADENA VACÍA")
+        campaignContext: contactSpecificContext ? JSON.stringify(contactSpecificContext) : "",
+        couponsAvailable: contactSpecificContext?.coupons?.available ? "true" : "false",
+        couponTypes: contactSpecificContext?.coupons?.templates?.map(t => t.type).join(", ") || "",
         couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send",
         agentInstructions: contactSpecificContext?.agentInstructions || null
       },
