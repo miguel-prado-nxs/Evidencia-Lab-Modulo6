@@ -50,10 +50,10 @@ function createQualificationServer() {
       conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       phone: z.string().optional().describe("Teléfono del prospecto ({{phoneNumber}}). Opcional, si no lo tienes omítelo y el sistema lo buscará."),
-      coupon_type: z.string().optional().describe("Tipo de cupón elegido según árbol de decisión (ej: PLUS30, 50OFF, TRIAL14, UPGRADEPRO, REFER, COMEBACK). Si no se especifica, se usa el cupón principal de la campaña."),
+      coupon_type: z.string().optional().describe("Tipo de cupón elegido según árbol de decisión ({{couponType}}). Si no se especifica, se usa el cupón principal."),
       scenario: z.string().optional().describe("Escenario detectado en la conversación (ej: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead). Se usa para analíticas y para seleccionar template si no se especificó coupon_type."),
-      prospect_name: z.string().optional().describe("Nombre del prospecto para personalizar el mensaje"),
-      business_name: z.string().optional().describe("Nombre del negocio"),
+      prospect_name: z.string().optional().describe("Nombre del prospecto para personalizar el mensaje ({{prospectName}})"),
+      business_name: z.string().optional().describe("Nombre del negocio ({{businessName}})"),
     },
     async ({ conversation_id, establishment_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
