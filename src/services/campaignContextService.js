@@ -33,7 +33,7 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
       templates = await prisma.couponTemplate.findMany({
         where: {
           id: { in: campaign.couponTemplateIds },
-          active: true
+          // active: true Lo quitamos para que no ignore cupones desactivados temporalmente si ya estaban asignados
         },
         orderBy: {
           priority: 'desc'
@@ -54,22 +54,63 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
       });
     }
 
+    // Identificar el tipo principal real (evitar que un UUID pase como código de cupón)
+    let resolvedPrimaryType = null;
+    const primaryTemplate = templates.find(t => t.id === campaign.couponPrefix || t.couponType === campaign.couponPrefix);
+
+    if (primaryTemplate) {
+      resolvedPrimaryType = primaryTemplate.couponType;
+    } else if (templates.length > 0) {
+      resolvedPrimaryType = templates[0].couponType;
+    } else if (campaign.couponPrefix && !/^[0-9a-f]{8}-/i.test(campaign.couponPrefix)) {
+      resolvedPrimaryType = campaign.couponPrefix;
+    } else {
+      // Si era un UUID y no lo encontró en ids asociados, busquémoslo explícitamente en la BD
+      if (campaign.couponPrefix && /^[0-9a-f]{8}-/i.test(campaign.couponPrefix)) {
+        const dbTemplate = await prisma.couponTemplate.findFirst({ where: { id: campaign.couponPrefix } });
+        if (dbTemplate) {
+          resolvedPrimaryType = dbTemplate.couponType;
+          templates.push(dbTemplate);
+        }
+      }
+    }
+
+    if (!resolvedPrimaryType) resolvedPrimaryType = 'PRINCIPAL';
+
+    // FALLBACK DE SEGURIDAD
+    // Si a pesar de todo no hallamos templates, inyectamos uno default
+    if (templates.length === 0) {
+      templates.push({
+        id: 'legacy-fallback',
+        couponType: resolvedPrimaryType,
+        name: `Cupón Principal (${resolvedPrimaryType})`,
+        description: campaign.offer || 'Cupón de campaña por defecto',
+        percentOff: null,
+        durationMonths: null,
+        trialDays: null,
+        expiresHours: null,
+        scenarios: ['first_contact', 'high_intent'],
+        messageTemplate: '',
+        mediaUrl: ''
+      });
+    }
+
     const context = {
       campaignId: campaign.id,
       campaignName: campaign.name,
       campaignType: campaign.type,
       campaignStatus: campaign.status,
       campaignOffer: campaign.offer,
-      
+
       // Información del contacto
       contactId: contact?.id || null,
       establishmentName: contact?.establishmentName || null,
       establishmentPhone: contact?.establishmentPhone || null,
-      
+
       // Información de cupones
       coupons: {
         available: templates.length > 0,
-        couponType: campaign.couponPrefix || templates[0]?.couponType || null,
+        couponType: resolvedPrimaryType,
         templates: templates.map(t => ({
           id: t.id,
           type: t.couponType,
@@ -85,12 +126,12 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
           mediaUrl: t.mediaUrl
         })),
         totalGenerated: campaign._count.coupons,
-        sendInstructions: buildCouponSendInstructions(templates, campaign.couponPrefix)
+        sendInstructions: buildCouponSendInstructions(templates, resolvedPrimaryType)
       },
-      
+
       // Instrucciones para el agente
-      agentInstructions: buildAgentInstructions(campaign, templates),
-      
+      agentInstructions: buildAgentInstructions(campaign, templates, resolvedPrimaryType),
+
       // Metadata para tracking
       metadata: {
         createdAt: campaign.createdAt,
@@ -262,7 +303,7 @@ const _formatOffer = (template) => {
  */
 const getCampaignContextForAgent = async (campaignId, campaignContactId) => {
   const context = await buildCampaignContext(campaignId, campaignContactId);
-  
+
   if (!context) {
     return {
       success: false,
@@ -290,7 +331,7 @@ const enrichDynamicVariablesWithCampaignContext = async (
 ) => {
   try {
     const context = await buildCampaignContext(campaignId, campaignContactId);
-    
+
     if (!context) {
       return dynamicVariables;
     }

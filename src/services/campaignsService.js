@@ -677,6 +677,7 @@ const startCampaign = async (campaignId, options = {}) => {
           id: true,
           name: true,
           phone: true,
+          email: true,
         },
       });
     } catch (geoError) {
@@ -746,6 +747,12 @@ const startCampaign = async (campaignId, options = {}) => {
       contactData.whatsapp ||
       null;
 
+    const email =
+      contactData.email ||
+      contactData.decisionMakerEmail ||
+      establishment?.email ||
+      "";
+
     // Enriquecer contexto de campaña con datos específicos del contacto
     const contactSpecificContext = campaignContext ? {
       ...campaignContext,
@@ -779,7 +786,6 @@ const startCampaign = async (campaignId, options = {}) => {
         contact_name: decisionMakerName,
         leadName: decisionMakerName,
         lead_name: decisionMakerName,
-        couponType: campaign.couponPrefix || contactData.couponType || null,
         agentConfigId: resolvedAgentId,
         campaignName: campaign.name || null,
         campaignOffer: campaign.offer || null,
@@ -788,10 +794,14 @@ const startCampaign = async (campaignId, options = {}) => {
         phone: phoneNumber,
         phone_number: phoneNumber,
         phoneNumber: phoneNumber,
+        email: email,
+        decisionMakerEmail: email,
+        decision_maker_email: email,
         // Contexto de campaña para ElevenLabs (Convertidos a string para evitar "CADENA VACÍA")
         campaignContext: contactSpecificContext ? JSON.stringify(contactSpecificContext) : "",
         couponsAvailable: contactSpecificContext?.coupons?.available ? "true" : "false",
         couponTypes: contactSpecificContext?.coupons?.templates?.map(t => t.type).join(", ") || "",
+        couponType: contactSpecificContext?.coupons?.couponType || campaign.couponPrefix || contactData.couponType || null,
         couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send",
         agentInstructions: contactSpecificContext?.agentInstructions || null
       },

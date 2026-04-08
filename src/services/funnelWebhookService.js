@@ -74,9 +74,10 @@ async function sendWhatsappInfo({
   const saludo = prospectName ? `¡Hola ${prospectName}!` : "¡Hola!";
 
   const message =
-    `${saludo}\n` +
-    `Soy el asistente de EasyOrder. Ayudamos a negocios de comida a digitalizar y organizar mejor sus pedidos.\n` +
-    `Visítanos en https://easyorder.mx para conocernos.\n` +
+    `${saludo}\n\n` +
+    `Soy el asistente de EasyOrder. Ayudamos a negocios de comida a digitalizar y organizar mejor sus pedidos.\n\n` +
+    `Visítanos para conocernos más en el siguiente enlace:\n` +
+    `👉 https://easyorder.mx \n\n` +
     `¡Que tengas un buen día!`;
 
   const result = await whatsappService.sendWhatsAppMessage({
@@ -533,7 +534,8 @@ async function sendCouponWhatsapp({
     const fallbackMessage =
       `¡Gracias por tu interés en EasyOrder!\n\n` +
       `Nuestro equipo te contactará pronto con una oferta especial.\n\n` +
-      `Visítanos en https://easyorder.mx`;
+      `Visítanos en el siguiente enlace:\n` +
+      `👉 https://easyorder.mx/`;
 
     await whatsappService.sendWhatsAppMessage({ to: resolvedPhone, message: fallbackMessage }).catch(e => {
       logger.error("[FunnelWebhook:Qualification] Error enviando fallback WhatsApp", {
