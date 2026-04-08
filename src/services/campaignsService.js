@@ -787,6 +787,7 @@ const startCampaign = async (campaignId, options = {}) => {
         personalityName: personalityName,
         phone: phoneNumber,
         phone_number: phoneNumber,
+        phoneNumber: phoneNumber,
         // Contexto de campaña para ElevenLabs
         campaignContext: contactSpecificContext,
         couponsAvailable: contactSpecificContext?.coupons?.available || false,

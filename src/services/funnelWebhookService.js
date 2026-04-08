@@ -418,13 +418,12 @@ async function sendCouponWhatsapp({
   prospectName,
   businessName,
 }) {
-  if (!phone) throw new Error("phone requerido");
-
   let resolvedCampaignId = campaignId;
   let resolvedContactId = campaignContactId;
   let resolvedCouponType = couponType;
   let resolvedProspectName = prospectName;
   let resolvedBusinessName = businessName;
+  let resolvedPhone = phone;
 
   // Si no viene campaignId, buscar campaña activa del establishment
   if (!resolvedCampaignId && establishmentId) {
@@ -448,8 +447,35 @@ async function sendCouponWhatsapp({
       if (!resolvedCouponType && activeContact.campaign?.couponPrefix) {
         resolvedCouponType = activeContact.campaign.couponPrefix;
       }
+
+      // Obtener el teléfono de la BD si el agente no lo envió
+      if (!resolvedPhone) {
+        resolvedPhone =
+          activeContact.establishmentPhone ||
+          (activeContact.establishmentData && activeContact.establishmentData.phone) ||
+          (activeContact.establishmentData && activeContact.establishmentData.whatsapp) ||
+          null;
+      }
     }
   }
+
+  // Fallback a Establishment info si todavía no hay teléfono o nombres
+  if (!resolvedPhone || !resolvedProspectName || !resolvedBusinessName) {
+    if (establishmentId) {
+      const enrichment = await prisma.establishmentEnrichment.findUnique({
+        where: { establishmentId },
+        select: {
+          decisionMakerName: true,
+          establishment: { select: { phone: true, name: true } },
+        },
+      });
+      if (!resolvedProspectName) resolvedProspectName = enrichment?.decisionMakerName || "Cliente";
+      if (!resolvedBusinessName && enrichment?.establishment?.name) resolvedBusinessName = enrichment.establishment.name;
+      if (!resolvedPhone && enrichment?.establishment?.phone) resolvedPhone = enrichment.establishment.phone;
+    }
+  }
+
+  if (!resolvedPhone) throw new Error("phone no pudo ser resuelto (ni por el agente ni en la BD)");
 
   // Fallback de couponType
   if (!resolvedCouponType && !scenario) {
@@ -470,7 +496,7 @@ async function sendCouponWhatsapp({
 
   try {
     const result = await couponWhatsappService.generateAndSendCoupon({
-      phone,
+      phone: resolvedPhone,
       prospectName: resolvedProspectName || "Cliente",
       businessName: resolvedBusinessName || "Tu negocio",
       scenario: scenario || "qualification_offer",
@@ -482,7 +508,7 @@ async function sendCouponWhatsapp({
     });
 
     logger.info("[FunnelWebhook:Qualification] sendCouponWhatsapp - cupón real generado", {
-      phone,
+      phone: resolvedPhone,
       couponId: result.coupon?.id,
       couponCode: result.coupon?.code,
       couponType: resolvedCouponType,
@@ -499,7 +525,7 @@ async function sendCouponWhatsapp({
   } catch (err) {
     logger.error("[FunnelWebhook:Qualification] Error generando cupón real", {
       error: err.message,
-      phone,
+      phone: resolvedPhone,
       couponType: resolvedCouponType,
     });
 
@@ -509,7 +535,12 @@ async function sendCouponWhatsapp({
       `Nuestro equipo te contactará pronto con una oferta especial.\n\n` +
       `Visítanos en https://easyorder.mx`;
 
-    await whatsappService.sendWhatsAppMessage({ to: phone, message: fallbackMessage });
+    await whatsappService.sendWhatsAppMessage({ to: resolvedPhone, message: fallbackMessage }).catch(e => {
+      logger.error("[FunnelWebhook:Qualification] Error enviando fallback WhatsApp", {
+        error: e.message,
+        phone: resolvedPhone
+      });
+    });
 
     return { success: false, error: err.message, fallbackSent: true };
   }
