@@ -49,17 +49,21 @@ function createQualificationServer() {
     {
       conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      campaign_id: z.string().optional().describe("ID de campaña ({{campaignId}})"),
+      campaign_contact_id: z.string().optional().describe("ID contacto campaña ({{campaignContactId}})"),
       phone: z.string().optional().describe("Teléfono del prospecto ({{phoneNumber}}). Opcional, si no lo tienes omítelo y el sistema lo buscará."),
       coupon_type: z.string().optional().describe("Tipo de cupón elegido según árbol de decisión ({{couponType}}). Si no se especifica, se usa el cupón principal."),
       scenario: z.string().optional().describe("Escenario detectado en la conversación (ej: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead). Se usa para analíticas y para seleccionar template si no se especificó coupon_type."),
       prospect_name: z.string().optional().describe("Nombre del prospecto para personalizar el mensaje ({{prospectName}})"),
       business_name: z.string().optional().describe("Nombre del negocio ({{businessName}})"),
     },
-    async ({ conversation_id, establishment_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
+    async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
         const result = await svc.sendCouponWhatsapp({
           conversationId: conversation_id,
           establishmentId: establishment_id,
+          campaignId: campaign_id,
+          campaignContactId: campaign_contact_id,
           phone,
           coupon: {},
           couponType: coupon_type,

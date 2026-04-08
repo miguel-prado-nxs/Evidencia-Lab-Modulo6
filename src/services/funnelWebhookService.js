@@ -431,7 +431,6 @@ async function sendCouponWhatsapp({
     const activeContact = await prisma.campaignContact.findFirst({
       where: {
         establishmentId,
-        status: "CALLING",
         campaign: { status: "ACTIVE" },
       },
       include: {
