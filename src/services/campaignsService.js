@@ -785,6 +785,8 @@ const startCampaign = async (campaignId, options = {}) => {
         campaignOffer: campaign.offer || null,
         personality_name: personalityName,
         personalityName: personalityName,
+        phone: phoneNumber,
+        phone_number: phoneNumber,
         // Contexto de campaña para ElevenLabs
         campaignContext: contactSpecificContext,
         couponsAvailable: contactSpecificContext?.coupons?.available || false,
@@ -1432,7 +1434,7 @@ const getCouponBreakdown = async (campaignId) => {
   // Group coupons by type with aggregated metrics
   const breakdown = await prisma.campaignCoupon.groupBy({
     by: ["couponType"],
-    where: { 
+    where: {
       campaignId,
       couponType: { not: null }
     },
@@ -1514,8 +1516,7 @@ const getCouponBreakdown = async (campaignId) => {
       name: template?.name || item.couponType,
       description: template?.description || null,
       offer: template
-        ? `${template.percentOff ? template.percentOff + "%" : ""} ${
-            template.durationMonths ? template.durationMonths + " meses" : ""
+        ? `${template.percentOff ? template.percentOff + "%" : ""} ${template.durationMonths ? template.durationMonths + " meses" : ""
           } ${template.trialDays ? template.trialDays + " días trial" : ""}`.trim()
         : null,
       metrics: {
