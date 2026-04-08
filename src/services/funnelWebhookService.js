@@ -426,7 +426,29 @@ async function sendCouponWhatsapp({
   let resolvedBusinessName = businessName;
   let resolvedPhone = phone;
 
-  // Si no viene campaignId, buscar campaña activa del establishment
+  // 1. Fallback por conversationId (la forma más segura de encontrar el contacto original)
+  if ((!resolvedCampaignId || !resolvedContactId) && conversationId) {
+    const contactByConv = await prisma.campaignContact.findFirst({
+      where: { conversationId },
+      include: {
+        campaign: { select: { id: true, couponPrefix: true } },
+      },
+    });
+    
+    if (contactByConv) {
+      if (!resolvedCampaignId) resolvedCampaignId = contactByConv.campaignId;
+      if (!resolvedContactId) resolvedContactId = contactByConv.id;
+      if (!resolvedCouponType && contactByConv.campaign?.couponPrefix) {
+        resolvedCouponType = contactByConv.campaign.couponPrefix;
+      }
+      if (!resolvedPhone) {
+        resolvedPhone = contactByConv.establishmentPhone || contactByConv.establishmentData?.phone || contactByConv.establishmentData?.whatsapp || null;
+      }
+      establishmentId = establishmentId || contactByConv.establishmentId;
+    }
+  }
+
+  // 2. Si no viene campaignId ni se encontró por conversationId, intentar por establishmentId
   if (!resolvedCampaignId && establishmentId) {
     const activeContact = await prisma.campaignContact.findFirst({
       where: {
