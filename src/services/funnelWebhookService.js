@@ -59,6 +59,168 @@ async function upsertEnrichmentSnapshot(establishmentId, stage, data) {
 }
 
 // ============================================================
+// HELPER: Sincronizar CampaignContact al cerrar llamada
+// ============================================================
+
+/**
+ * Busca el CampaignContact asociado al establishment en una campaña activa
+ * y actualiza su status basándose en el outcome del agente.
+ *
+ * Mapeo de outcomes a CampaignContact.status:
+ * - ADVANCE_TO_ACTIVATION, DEMO_SCHEDULED, CLOSED_WON → RESPONDED
+ * - FOLLOW_UP_LATER, FOLLOW_UP, FOLLOW_UP_NEEDED → RESPONDED
+ * - NOT_INTERESTED, DISQUALIFIED, LOST, WRONG_NUMBER → FAILED
+ * - NO_ANSWER, VOICEMAIL → FAILED
+ * - DEMO_DECLINED, OBJECTION_UNRESOLVED → RESPONDED
+ *
+ * Si se envió cupón (couponSent=true), status → CONVERTED (o se deja RESPONDED
+ * y se espera a que el cupón sea redimido para marcar CONVERTED).
+ */
+async function syncCampaignContactStatus({
+  establishmentId,
+  conversationId,
+  outcome,
+  agentStage,
+  couponSent = false,
+  callSummary,
+}) {
+  if (!establishmentId) return null;
+
+  try {
+    // Buscar el CampaignContact en status CALLING para este establishment
+    const contact = await prisma.campaignContact.findFirst({
+      where: {
+        establishmentId,
+        status: "CALLING",
+        campaign: { status: "ACTIVE" },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!contact) {
+      logger.debug("[syncCampaignContact] No active CampaignContact found for establishment", {
+        establishmentId,
+        agentStage,
+      });
+      return null;
+    }
+
+    // Determinar el nuevo status
+    const positiveOutcomes = [
+      "ADVANCE_TO_ACTIVATION",
+      "DEMO_SCHEDULED",
+      "CLOSED_WON",
+      "FOLLOW_UP_LATER",
+      "FOLLOW_UP",
+      "FOLLOW_UP_NEEDED",
+      "DEMO_DECLINED",
+      "OBJECTION_UNRESOLVED",
+    ];
+
+    const failedOutcomes = [
+      "NOT_INTERESTED",
+      "DISQUALIFIED",
+      "LOST",
+      "WRONG_NUMBER",
+      "NO_ANSWER",
+      "VOICEMAIL",
+      "FAILED",
+    ];
+
+    let newStatus;
+    if (outcome === "CLOSED_WON") {
+      newStatus = "CONVERTED";
+    } else if (couponSent) {
+      newStatus = "RESPONDED"; // Se envió cupón → al menos respondió
+    } else if (positiveOutcomes.includes(outcome?.toUpperCase())) {
+      newStatus = "RESPONDED";
+    } else if (failedOutcomes.includes(outcome?.toUpperCase())) {
+      newStatus = "FAILED";
+    } else {
+      newStatus = "RESPONDED"; // Default conservador
+    }
+
+    // Actualizar CampaignContact
+    const updated = await prisma.campaignContact.update({
+      where: { id: contact.id },
+      data: {
+        status: newStatus,
+        callTranscript: callSummary || null,
+        webhookReceivedAt: new Date(),
+        establishmentData: {
+          ...(contact.establishmentData || {}),
+          agentStage,
+          outcome,
+          conversationId,
+          couponSent,
+          syncedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    logger.info("[syncCampaignContact] CampaignContact status updated", {
+      contactId: contact.id,
+      campaignId: contact.campaignId,
+      establishmentId,
+      previousStatus: "CALLING",
+      newStatus,
+      outcome,
+      agentStage,
+    });
+
+    // Recalcular métricas de la campaña (non-blocking)
+    _recalculateCampaignMetrics(contact.campaignId).catch(() => { });
+
+    return { contactId: contact.id, campaignId: contact.campaignId, newStatus };
+  } catch (err) {
+    logger.error("[syncCampaignContact] Error syncing contact status", {
+      error: err.message,
+      establishmentId,
+      outcome,
+    });
+    return null;
+  }
+}
+
+/**
+ * Recalcula métricas agregadas de una campaña.
+ */
+async function _recalculateCampaignMetrics(campaignId) {
+  if (!campaignId) return;
+
+  try {
+    const contacts = await prisma.campaignContact.findMany({
+      where: { campaignId },
+      select: { status: true, couponId: true },
+    });
+
+    const statusCount = {};
+    let couponsSent = 0;
+
+    for (const c of contacts) {
+      statusCount[c.status] = (statusCount[c.status] || 0) + 1;
+      if (c.couponId) couponsSent++;
+    }
+
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: {
+        totalContacts: contacts.length,
+        totalCalled: (statusCount.CALLING || 0) + (statusCount.RESPONDED || 0) + (statusCount.CONVERTED || 0) + (statusCount.FAILED || 0),
+        totalResponded: statusCount.RESPONDED || 0,
+        totalConverted: statusCount.CONVERTED || 0,
+        totalFailed: statusCount.FAILED || 0,
+        couponsSent,
+      },
+    });
+
+    logger.debug("[_recalculateCampaignMetrics] Metrics updated", { campaignId, statusCount });
+  } catch (err) {
+    logger.error("[_recalculateCampaignMetrics] Error", { error: err.message, campaignId });
+  }
+}
+
+// ============================================================
 // WHATSAPP: Mensaje informativo básico (para Discovery)
 // ============================================================
 
@@ -198,6 +360,17 @@ async function endDiscoveryCall({
     establishmentId,
     outcome,
   });
+
+
+  // Sincronizar CampaignContact
+  await syncCampaignContactStatus({
+    establishmentId,
+    conversationId,
+    outcome,
+    agentStage: "DISCOVERY",
+    callSummary,
+  });
+
   return { success: true, outcome };
 }
 
@@ -349,6 +522,16 @@ async function endActivationCall({
     establishmentId,
     outcome,
   });
+
+  // Sincronizar CampaignContact
+  await syncCampaignContactStatus({
+    establishmentId,
+    conversationId,
+    outcome,
+    agentStage: "ACTIVATION",
+    callSummary,
+  });
+
   return { success: true, outcome };
 }
 
@@ -434,7 +617,7 @@ async function sendCouponWhatsapp({
         campaign: { select: { id: true, couponPrefix: true } },
       },
     });
-    
+
     if (contactByConv) {
       if (!resolvedCampaignId) resolvedCampaignId = contactByConv.campaignId;
       if (!resolvedContactId) resolvedContactId = contactByConv.id;
@@ -765,6 +948,16 @@ async function endAndClose({
     outcome,
     qualificationScore,
   });
+
+  await syncCampaignContactStatus({
+    establishmentId,
+    conversationId,
+    outcome,
+    agentStage: "QUALIFICATION",
+    couponSent,
+    callSummary,
+  });
+
   return { success: true, outcome };
 }
 
@@ -977,6 +1170,15 @@ async function endConversionCall({
     outcome,
     planClosed,
   });
+
+  await syncCampaignContactStatus({
+    establishmentId,
+    conversationId,
+    outcome,
+    agentStage: "CONVERSION",
+    callSummary,
+  });
+
   return { success: true, outcome };
 }
 
@@ -1073,4 +1275,6 @@ module.exports = {
   saveDealTerms,
   scheduleOnboarding,
   endConversionCall,
+  // Helpers de sincronización
+  syncCampaignContactStatus,
 };
