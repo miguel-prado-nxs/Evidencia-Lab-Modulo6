@@ -368,6 +368,7 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
         select: {
           id: true,
           name: true,
+          businessName: true,
           phone: true,
           email: true,
           website: true,
@@ -376,6 +377,10 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
           longitude: true,
           municipalityName: true,
           stateName: true,
+          employeeRange: true,
+          streetName: true,
+          exteriorNum: true,
+          neighborhood: true,
         },
       });
     } catch (geoError) {
@@ -391,9 +396,12 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
   const contacts = await prisma.$transaction(
     establishmentIds.map((establishmentId) => {
       const establishment = establishmentById.get(establishmentId);
+
+      const establishmentNameToUse = establishment?.businessName || establishment?.name || null;
+
       const establishmentData = establishment
         ? {
-          name: establishment.name || null,
+          name: establishmentNameToUse,
           phone: establishment.phone || null,
           email: establishment.email || null,
           website: establishment.website || null,
@@ -402,8 +410,19 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
           longitude: establishment.longitude ?? null,
           municipalityName: establishment.municipalityName || null,
           stateName: establishment.stateName || null,
+
+          employees: establishment.employeeRange ? establishment.employeeRange.trim() : "-",
+
+          address: [
+            establishment.streetName,
+            establishment.exteriorNum,
+            establishment.neighborhood,
+            establishment.municipalityName,
+            establishment.stateName
+          ].filter(Boolean).join(", ")
         }
         : null;
+
 
       return prisma.campaignContact.upsert({
         where: {
@@ -413,14 +432,14 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
           },
         },
         update: {
-          establishmentName: establishment?.name || null,
+          establishmentName: establishmentNameToUse,
           establishmentPhone: establishment?.phone || null,
           establishmentData,
         },
         create: {
           campaignId,
           establishmentId,
-          establishmentName: establishment?.name || null,
+          establishmentName: establishmentNameToUse,
           establishmentPhone: establishment?.phone || null,
           establishmentData,
           status: "PENDING",
@@ -676,8 +695,15 @@ const startCampaign = async (campaignId, options = {}) => {
         select: {
           id: true,
           name: true,
+          businessName: true,
           phone: true,
           email: true,
+          employeeRange: true,
+          streetName: true,
+          exteriorNumber: true,
+          neighborhood: true,
+          municipalityName: true,
+          stateName: true,
         },
       });
     } catch (geoError) {
