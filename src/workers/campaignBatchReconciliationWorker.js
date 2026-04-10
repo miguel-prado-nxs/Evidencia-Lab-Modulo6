@@ -40,10 +40,10 @@ const recalculateCampaignMetrics = async (campaignId) => {
             where: { campaignId },
             _count: { _all: true },
         }),
-        prisma.campaignContact.count({
+        prisma.campaignCoupon.count({
             where: {
                 campaignId,
-                couponId: { not: null },
+                status: "SENT"
             },
         }),
     ]);

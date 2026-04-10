@@ -191,7 +191,7 @@ async function _recalculateCampaignMetrics(campaignId) {
   try {
     const contacts = await prisma.campaignContact.findMany({
       where: { campaignId },
-      select: { status: true, couponId: true },
+      select: { status: true, couponId: true, establishmentData: true },
     });
 
     const statusCount = {};
@@ -199,7 +199,11 @@ async function _recalculateCampaignMetrics(campaignId) {
 
     for (const c of contacts) {
       statusCount[c.status] = (statusCount[c.status] || 0) + 1;
-      if (c.couponId) couponsSent++;
+
+      // Contar cupones si el contacto tiene `couponId` O su metadata de establishment indica que se envió cupón
+      if (c.couponId || (c.establishmentData && typeof c.establishmentData === 'object' && c.establishmentData.couponSent)) {
+        couponsSent++;
+      }
     }
 
     await prisma.campaign.update({

@@ -1113,7 +1113,7 @@ const getCampaignStats = async (campaignId) => {
       totalResponded,
       totalConverted,
       totalFailed,
-      totalCoupons: campaign._count.coupons,
+      totalCoupons: campaign.couponsSent || 0, // Using the aggregated field as requested
       responseRate: responseRate.toFixed(2),
       conversionRate: conversionRate.toFixed(2),
     },

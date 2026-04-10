@@ -472,10 +472,10 @@ const recalculateCampaignMetrics = async (campaignId) => {
             where: { campaignId },
             _count: { _all: true },
         }),
-        prisma.campaignContact.count({
+        prisma.campaignCoupon.count({
             where: {
                 campaignId,
-                couponId: { not: null },
+                status: "SENT"
             },
         }),
     ]);
@@ -988,7 +988,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         }
 
         if (webhookData.couponGenerated) {
-            const coupon = await prisma.campaignCoupon.findFirst({
+            let coupon = await prisma.campaignCoupon.findFirst({
                 where: {
                     code: webhookData.couponGenerated,
                     campaignId: contact.campaignId,
@@ -998,16 +998,32 @@ const handleElevenLabsWebhook = async (req, res, next) => {
 
             if (coupon) {
                 updateData.couponId = coupon.id;
+                await prisma.campaignCoupon.update({
+                    where: { id: coupon.id },
+                    data: { status: "SENT", sentAt: new Date() }
+                })
                 logger.debug("[CampaignWebhook] Coupon found and linked", {
                     couponCode: webhookData.couponGenerated,
                     couponId: coupon.id,
                 });
             } else {
-                logger.warn("[CampaignWebhook] couponGenerated not found in campaign", {
+                logger.warn("[CampaignWebhook] couponGenerated not found in campaign, creating new one", {
                     campaignId: contact.campaignId,
                     contactId: contact.id,
                     couponCode: webhookData.couponGenerated,
                 });
+
+                // Creates the coupon since it wasn't saved in the DB earlier correctly
+                const newCoupon = await prisma.campaignCoupon.create({
+                    data: {
+                        code: webhookData.couponGenerated,
+                        campaignId: contact.campaignId,
+                        offer: "Oferta especial de llamada",
+                        status: "SENT",
+                        sentAt: new Date(),
+                    }
+                });
+                updateData.couponId = newCoupon.id;
             }
         }
 
