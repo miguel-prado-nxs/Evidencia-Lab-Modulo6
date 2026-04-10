@@ -924,6 +924,36 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             select: { status: true },
         });
 
+        // Manejo especial para fallos de iniciación de llamada
+        if (webhookData.eventType === "call_initiation_failure") {
+            const updateData = {
+                status: "FAILED",
+                errorReason: webhookData.failureReason || "Call failed to initiate (provider error)",
+                webhookReceivedAt: new Date(),
+            };
+
+            await prisma.campaignContact.update({
+                where: { id: contact.id },
+                data: updateData,
+            });
+
+            logger.warn("[CampaignWebhook] Call initiation failure processed", {
+                contactId: contact.id,
+                failureReason: updateData.errorReason,
+            });
+
+            setImmediate(() => {
+                recalculateCampaignMetrics(contact.campaignId).catch((error) => {
+                    logger.error("[CampaignWebhook] Failed to recalculate campaign metrics after call initiation failure", {
+                        campaignId: contact.campaignId,
+                        error: error.message,
+                    });
+                });
+            });
+
+            return res.status(200).json({ success: true });
+        }
+
         // Aunque la campaña esté pausada, los cierres de llamada deben procesarse
         // para evitar perder el resultado y relanzar contactos ya concluidos.
 

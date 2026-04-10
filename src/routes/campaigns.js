@@ -29,12 +29,20 @@ const updateCampaignSchema = z.object({
   body: z.object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
-    status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"]).optional(),
+    type: z.string().optional(),
+    status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED", "SCHEDULED"]).optional(),
     centerLat: z.number().optional(),
     centerLng: z.number().optional(),
     radiusMeters: z.number().int().positive().optional(),
+    activityCodes: z.array(z.string()).optional(),
+    employeeRanges: z.array(z.string()).optional(),
     filters: z.record(z.any()).optional(),
+    agentConfigId: z.string().optional(),
+    agentConfigName: z.string().optional(),
+    offer: z.string().optional(),
+    couponPrefix: z.string().optional(),
     couponTemplateIds: z.array(z.string()).optional(),
+    scheduledAt: z.string().optional(),
   }),
 });
 
