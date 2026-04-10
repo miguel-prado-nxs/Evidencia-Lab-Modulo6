@@ -1311,8 +1311,8 @@ const resumeCampaign = async (campaignId) => {
         reconciliedCount++;
         logger.info(`Contact ${latestContact.id} reconciled: ${latestContact.status} → ${finalStatus} (webhook received)`);
       }
-      // Especial para contactos en PAUSED sin webhook
-      else if (latestContact.status === "PAUSED") {
+      // Especial para contactos en PAUSED sin webhook pero con evidencia de que NO se despacharon o fallaron silenciosamente
+      else if (latestContact.status === "PAUSED" && !latestContact.providerBatchId) {
         await prisma.campaignContact.update({
           where: { id: latestContact.id },
           data: {
@@ -1325,7 +1325,7 @@ const resumeCampaign = async (campaignId) => {
         });
         reconciliedCount++;
         relaunchedCount++;
-        logger.info(`Contact ${latestContact.id} reconciled: PAUSED → PENDING (ready to retry)`);
+        logger.info(`Contact ${latestContact.id} reconciled: PAUSED → PENDING (no provider/webhook evidence, ready to retry)`);
       }
       // Si ya fue despachado al proveedor (providerBatchId), NO relanzar para evitar duplicados.
       // Esperar webhook y, si expira timeout, cerrarlo sin redial.
@@ -1342,8 +1342,19 @@ const resumeCampaign = async (campaignId) => {
           closedWithoutWebhookCount++;
           logger.warn(`Contact ${latestContact.id} reconciled: ${latestContact.status} → FAILED (provider dispatch confirmed, timeout without webhook)`);
         } else {
-          waitingWebhookCount++;
-          logger.info(`Contact ${latestContact.id} remains ${latestContact.status} (provider dispatch confirmed, awaiting webhook ${timeInCallingMinutes.toFixed(1)}m)`);
+          if (latestContact.status === "PAUSED") {
+            // Regresarlo a CALLING porque ya está en ElevenLabs, estamos esperando el webhook
+            await prisma.campaignContact.update({
+              where: { id: latestContact.id },
+              data: { status: "CALLING" },
+            });
+            reconciliedCount++;
+            waitingWebhookCount++;
+            logger.info(`Contact ${latestContact.id} reconciled: PAUSED → CALLING (provider dispatch confirmed, awaiting webhook ${timeInCallingMinutes.toFixed(1)}m)`);
+          } else {
+            waitingWebhookCount++;
+            logger.info(`Contact ${latestContact.id} remains ${latestContact.status} (provider dispatch confirmed, awaiting webhook ${timeInCallingMinutes.toFixed(1)}m)`);
+          }
         }
       }
       // Sin evidencia de despacho al proveedor: esperar gracia corta y luego relanzar.
