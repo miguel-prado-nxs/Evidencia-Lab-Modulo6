@@ -1101,11 +1101,40 @@ const getCampaignStats = async (campaignId) => {
   const responseRate = totalCalled > 0 ? (totalResponded / totalCalled) * 100 : 0;
   const conversionRate = totalResponded > 0 ? (totalConverted / totalResponded) * 100 : 0;
 
+  const agentMetrics = [];
+  if (campaign.agentConfigId) {
+    const totalDurationResult = await prisma.campaignContact.aggregate({
+      where: { campaignId },
+      _sum: { callDuration: true },
+      _count: { callDuration: true },
+    });
+
+    const totalDuration = totalDurationResult._sum.callDuration || 0;
+    const callsWithDurationCount = totalDurationResult._count.callDuration || 0;
+    const avgDurationSeconds = callsWithDurationCount > 0 ? Math.round(totalDuration / callsWithDurationCount) : 0;
+    const minutes = Math.floor(avgDurationSeconds / 60);
+    const seconds = avgDurationSeconds % 60;
+    const avgDurationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+    agentMetrics.push({
+      agentId: campaign.agentConfigId,
+      agentName: campaign.agentConfigName || "Agente Desconocido",
+      callsMade: totalCalled,
+      responses: totalResponded,
+      conversions: totalConverted,
+      responseRate: responseRate.toFixed(2),
+      conversionRate: conversionRate.toFixed(2),
+      avgCallDuration: avgDurationStr
+    });
+  }
+
   return {
     campaign: {
       id: campaign.id,
       name: campaign.name,
       status: campaign.status,
+      agentConfigId: campaign.agentConfigId,
+      agentConfigName: campaign.agentConfigName,
     },
     metrics: {
       totalContacts,
@@ -1119,6 +1148,7 @@ const getCampaignStats = async (campaignId) => {
     },
     statusBreakdown: metricsByStatus,
     conversionTimeline: conversionTimeline,
+    agentMetrics: agentMetrics,
   };
 };
 
