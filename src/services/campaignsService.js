@@ -8,6 +8,31 @@ const campaignContextService = require("./campaignContextService");
 
 const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
 
+const AGENT_TO_CAMPAIGN_TYPE_MAP = {
+  'agent_5101kn32vm9gevjaqrrhx2hh537h': 'DISCOVERY',
+  'agent_6701kn5n423cemxv9n9pwvs5nj2t': 'QUALIFICATION',
+  'agent_3901kn500d46f9bvce4w254zcfw7': 'ACTIVATION',
+  'agent_4701kn5nyqwaf2ntj1cgsnxsv31p': 'CONVERSION',
+};
+/**
+ * Obtiene el tipo de campaña basado en el ID del agente
+ * @param {string} agentConfigId - ID del agente de ElevenLabs
+ * @returns {string|null} - Tipo de campaña o null si no es válido
+ */
+function getCampaignTypeFromAgent(agentConfigId) {
+  return AGENT_TO_CAMPAIGN_TYPE_MAP[agentConfigId] || null;
+}
+
+/**
+ * Obtiene la lista de IDs de agentes válidos para campañas
+ * @returns {string[]} - Array de IDs de agentes
+ */
+function getValidCampaignAgentIds() {
+  return Object.keys(AGENT_TO_CAMPAIGN_TYPE_MAP);
+}
+
+
+
 const extractAgentNameFromAgent = (agent = {}) => {
   return agent.name || agent.agent_name || null;
 };
@@ -139,6 +164,26 @@ const createCampaign = async (data) => {
     throw new Error("Campaign name is required");
   }
 
+  // Validar que se proporcione un agente
+  if (!agentConfigId) {
+    throw new Error("agentConfigId is required");
+  }
+
+  // Auto-calcular type desde agentConfigId
+  let campaignType = type; // Mantener si viene del frontend (retrocompatibilidad)
+
+  if (!campaignType) {
+    campaignType = getCampaignTypeFromAgent(agentConfigId);
+  }
+
+  // Validar que el agentConfigId sea válido para campañas
+  if (!campaignType) {
+    const validIds = getValidCampaignAgentIds();
+    throw new Error(
+      `Invalid agent for campaigns. Agent ID must be one of: ${validIds.join(', ')}`
+    );
+  }
+
   if (centerLat && centerLng && !radiusMeters) {
     throw new Error("radiusMeters is required when centerLat and centerLng are provided");
   }
@@ -151,7 +196,7 @@ const createCampaign = async (data) => {
     data: {
       name,
       description,
-      type,
+      type: campaignType,
       status: "DRAFT",
       centerLat,
       centerLng,
@@ -176,7 +221,11 @@ const createCampaign = async (data) => {
     });
   }
 
-  logger.info(`Campaign created: ${campaign.id}`, { campaignId: campaign.id });
+  logger.info(`Campaign created: ${campaign.id}`, {
+    campaignId: campaign.id,
+    type: campaignType,
+    agentConfigId
+  });
   return campaign;
 };
 
@@ -1654,4 +1703,6 @@ module.exports = {
   getCouponBreakdown,
   cancelCampaign,
   retryCampaignContacts,
+  getCampaignTypeFromAgent,
+  getValidCampaignAgentIds,
 };

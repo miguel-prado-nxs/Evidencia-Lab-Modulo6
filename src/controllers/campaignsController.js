@@ -295,6 +295,7 @@ const getStats = async (req, res, next) => {
 
 const apiKey = process.env.ELEVENLABS_API_KEY
 
+
 const getAgents = async (req, res, next) => {
   try {
     const response = await axios.get('https://api.elevenlabs.io/v1/convai/agents', {
@@ -304,16 +305,28 @@ const getAgents = async (req, res, next) => {
     });
 
     const agentsArray = Array.isArray(response.data) ? response.data : response.data.agents || [];
-    const agents = agentsArray.map(agent => ({
-      id: agent.agent_id,
-      name: agent.name
-    }));
+
+    // Obtener IDs de agentes válidos para campañas
+    const validCampaignAgentIds = campaignsService.getValidCampaignAgentIds();
+
+    // Filtrar solo agentes de campaña y mapear
+    const agents = agentsArray
+      .filter(agent => validCampaignAgentIds.includes(agent.agent_id))
+      .map(agent => ({
+        id: agent.agent_id,
+        name: agent.name,
+        // Agregar el tipo de campaña para referencia
+        campaignType: campaignsService.getCampaignTypeFromAgent(agent.agent_id)
+      }));
+
+
 
     res.json({
       success: true,
       data: agents
     });
   } catch (error) {
+    logger.error('Error fetching agents from ElevenLabs:', error);
     next(error);
   }
 };

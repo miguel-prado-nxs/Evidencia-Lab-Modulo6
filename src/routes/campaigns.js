@@ -10,14 +10,14 @@ const createCampaignSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Nombre de campaña requerido"),
     description: z.string().optional(),
-    type: z.string().optional(),
+    type: z.enum(["DISCOVERY", "ACTIVATION", "QUALIFICATION", "CONVERSION"]).optional(), // Opcional, se calcula del agente
     centerLat: z.number().optional(),
     centerLng: z.number().optional(),
     radiusMeters: z.number().int().positive().optional(),
     activityCodes: z.array(z.string()).optional(),
     employeeRanges: z.array(z.string()).optional(),
-    filters: z.record(z.any()).nullable(),
-    agentConfigId: z.string().optional(),
+    filters: z.record(z.any()).nullable().optional(),
+    agentConfigId: z.string().min(1, "Agente es requerido"), // Ahora obligatorio
     agentConfigName: z.string().optional(),
     offer: z.string().optional(),
     couponPrefix: z.string().optional(),
