@@ -14,16 +14,33 @@ const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 
 /**
+ * Calcular distancia entre dos puntos usando la fórmula de Haversine
+ * @param {number} lat1 - Latitud del punto 1
+ * @param {number} lon1 - Longitud del punto 1
+ * @param {number} lat2 - Latitud del punto 2
+ * @param {number} lon2 - Longitud del punto 2
+ * @returns {number} Distancia en kilómetros
+ */
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radio de la Tierra en km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
  * Buscar establecimientos dentro de un bounding box (viewport del mapa)
  * Lee de Mapa DB (prismaGeo) - datos base INEGI
  */
-async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
-  const {
-    north,
-    south,
-    east,
-    west
-  } = bounds;
+async function getEstablishmentsInBounds(bounds, filters = {}) {
+  const { north, south, east, west } = bounds;
 
   const {
     activityCode,
@@ -33,10 +50,12 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
     search
   } = filters;
 
-  const {
-    limit = 1000,
-    offset = 0
-  } = options;
+  console.log('[getEstablishmentsInBounds] Filters received:', { activityCode, stateCode, municipalityCode, employeeRange });
+
+  // const {
+  //   limit = 1000,
+  //   offset = 0
+  // } = options;
 
   const where = {
     latitude: { gte: south, lte: north },
@@ -46,6 +65,7 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
   // Filtros opcionales
   if (activityCode) {
     const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+    console.log('[getEstablishmentsInBounds] Activity codes to filter:', codes);
     if (codes.length === 1) {
       where.activityCode = codes[0];
     } else if (codes.length > 1) {
@@ -54,7 +74,16 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
   }
   if (stateCode) where.stateCode = stateCode;
   if (municipalityCode) where.municipalityCode = municipalityCode;
-  if (employeeRange) where.employeeRange = employeeRange;
+
+  if (employeeRange) {
+    const ranges = employeeRange.split(",").map(r => r.trim()).filter(Boolean);
+    if (ranges.length === 1) {
+      where.employeeRange = ranges[0];
+    } else if (ranges.length > 1) {
+      where.employeeRange = { in: ranges };
+    }
+  }
+
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },
@@ -65,8 +94,8 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
 
   const establishments = await prismaGeo.establishment.findMany({
     where,
-    take: limit,
-    skip: offset,
+    // take: limit,
+    // skip: offset,
     select: {
       id: true,
       name: true,
@@ -88,6 +117,59 @@ async function getEstablishmentsInBounds(bounds, filters = {}, options = {}) {
   });
 
   return establishments;
+}
+
+/**
+ * Contar establecimientos dentro de un bounding box
+ * Lee de Mapa DB (prismaGeo)
+ */
+async function countEstablishmentsInBounds(bounds, filters = {}) {
+  const { north, south, east, west } = bounds;
+
+  const {
+    activityCode,
+    stateCode,
+    municipalityCode,
+    employeeRange,
+    search
+  } = filters;
+
+  const where = {
+    latitude: { gte: south, lte: north },
+    longitude: { gte: west, lte: east },
+  };
+
+  if (activityCode) {
+    const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+    if (codes.length === 1) {
+      where.activityCode = codes[0];
+    } else if (codes.length > 1) {
+      where.activityCode = { in: codes };
+    }
+  }
+  if (stateCode) where.stateCode = stateCode;
+  if (municipalityCode) where.municipalityCode = municipalityCode;
+
+  if (employeeRange) {
+    const ranges = typeof employeeRange === 'string'
+      ? employeeRange.split(",").map(r => r.trim()).filter(Boolean)
+      : [];
+    if (ranges.length === 1) {
+      where.employeeRange = ranges[0];
+    } else if (ranges.length > 1) {
+      where.employeeRange = { in: ranges };
+    }
+  }
+
+  if (search) {
+    where.OR = [
+      { name: { contains: search, mode: "insensitive" } },
+      { activityName: { contains: search, mode: "insensitive" } },
+      { neighborhood: { contains: search, mode: "insensitive" } },
+    ];
+  }
+
+  return prismaGeo.establishment.count({ where });
 }
 
 /**
@@ -135,7 +217,14 @@ async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, fi
   if (Array.isArray(filters.employeeRanges) && filters.employeeRanges.length > 0) {
     where.employeeRange = { in: filters.employeeRanges };
   } else if (filters.employeeRange) {
-    where.employeeRange = filters.employeeRange;
+    const ranges = typeof filters.employeeRange === 'string'
+      ? filters.employeeRange.split(",").map(r => r.trim()).filter(Boolean)
+      : [];
+    if (ranges.length === 1) {
+      where.employeeRange = ranges[0];
+    } else if (ranges.length > 1) {
+      where.employeeRange = { in: ranges };
+    }
   }
   if (filters.search) {
     where.OR = [
@@ -145,28 +234,74 @@ async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, fi
     ];
   }
 
-  return prismaGeo.establishment.findMany({
-    where,
-    select: {
-      id: true,
-      name: true,
-      phone: true,
-      email: true,
-      website: true,
-      latitude: true,
-      longitude: true,
-      activityCode: true,
-      activityName: true,
-      employeeRange: true,
-      stateCode: true,
-      stateName: true,
-      municipalityCode: true,
-      municipalityName: true,
-      neighborhood: true,
-      postalCode: true,
-    },
-    take: 500,
+  // Modificar límite a través de las opciones/filtros (por defecto 200000 para CDMX y áreas grandes)
+  // Ignorar limit = 1 (para estimaciones rápidas) y siempre contar todo cuando se filtra por radio
+  const limitValue = (filters.limit && filters.limit > 1) ? filters.limit : 200000;
+
+  let results = [];
+  const count = await prismaGeo.establishment.count({ where });
+
+  // Retornamos lat y lng también para filtrar por distancia exacta circular
+  if (count > 500) {
+    results = await prismaGeo.establishment.findMany({
+      where,
+      select: { id: true, latitude: true, longitude: true },
+      take: limitValue,
+    });
+  } else {
+    // Si son pocos, retornamos más campos por si otra función los requiere
+    results = await prismaGeo.establishment.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        website: true,
+        latitude: true,
+        longitude: true,
+        activityCode: true,
+        activityName: true,
+        employeeRange: true,
+        stateCode: true,
+        stateName: true,
+        municipalityCode: true,
+        municipalityName: true,
+        neighborhood: true,
+        postalCode: true,
+      },
+      take: limitValue,
+    });
+  }
+
+  // Filtrar por círculo estricto (no cuadrado)
+  const radiusKm = radiusMeters / 1000;
+
+  function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Radio de la tierra en km
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  let filterCount = 0;
+  let passCount = 0;
+
+  const finalResults = results.filter(est => {
+    if (!est.latitude || !est.longitude) return false;
+    const dist = calculateDistance(centerLat, centerLng, est.latitude, est.longitude);
+    return dist <= radiusKm;
   });
+
+  console.log('✅ Final count (after Haversine filter):', finalResults.length);
+  return finalResults;
 }
 
 /**
@@ -1038,6 +1173,7 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
 
 module.exports = {
   getEstablishmentsInBounds,
+  countEstablishmentsInBounds,
   findEstablishmentsInRadius,
   getEstablishmentById,
   getClusteredData,

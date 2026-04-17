@@ -37,6 +37,8 @@ async function getEstablishments(req, res, next) {
       search,
     };
 
+    logger.debug('getEstablishments called with filters:', { activity, bounds });
+
     const options = {
       limit: limit ? parseInt(limit) : 1000,
       offset: offset ? parseInt(offset) : 0,

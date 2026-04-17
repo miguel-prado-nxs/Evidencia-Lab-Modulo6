@@ -406,6 +406,8 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
   }
 
   const uniqueEstablishmentIds = [...new Set(establishmentIds.filter(Boolean))];
+  console.log(`[assignContactsToCampaign] Unique establishment IDs received: ${uniqueEstablishmentIds.length}`);
+
   let establishments = [];
 
   if (uniqueEstablishmentIds.length > 0) {
@@ -432,6 +434,14 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
           neighborhood: true,
         },
       });
+      console.log(`[assignContactsToCampaign] Establishments found in Geo DB: ${establishments.length}`);
+
+      // Identificar establecimientos que no se encontraron
+      const foundIds = new Set(establishments.map(e => e.id));
+      const notFound = uniqueEstablishmentIds.filter(id => !foundIds.has(id));
+      if (notFound.length > 0) {
+        console.warn(`[assignContactsToCampaign] ${notFound.length} establishments not found in Geo DB`);
+      }
     } catch (geoError) {
       logger.warn("Geo DB lookup failed while assigning campaign contacts", {
         campaignId,
@@ -442,61 +452,48 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
 
   const establishmentById = new Map(establishments.map((establishment) => [establishment.id, establishment]));
 
-  const contacts = await prisma.$transaction(
-    establishmentIds.map((establishmentId) => {
-      const establishment = establishmentById.get(establishmentId);
+  // Preparar datos para inserción masiva
+  const contactsToCreate = uniqueEstablishmentIds.map((establishmentId) => {
+    const establishment = establishmentById.get(establishmentId);
+    const establishmentNameToUse = establishment?.businessName || establishment?.name || null;
 
-      const establishmentNameToUse = establishment?.businessName || establishment?.name || null;
+    const establishmentData = establishment
+      ? {
+        name: establishmentNameToUse,
+        phone: establishment.phone || null,
+        email: establishment.email || null,
+        website: establishment.website || null,
+        activityName: establishment.activityName || null,
+        latitude: establishment.latitude ?? null,
+        longitude: establishment.longitude ?? null,
+        municipalityName: establishment.municipalityName || null,
+        stateName: establishment.stateName || null,
+        employees: establishment.employeeRange ? establishment.employeeRange.trim() : "-",
+        address: [
+          establishment.streetName,
+          establishment.exteriorNum,
+          establishment.neighborhood,
+          establishment.municipalityName,
+          establishment.stateName
+        ].filter(Boolean).join(", ")
+      }
+      : null;
 
-      const establishmentData = establishment
-        ? {
-          name: establishmentNameToUse,
-          phone: establishment.phone || null,
-          email: establishment.email || null,
-          website: establishment.website || null,
-          activityName: establishment.activityName || null,
-          latitude: establishment.latitude ?? null,
-          longitude: establishment.longitude ?? null,
-          municipalityName: establishment.municipalityName || null,
-          stateName: establishment.stateName || null,
+    return {
+      campaignId,
+      establishmentId,
+      establishmentName: establishmentNameToUse,
+      establishmentPhone: establishment?.phone || null,
+      establishmentData,
+      status: "PENDING",
+    };
+  });
 
-          employees: establishment.employeeRange ? establishment.employeeRange.trim() : "-",
-
-          address: [
-            establishment.streetName,
-            establishment.exteriorNum,
-            establishment.neighborhood,
-            establishment.municipalityName,
-            establishment.stateName
-          ].filter(Boolean).join(", ")
-        }
-        : null;
-
-
-      return prisma.campaignContact.upsert({
-        where: {
-          campaignId_establishmentId: {
-            campaignId,
-            establishmentId,
-          },
-        },
-        update: {
-          establishmentName: establishmentNameToUse,
-          establishmentPhone: establishment?.phone || null,
-          establishmentData,
-        },
-        create: {
-          campaignId,
-          establishmentId,
-          establishmentName: establishmentNameToUse,
-          establishmentPhone: establishment?.phone || null,
-          establishmentData,
-          status: "PENDING",
-        },
-      });
-    }
-    )
-  );
+  // Insertar todos los contactos en una sola operación
+  const contacts = await prisma.campaignContact.createMany({
+    data: contactsToCreate,
+    skipDuplicates: true,
+  });
 
   const totalContacts = await prisma.campaignContact.count({
     where: { campaignId },
@@ -542,13 +539,20 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
     mergedFilters
   );
 
+  console.log(`[assignContactsWithGeoFilter] Establishments found from geoService: ${establishments.length}`);
+
   if (establishments.length === 0) {
     logger.info(`No establishments found in radius for campaign ${campaignId}`);
     return [];
   }
 
   const establishmentIds = establishments.map((e) => e.id);
-  return assignContactsToCampaign(campaignId, establishmentIds);
+  console.log(`[assignContactsWithGeoFilter] Unique establishment IDs to assign: ${establishmentIds.length}`);
+
+  const result = await assignContactsToCampaign(campaignId, establishmentIds);
+  console.log(`[assignContactsWithGeoFilter] Contacts created/updated: ${result.count}`);
+
+  return result;
 };
 
 const startCampaign = async (campaignId, options = {}) => {
@@ -987,8 +991,62 @@ const getCampaignContacts = async (campaignId, filters = {}) => {
     prisma.campaignContact.count({ where }),
   ]);
 
+  // Enriquecer contactos con datos del establecimiento (activityCode, coordenadas, etc.)
+  const enrichedContacts = await Promise.all(
+    contacts.map(async (contact) => {
+      try {
+        const establishment = await prismaGeo.establishment.findUnique({
+          where: { id: contact.establishmentId },
+          select: {
+            id: true,
+            activityCode: true,
+            latitude: true,
+            longitude: true,
+            phone: true,
+            email: true,
+            municipalityName: true,
+            stateName: true,
+            streetName: true,
+            exteriorNum: true,
+            neighborhood: true,
+            employeeRange: true,
+          },
+        });
+
+        // Construir dirección completa
+        const address = establishment
+          ? [
+            establishment.streetName,
+            establishment.exteriorNum,
+            establishment.neighborhood,
+            establishment.municipalityName,
+            establishment.stateName,
+          ]
+            .filter(Boolean)
+            .join(", ")
+          : null;
+
+        return {
+          ...contact,
+          activityCode: establishment?.activityCode,
+          latitude: establishment?.latitude,
+          longitude: establishment?.longitude,
+          phone: establishment?.phone || contact.establishmentPhone,
+          email: establishment?.email,
+          municipalityName: establishment?.municipalityName,
+          stateName: establishment?.stateName,
+          address: address,
+          employeeRange: establishment?.employeeRange,
+        };
+      } catch (error) {
+        console.warn(`Failed to enrich contact ${contact.id}:`, error.message);
+        return contact;
+      }
+    })
+  );
+
   return {
-    contacts,
+    contacts: enrichedContacts,
     pagination: {
       total,
       page,
