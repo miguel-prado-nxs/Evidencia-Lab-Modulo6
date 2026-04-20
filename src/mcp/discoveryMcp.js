@@ -16,8 +16,21 @@ function createDiscoveryServer() {
       pain_point: z.string().optional().describe("Principal problema identificado"),
       interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Nivel de interés evaluado"),
       notes: z.string().optional().describe("Notas adicionales"),
+      restaurant_name: z.string().optional().describe("Nombre del restaurante"),
+      restaurant_age: z.string().optional().describe("Antigüedad del restaurante"),
+      branch_count: z.number().optional().describe("Cantidad de sucursales"),
+      sales_channel: z.string([]).optional().describe("Canal de ventas (mostrador, whatsapp, apps, llamadas)"),
+      order_method: z.string().optional().describe("Método de pedido (mesa, takeout, delivery)"),
+      closing_method: z.string().optional().describe("Método de cierre (mesa, takeout, delivery)"),
+      main_difficulty: z.string().optional().describe("Dificultad principal identificada"),
+      frequent_errors: z.string().optional().describe("Errores frecuentes identificados"),
+      time_lost: z.string().optional().describe("Tiempo perdido estimado"),
+      closing_clarity: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Claridad en el cierre"),
+      previous_systems: z.string().optional().describe("Sistemas previos utilizados"),
+      improvement_interest: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Interés en mejoras"),
+      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Prioridad del problema"),
     },
-    async ({ conversation_id, establishment_id, contact_name, business_type, pain_point, interest_level, notes }) => {
+    async ({ conversation_id, establishment_id, contact_name, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
       try {
         const result = await svc.saveDiscoveryData({
           conversationId: conversation_id,
@@ -27,6 +40,19 @@ function createDiscoveryServer() {
           painPoint: pain_point,
           interestLevel: interest_level,
           notes,
+          restaurantName: restaurant_name,
+          restaurantAge: restaurant_age,
+          branchCount: branch_count,
+          salesChannel: sales_channel,
+          orderMethod: order_method,
+          closingMethod: closing_method,
+          mainDifficulty: main_difficulty,
+          frequentErrors: frequent_errors,
+          timeLost: time_lost,
+          closingClarity: closing_clarity,
+          previousSystems: previous_systems,
+          improvementInterest: improvement_interest,
+          problemPriority: problem_priority,
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
