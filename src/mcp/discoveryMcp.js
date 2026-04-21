@@ -67,7 +67,7 @@ function createDiscoveryServer() {
     {
       conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
-      outcome: z.enum(["ADVANCE_TO_ACTIVATION", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("Resultado de la conversación"),
+      outcome: z.enum(["INTERESTED", "ADVANCE_TO_ACTIVATION", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]),
       contact_name: z.string().optional(),
       business_type: z.string().optional(),
       pain_point: z.string().optional(),
@@ -76,10 +76,13 @@ function createDiscoveryServer() {
     },
     async ({ conversation_id, establishment_id, outcome, contact_name, business_type, pain_point, interest_level, call_summary }) => {
       try {
+        // Mapear INTERESTED a ADVANCE_TO_ACTIVATION
+        const mappedOutcome = outcome === "INTERESTED" ? "ADVANCE_TO_ACTIVATION" : outcome;
+
         const result = await svc.endDiscoveryCall({
           conversationId: conversation_id,
           establishmentId: establishment_id,
-          outcome,
+          outcome: mappedOutcome,
           contactName: contact_name,
           businessType: business_type,
           painPoint: pain_point,
