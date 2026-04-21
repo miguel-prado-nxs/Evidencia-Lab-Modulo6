@@ -322,6 +322,17 @@ const getEligibleCount = async (req, res) => {
       ? `No han completado ${campaignType === 'QUALIFICATION' ? 'Discovery' : campaignType === 'ACTIVATION' ? 'Qualification' : 'Activation'}`
       : null;
 
+    // Debug logging
+    logger.info("[getEligibleCount] Debug info", {
+      campaignType,
+      prerequisite,
+      totalEstablishmentsInRadius: total,
+      establishmentIdsCount: establishmentIds.length,
+      establishmentIds: establishmentIds.slice(0, 5), // primeros 5 para debug
+      eligibleCount,
+      eligibleIds: eligible.map(e => e.establishmentId).slice(0, 5),
+    });
+
     res.json({
       total,
       eligible: eligibleCount,

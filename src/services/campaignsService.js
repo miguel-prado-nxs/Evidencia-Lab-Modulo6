@@ -883,6 +883,8 @@ const startCampaign = async (campaignId, options = {}) => {
       dynamic_variables: {
         campaignId,
         campaignContactId: contact.id,
+        establishmentId: contact.establishmentId,
+        establishment_id: contact.establishmentId,
         prospectName,
         businessName,
         establishmentName,
