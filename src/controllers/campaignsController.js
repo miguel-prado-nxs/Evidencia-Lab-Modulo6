@@ -1,7 +1,10 @@
 const campaignsService = require("../services/campaignsService");
 const campaignCouponValidationService = require("../services/campaignCouponValidationService");
+const { STAGE_PREREQUISITES } = require("../services/campaignsService");
 const logger = require("../config/logger");
 const axios = require('axios');
+const geoService = require("../services/geoService");
+const prisma = require("../config/database");
 
 const create = async (req, res, next) => {
   try {
@@ -248,6 +251,90 @@ const getContacts = async (req, res, next) => {
     next(error);
   }
 };
+
+const getEligibleCount = async (req, res) => {
+  try {
+    const { agentConfigId, centerLat, centerLng, radiusKm, activityCodes, employeeRanges } = req.query;
+
+    //validar parametros requeridos
+    if (!agentConfigId || !centerLat || !centerLng || !radiusKm || !activityCodes) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing Required Parameters"
+      });
+    }
+
+    // Obtener tipo de campaña
+    const campaignType = campaignsService.getCampaignTypeFromAgent(agentConfigId);
+    // Validar que el agentConfigId sea válido
+    if (!campaignType) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid agentConfigId - not found in campaign type map"
+      });
+    }
+
+    const prerequisite = STAGE_PREREQUISITES[campaignType];
+    const radiusMeters = parseFloat(radiusKm) * 1000;
+
+    // Construir filtros
+    const filters = {};
+    if (activityCodes) {
+      filters.activityCode = Array.isArray(activityCodes) ? activityCodes.join(",") : activityCodes;
+    }
+    if (employeeRanges) {
+      filters.employeeRange = Array.isArray(employeeRanges) ? employeeRanges.join(",") : employeeRanges;
+    }
+
+    // Contar establecimientos totales por radio
+    const establishments = await geoService.findEstablishmentsInRadius(
+      parseFloat(centerLat),
+      parseFloat(centerLng),
+      radiusMeters,
+      filters
+    );
+
+    const total = establishments.length;
+    const establishmentIds = establishments.map(e => e.id);
+
+    // si no hay prerequisitos, todos son elegibles
+    if (!prerequisite) {
+      return res.json({
+        total,
+        eligible: total,
+        campaignType,
+        prerequisite: null,
+        ineligibleReason: null,
+      });
+    }
+
+    // Filtrar por prerequisito
+    const eligible = await prisma.establishmentEnrichment.findMany({
+      where: {
+        establishmentId: { in: establishmentIds },
+        enrichmentStatus: prerequisite,
+      },
+      select: { establishmentId: true },
+    });
+
+    const eligibleCount = eligible.length;
+    const ineligibleReason = eligibleCount === 0
+      ? `No han completado ${campaignType === 'QUALIFICATION' ? 'Discovery' : campaignType === 'ACTIVATION' ? 'Qualification' : 'Activation'}`
+      : null;
+
+    res.json({
+      total,
+      eligible: eligibleCount,
+      campaignType,
+      prerequisite,
+      ineligibleReason,
+    });
+
+  } catch (error) {
+    logger.error("Error getting eligible count", { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+}
 
 const updateContactStatus = async (req, res, next) => {
   try {
@@ -580,6 +667,7 @@ module.exports = {
   pauseCampaign,
   resumeCampaign,
   getContacts,
+  getEligibleCount,
   updateContactStatus,
   getStats,
   getAgents,

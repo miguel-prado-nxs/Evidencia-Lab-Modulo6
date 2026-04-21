@@ -141,6 +141,14 @@ const normalizeScheduledTimeUnix = (scheduledTimeUnix) => {
   return parsed;
 };
 
+const STAGE_PREREQUISITES = {
+  DISCOVERY: null,
+  QUALIFICATION: 'discovery_completed',
+  ACTIVATION: 'qualification_completed',
+  CONVERSION: 'activation_completed',
+}
+
+
 const createCampaign = async (data) => {
   const {
     name,
@@ -407,6 +415,21 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
 
   const uniqueEstablishmentIds = [...new Set(establishmentIds.filter(Boolean))];
   console.log(`[assignContactsToCampaign] Unique establishment IDs received: ${uniqueEstablishmentIds.length}`);
+
+  const campaignType = getCampaignTypeFromAgent(campaign.agentConfigId);
+  const prerequisite = STAGE_PREREQUISITES[campaignType];
+
+  if (prerequisite) {
+    const eligible = await prisma.establishmentEnrichment.findMany({
+      where: {
+        establishmentId: { in: establishmentIds },
+        enrichmentStatus: prerequisite
+      },
+      select: { establishmentId: true }
+    });
+    const eligibleIds = new Set(eligible.map(e => e.establishmentId));
+    establishmentIds = establishmentIds.filter(id => eligibleIds.has(id));
+  }
 
   let establishments = [];
 
@@ -841,6 +864,19 @@ const startCampaign = async (campaignId, options = {}) => {
       phoneNumber: phoneNumber
     } : null;
 
+    // Buscar enrichment previo del establishment
+    const enrichment = await prisma.establishmentEnrichment.findUnique({
+      where: { establishmentId: contact.establishmentId },
+      select: {
+        establishmentData: true,
+        decisionMakerName: true,
+        decisionMakerEmail: true,
+        enrichmentStatus: true
+      }
+    })
+
+    const stageData = enrichment?.establishmentData || {};
+
     return {
       campaignContactId: contact.id,
       phone_number: phoneNumber,
@@ -882,7 +918,14 @@ const startCampaign = async (campaignId, options = {}) => {
         couponTypes: contactSpecificContext?.coupons?.templates?.map(t => t.type).join(", ") || "",
         couponType: contactSpecificContext?.coupons?.couponType || campaign.couponPrefix || contactData.couponType || null,
         couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send",
-        agentInstructions: contactSpecificContext?.agentInstructions || null
+        agentInstructions: contactSpecificContext?.agentInstructions || null,
+        // Datos del stage
+        discoveryContext: JSON.stringify(stageData.discovery || {}),
+        qualificationContext: JSON.stringify(stageData.qualification || {}),
+        activationContext: JSON.stringify(stageData.activation || {}),
+        previousContactName: enrichment?.decisionMakerName || '',
+        previousContactEmail: enrichment?.decisionMakerEmail || '',
+        currentStage: enrichment?.enrichmentStatus || 'new',
       },
     };
   }));
@@ -1763,4 +1806,5 @@ module.exports = {
   retryCampaignContacts,
   getCampaignTypeFromAgent,
   getValidCampaignAgentIds,
+  STAGE_PREREQUISITES,
 };

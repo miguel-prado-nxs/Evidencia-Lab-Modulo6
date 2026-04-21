@@ -89,6 +89,7 @@ router.post("/elevenlabs-webhook", campaignWebhookController.handleElevenLabsWeb
 router.post("/", validate(createCampaignSchema), campaignsController.create);
 router.get("/", campaignsController.list);
 router.get("/agents", campaignsController.getAgents);
+router.get('/eligible-count', campaignsController.getEligibleCount);
 router.get("/:id", campaignsController.getById);
 router.patch("/:id", validate(updateCampaignSchema), campaignsController.update);
 router.delete("/:id", campaignsController.delete);
