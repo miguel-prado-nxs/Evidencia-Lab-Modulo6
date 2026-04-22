@@ -914,6 +914,8 @@ const startCampaign = async (campaignId, options = {}) => {
         email: email,
         decisionMakerEmail: email,
         decision_maker_email: email,
+        previousEmail: enrichment?.decisionMakerEmail || email || '',
+        previous_email: enrichment?.decisionMakerEmail || email || '',
         // Contexto de campaña para ElevenLabs (Convertidos a string para evitar "CADENA VACÍA")
         campaignContext: contactSpecificContext ? JSON.stringify(contactSpecificContext) : "",
         couponsAvailable: contactSpecificContext?.coupons?.available ? "true" : "false",

@@ -312,6 +312,7 @@ async function endDiscoveryCall({
   painPoint,
   interestLevel,
   callSummary,
+  callDuration,
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
@@ -326,7 +327,7 @@ async function endDiscoveryCall({
     notes: callSummary,
   });
 
-  // 2. Actualizar callSummary y callStatus en enrichment
+  // 2. Actualizar callSummary, callStatus, conversationId y callDuration en enrichment
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
     create: {
@@ -334,11 +335,15 @@ async function endDiscoveryCall({
       callSummary,
       callStatus: toCallStatus(outcome),
       enrichmentStatus: "discovery_completed",
+      gatekeeperInfo: conversationId ? { conversationId } : null,
+      callDurationSeconds: callDuration || 0,
     },
     update: {
       callSummary,
       callStatus: toCallStatus(outcome),
       enrichmentStatus: "discovery_completed",
+      gatekeeperInfo: conversationId ? { conversationId } : null,
+      callDurationSeconds: callDuration || 0,
     },
   });
 
@@ -584,6 +589,22 @@ async function saveQualificationResult({
     create: { establishmentId, ...update },
     update,
   });
+
+  // Guardar datos de qualification en establishment_data
+  if (conversationId || needScore !== undefined || authorityScore !== undefined || budgetScore !== undefined || timelineScore !== undefined) {
+    await upsertEnrichmentSnapshot(establishmentId, "qualification", {
+      conversationId,
+      needScore,
+      authorityScore,
+      budgetScore,
+      timelineScore,
+      fear,
+      pain,
+      desire,
+      intent,
+      qualificationNotes,
+    });
+  }
 
   logger.info("[FunnelWebhook:Qualification] saveQualificationResult", {
     establishmentId,
