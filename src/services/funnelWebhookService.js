@@ -675,12 +675,19 @@ async function sendCouponWhatsapp({
         where: { establishmentId },
         select: {
           decisionMakerName: true,
-          establishment: { select: { phone: true, name: true } },
         },
       });
       if (!resolvedProspectName) resolvedProspectName = enrichment?.decisionMakerName || "Cliente";
-      if (!resolvedBusinessName && enrichment?.establishment?.name) resolvedBusinessName = enrichment.establishment.name;
-      if (!resolvedPhone && enrichment?.establishment?.phone) resolvedPhone = enrichment.establishment.phone;
+
+      // Obtener datos del establecimiento desde prismaGeo
+      if (!resolvedBusinessName || !resolvedPhone) {
+        const establishment = await prismaGeo.establishment.findUnique({
+          where: { id: establishmentId },
+          select: { phone: true, name: true },
+        });
+        if (!resolvedBusinessName && establishment?.name) resolvedBusinessName = establishment.name;
+        if (!resolvedPhone && establishment?.phone) resolvedPhone = establishment.phone;
+      }
     }
   }
 
