@@ -76,13 +76,14 @@ function createDiscoveryServer() {
     },
     async ({ conversation_id, establishment_id, outcome, contact_name, business_type, pain_point, interest_level, call_summary }) => {
       try {
-        // Mapear INTERESTED a ADVANCE_TO_ACTIVATION
+        // Mapear INTERESTED a ADVANCE_TO_ACTIVATION para callStatus
         const mappedOutcome = outcome === "INTERESTED" ? "ADVANCE_TO_ACTIVATION" : outcome;
 
         const result = await svc.endDiscoveryCall({
           conversationId: conversation_id,
           establishmentId: establishment_id,
           outcome: mappedOutcome,
+          originalOutcome: outcome,
           contactName: contact_name,
           businessType: business_type,
           painPoint: pain_point,

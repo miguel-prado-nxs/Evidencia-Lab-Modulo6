@@ -39,6 +39,18 @@ const PLAN_PRICES = {
 // HELPERS
 // ============================================================
 
+// Truncar callSummary a 1000 caracteres para evitar errores de longitud en BD
+function truncateCallSummary(summary, maxLength = 1000) {
+  if (!summary) return null;
+  return summary.length > maxLength ? summary.substring(0, maxLength) : summary;
+}
+
+// Truncar callStatus a 20 caracteres (límite en schema)
+function truncateCallStatus(status, maxLength = 20) {
+  if (!status) return null;
+  return status.length > maxLength ? status.substring(0, maxLength) : status;
+}
+
 async function upsertEnrichmentSnapshot(establishmentId, stage, data) {
   const existing = await prisma.establishmentEnrichment.findUnique({
     where: { establishmentId },
@@ -307,6 +319,7 @@ async function endDiscoveryCall({
   conversationId,
   establishmentId,
   outcome,
+  originalOutcome,
   contactName,
   businessType,
   painPoint,
@@ -317,8 +330,9 @@ async function endDiscoveryCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan discovery_completed
+  // Usar originalOutcome para determinar si hubo conversación (antes del mapeo)
   const CONVERSATIONAL_OUTCOMES = ["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED"];
-  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(originalOutcome || outcome);
 
   // 1. Guardar datos finales
   await saveDiscoveryData({
@@ -333,8 +347,8 @@ async function endDiscoveryCall({
 
   // 2. Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
-    callSummary,
-    callStatus: outcome,
+    callSummary: truncateCallSummary(callSummary),
+    callStatus: truncateCallStatus(outcome),
     gatekeeperInfo: conversationId ? { conversationId } : null,
     callDurationSeconds: callDuration || 0,
   };
@@ -510,13 +524,13 @@ async function endActivationCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan activation_completed
-  const CONVERSATIONAL_OUTCOMES = ["ACTIVATED", "DEMO_SCHEDULED", "FOLLOW_UP_LATER"];
+  const CONVERSATIONAL_OUTCOMES = ["DEMO_SCHEDULED", "FOLLOW_UP_LATER"];
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
-    callStatus: outcome,
-    callSummary,
+    callStatus: truncateCallStatus(outcome),
+    callSummary: truncateCallSummary(callSummary),
   };
 
   // SOLO actualizar enrichmentStatus si hubo conversación
@@ -962,13 +976,14 @@ async function endAndClose({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan qualification_completed
-  const CONVERSATIONAL_OUTCOMES = ["QUALIFIED", "FOLLOW_UP_LATER"];
+  const CONVERSATIONAL_OUTCOMES = ["DEMO_SCHEDULED", "FOLLOW_UP"];
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
+  const truncatedSummary = truncateCallSummary(callSummary);
   const updateData = {
-    callStatus: outcome,
-    callSummary,
+    callStatus: truncateCallStatus(outcome),
+    callSummary: truncatedSummary,
   };
 
   // SOLO actualizar enrichmentStatus si hubo conversación
@@ -976,8 +991,8 @@ async function endAndClose({
     updateData.enrichmentStatus = "qualification_completed";
     updateData.level = "PROSPECT";
     updateData.qualification_completed = true;
-    if (callSummary) {
-      updateData.qualification_notes = callSummary;
+    if (truncatedSummary) {
+      updateData.qualification_notes = truncatedSummary;
     }
   }
 
@@ -1196,14 +1211,14 @@ async function endConversionCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan conversion_completed
-  const CONVERSATIONAL_OUTCOMES = ["CLOSED_WON", "FOLLOW_UP_LATER", "NEEDS_VALIDATION"];
+  const CONVERSATIONAL_OUTCOMES = ["CLOSED_WON", "FOLLOW_UP_LATER", "NEEDS_VALIDATION", "READY", "NEEDS_TIME"];
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
   const isWon = outcome === "CLOSED_WON";
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
-    callStatus: outcome,
-    callSummary,
+    callStatus: truncateCallStatus(outcome),
+    callSummary: truncateCallSummary(callSummary),
   };
 
   // SOLO actualizar enrichmentStatus si hubo conversación
