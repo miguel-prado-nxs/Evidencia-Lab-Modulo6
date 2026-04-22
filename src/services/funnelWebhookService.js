@@ -6,6 +6,7 @@
  */
 
 const prisma = require("../config/database");
+const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
 const { logEnrichmentEvent } = require("./enrichmentService");
 const whatsappService = require("./whatsappService");
