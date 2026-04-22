@@ -316,6 +316,10 @@ async function endDiscoveryCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
+  // Outcomes conversacionales que marcan discovery_completed
+  const CONVERSATIONAL_OUTCOMES = ["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED"];
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
+
   // 1. Guardar datos finales
   await saveDiscoveryData({
     conversationId,
@@ -327,24 +331,27 @@ async function endDiscoveryCall({
     notes: callSummary,
   });
 
-  // 2. Actualizar callSummary, callStatus, conversationId y callDuration en enrichment
+  // 2. Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
+  const updateData = {
+    callSummary,
+    callStatus: outcome,
+    gatekeeperInfo: conversationId ? { conversationId } : null,
+    callDurationSeconds: callDuration || 0,
+  };
+
+  // SOLO actualizar enrichmentStatus si hubo conversación
+  if (isConversational) {
+    updateData.enrichmentStatus = "discovery_completed";
+    updateData.level = "CONTACT";
+  }
+
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
     create: {
       establishmentId,
-      callSummary,
-      callStatus: toCallStatus(outcome),
-      enrichmentStatus: "discovery_completed",
-      gatekeeperInfo: conversationId ? { conversationId } : null,
-      callDurationSeconds: callDuration || 0,
+      ...updateData,
     },
-    update: {
-      callSummary,
-      callStatus: toCallStatus(outcome),
-      enrichmentStatus: "discovery_completed",
-      gatekeeperInfo: conversationId ? { conversationId } : null,
-      callDurationSeconds: callDuration || 0,
-    },
+    update: updateData,
   });
 
   // 3. Log en campaign_enrichments (non-blocking)
@@ -502,19 +509,29 @@ async function endActivationCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
+  // Outcomes conversacionales que marcan activation_completed
+  const CONVERSATIONAL_OUTCOMES = ["ACTIVATED", "DEMO_SCHEDULED", "FOLLOW_UP_LATER"];
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
+
+  // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
+  const updateData = {
+    callStatus: outcome,
+    callSummary,
+  };
+
+  // SOLO actualizar enrichmentStatus si hubo conversación
+  if (isConversational) {
+    updateData.enrichmentStatus = "activation_completed";
+    updateData.level = "LEAD";
+  }
+
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
     create: {
       establishmentId,
-      callStatus: toCallStatus(outcome),
-      callSummary,
-      enrichmentStatus: "activation_completed",
+      ...updateData,
     },
-    update: {
-      callStatus: toCallStatus(outcome),
-      callSummary,
-      enrichmentStatus: "activation_completed",
-    },
+    update: updateData,
   });
 
   logEnrichmentEvent({
@@ -944,23 +961,33 @@ async function endAndClose({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
+  // Outcomes conversacionales que marcan qualification_completed
+  const CONVERSATIONAL_OUTCOMES = ["QUALIFIED", "FOLLOW_UP_LATER"];
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
+
+  // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
+  const updateData = {
+    callStatus: outcome,
+    callSummary,
+  };
+
+  // SOLO actualizar enrichmentStatus si hubo conversación
+  if (isConversational) {
+    updateData.enrichmentStatus = "qualification_completed";
+    updateData.level = "PROSPECT";
+    updateData.qualification_completed = true;
+    if (callSummary) {
+      updateData.qualification_notes = callSummary;
+    }
+  }
+
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
     create: {
       establishmentId,
-      callStatus: toCallStatus(outcome),
-      callSummary,
-      enrichmentStatus: "qualification_completed",
-      qualification_completed: true,
-      qualification_notes: callSummary,
+      ...updateData,
     },
-    update: {
-      callStatus: toCallStatus(outcome),
-      callSummary,
-      enrichmentStatus: "qualification_completed",
-      qualification_completed: true,
-      ...(callSummary ? { qualification_notes: callSummary } : {}),
-    },
+    update: updateData,
   });
 
   const levelMap = { A: "LEAD", B: "LEAD", C: "PROSPECT", D: "CONTACT" };
@@ -1168,23 +1195,34 @@ async function endConversionCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
+  // Outcomes conversacionales que marcan conversion_completed
+  const CONVERSATIONAL_OUTCOMES = ["CLOSED_WON", "FOLLOW_UP_LATER", "NEEDS_VALIDATION"];
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
   const isWon = outcome === "CLOSED_WON";
+
+  // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
+  const updateData = {
+    callStatus: outcome,
+    callSummary,
+  };
+
+  // SOLO actualizar enrichmentStatus si hubo conversación
+  if (isConversational) {
+    updateData.enrichmentStatus = "conversion_completed";
+    if (isWon) {
+      updateData.level = "CLIENT";
+      updateData.clientStatus = "active";
+      updateData.clientSince = new Date();
+    }
+  }
 
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
     create: {
       establishmentId,
-      callStatus: toCallStatus(outcome),
-      callSummary,
-      enrichmentStatus: "conversion_completed",
-      ...(isWon ? { clientStatus: "active", clientSince: new Date() } : {}),
+      ...updateData,
     },
-    update: {
-      callStatus: toCallStatus(outcome),
-      callSummary,
-      enrichmentStatus: "conversion_completed",
-      ...(isWon ? { clientStatus: "active", clientSince: new Date() } : {}),
-    },
+    update: updateData,
   });
 
   logEnrichmentEvent({
