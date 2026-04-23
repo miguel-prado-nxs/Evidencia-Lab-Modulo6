@@ -67,12 +67,12 @@ function createDiscoveryServer() {
     {
       conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
-      outcome: z.enum(["INTERESTED", "ADVANCE_TO_ACTIVATION", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]),
-      contact_name: z.string().optional(),
-      business_type: z.string().optional(),
-      pain_point: z.string().optional(),
-      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional(),
-      call_summary: z.string().describe("Resumen breve de la conversación"),
+      outcome: z.enum(["INTERESTED", "ADVANCE_TO_ACTIVATION", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("RESULTADO DE LA LLAMADA: INTERESTED (mostró interés), FOLLOW_UP_LATER (llamar después), NOT_INTERESTED (no interesado), WRONG_NUMBER (número incorrecto), NO_ANSWER (sin respuesta), VOICEMAIL (buzón de voz)"),
+      contact_name: z.string().optional().describe("Nombre del contacto o decision maker"),
+      business_type: z.string().optional().describe("Tipo de negocio (ej: restaurante, panadería, cafetería)"),
+      pain_point: z.string().optional().describe("Problema principal identificado en la conversación"),
+      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("NIVEL DE INTERÉS del prospecto: HIGH (muy interesado), MEDIUM (moderadamente interesado), LOW (poco interesado). NOTA: Esto es DIFERENTE del outcome."),
+      call_summary: z.string().describe("Resumen breve de la conversación (2-3 oraciones sobre lo que pasó)"),
     },
     async ({ conversation_id, establishment_id, outcome, contact_name, business_type, pain_point, interest_level, call_summary }) => {
       try {
