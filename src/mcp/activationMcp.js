@@ -2,6 +2,22 @@ const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { z } = require("zod");
 const svc = require("../services/funnelWebhookService");
 
+// Normaliza enums: acepta valores en español y los mapea a inglés
+const normalizeEnum = (value) => {
+  if (!value || typeof value !== "string") return value;
+  const normalized = value.trim().toUpperCase();
+  const spanishToEnglish = {
+    ALTO: "HIGH",
+    HIGH: "HIGH",
+    MEDIO: "MEDIUM",
+    MEDIA: "MEDIUM",
+    MEDIUM: "MEDIUM",
+    BAJO: "LOW",
+    LOW: "LOW",
+  };
+  return spanishToEnglish[normalized] || value;
+};
+
 function createActivationServer() {
   const server = new McpServer({ name: "funnel-activation", version: "1.0.0" });
 
@@ -32,7 +48,7 @@ function createActivationServer() {
           establishmentId: establishment_id,
           painPointsConfirmed: pain_points_confirmed,
           featuresOfInterest: features_of_interest,
-          urgencyLevel: urgency_level,
+          urgencyLevel: normalizeEnum(urgency_level),
           notes,
           accountCreated: account_created,
           businessRegistered: business_registered,
@@ -42,7 +58,7 @@ function createActivationServer() {
           resolveFirst: resolve_first,
           implementationTime: implementation_time,
           soloOrTeam: solo_or_team,
-          perceivedComplexity: perceived_complexity
+          perceivedComplexity: normalizeEnum(perceived_complexity)
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {

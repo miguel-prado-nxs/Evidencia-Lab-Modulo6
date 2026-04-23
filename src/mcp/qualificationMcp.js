@@ -2,6 +2,22 @@ const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { z } = require("zod");
 const svc = require("../services/funnelWebhookService");
 
+// Normaliza enums: acepta valores en español y los mapea a inglés
+const normalizeEnum = (value, options = {}) => {
+  if (!value || typeof value !== "string") return value;
+  const normalized = value.trim().toUpperCase();
+  const spanishToEnglish = {
+    ALTO: "HIGH",
+    HIGH: "HIGH",
+    MEDIO: "MEDIUM",
+    MEDIA: "MEDIUM", // común en español
+    MEDIUM: "MEDIUM",
+    BAJO: "LOW",
+    LOW: "LOW",
+  };
+  return spanishToEnglish[normalized] || value;
+};
+
 function createQualificationServer() {
   const server = new McpServer({ name: "funnel-qualification", version: "1.0.0" });
 
@@ -34,6 +50,7 @@ function createQualificationServer() {
     },
     async ({ conversation_id, establishment_id, daily_orders_range, average_ticket, approximate_sales, employee_count, pos_count, branch_count, disorder_level, duplicate_processes, current_tools, time_impact, money_impact, control_impact, problem_priority, resolution_intent, decision_maker, decision_process, evaluating_options, previous_system_experience, implementation_horizon, qualification_notes }) => {
       try {
+        // Normalizar enums: mapear valores españoles a inglés
         const result = await svc.saveQualificationResult({
           conversationId: conversation_id,
           establishmentId: establishment_id,
@@ -43,14 +60,14 @@ function createQualificationServer() {
           employeeCount: employee_count,
           posCount: pos_count,
           branchCount: branch_count,
-          disorderLevel: disorder_level,
+          disorderLevel: normalizeEnum(disorder_level, ["HIGH", "MEDIUM", "LOW"]),
           duplicateProcesses: duplicate_processes,
           currentTools: current_tools,
           timeImpact: time_impact,
           moneyImpact: money_impact,
           controlImpact: control_impact,
-          problemPriority: problem_priority,
-          resolutionIntent: resolution_intent,
+          problemPriority: normalizeEnum(problem_priority, ["HIGH", "MEDIUM", "LOW"]),
+          resolutionIntent: normalizeEnum(resolution_intent, ["HIGH", "MEDIUM", "LOW"]),
           decisionMaker: decision_maker,
           decisionProcess: decision_process,
           evaluatingOptions: evaluating_options,

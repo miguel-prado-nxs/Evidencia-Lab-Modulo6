@@ -661,6 +661,14 @@ async function endActivationCall({
     update: updateData,
   });
 
+  // Guardar la snapshot final de activation con outcome y resumen
+  await upsertEnrichmentSnapshot(establishmentId, "activation", {
+    conversationId,
+    outcome,
+    demoDate,
+    callSummary,
+  });
+
   logEnrichmentEvent({
     establishmentId,
     source: "CAMPAIGN",
@@ -1139,6 +1147,15 @@ async function endAndClose({
     update: updateData,
   });
 
+  // Guardar la snapshot final de qualification con outcome y scores
+  await upsertEnrichmentSnapshot(establishmentId, "qualification", {
+    conversationId,
+    outcome,
+    qualificationScore,
+    couponSent,
+    callSummary,
+  });
+
   const levelMap = { A: "LEAD", B: "LEAD", C: "PROSPECT", D: "CONTACT" };
 
   logEnrichmentEvent({
@@ -1447,6 +1464,15 @@ async function endConversionCall({
       ...updateData,
     },
     update: updateData,
+  });
+
+  // Guardar la snapshot final de conversion con outcome y datos del cierre
+  await upsertEnrichmentSnapshot(establishmentId, "conversion", {
+    conversationId,
+    outcome,
+    planClosed,
+    monthlyRevenue,
+    callSummary,
   });
 
   logEnrichmentEvent({
