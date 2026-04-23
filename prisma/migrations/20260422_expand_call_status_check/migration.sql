@@ -20,3 +20,10 @@ CHECK (call_status IN (
   -- Legacy values
   'completed', 'no_answer', 'voicemail', 'failed'
 ));
+
+
+-- Expand call_status field from VARCHAR(20) to VARCHAR(50)
+-- This allows storing longer outcome values like "ADVANCE_TO_ACTIVATION" (21 chars)
+ 
+ALTER TABLE establishment_enrichments
+ALTER COLUMN call_status TYPE VARCHAR(50);

@@ -339,7 +339,7 @@ model EstablishmentEnrichment {
   strategy                String?            @db.VarChar(10)
   callAttempts            Int?               @default(1) @map("call_attempts")
   callDurationSeconds     Int?               @default(0) @map("call_duration_seconds")
-  callStatus              String?            @map("call_status") @db.VarChar(20)
+  callStatus              String?            @map("call_status") @db.VarChar(50)
   enrichmentStatus        String?            @map("enrichment_status") @db.VarChar(30)
   gatekeeperInfo          Json?              @map("gatekeeper_info")
   bestCallTime            String?            @map("best_call_time") @db.VarChar(50)

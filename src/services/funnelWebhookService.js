@@ -48,8 +48,8 @@ function truncateCallSummary(summary, maxLength = 1000) {
 // Guardar el outcome original en callStatus
 // El check constraint en BD ahora permite todos los outcomes posibles
 function getCallStatus(outcome) {
-  // Retornar el outcome original directamente
-  // Si viene mapeado (ej: ADVANCE_TO_ACTIVATION), usarlo tal cual
+  // Retornar el outcome original directamente (sin truncamiento)
+  // Campo expandido a 50 caracteres para acomodar "ADVANCE_TO_ACTIVATION"
   return outcome || null;
 }
 
