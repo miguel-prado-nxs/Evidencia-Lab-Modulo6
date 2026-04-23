@@ -957,6 +957,7 @@ const startCampaign = async (campaignId, options = {}) => {
     scheduledTimeUnix: resolvedScheduledTimeUnix,
     callName: `campaign-${campaign.name}`,
     agentPhoneNumberId: resolvedAgentPhoneNumberId,
+    agentConfigName: campaign.agentConfigName,
   });
 
   const invalidContactReasons = new Map();

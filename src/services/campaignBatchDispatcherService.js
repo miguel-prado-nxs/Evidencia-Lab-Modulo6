@@ -148,7 +148,7 @@ const removeDuplicateAliases = (dynamicVariables = {}) => {
 };
 
 const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => {
-  const { campaignContactId, campaignId, establishmentId: establishmentIdFromOptions } = options;
+  const { campaignContactId, campaignId, establishmentId: establishmentIdFromOptions, agentConfigName } = options;
 
   const establishmentName =
     pickFirstNonEmptyString(
@@ -188,7 +188,8 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       dynamicVariables.voiceId,
       dynamicVariables.agent_name,
       dynamicVariables.agentName,
-      agentName
+      agentName,
+      agentConfigName
     ) || "Asesor EasyOrder";
 
   const sessionId =
@@ -235,7 +236,7 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
   return removeDuplicateAliases(normalized);
 };
 
-const sanitizeRecipient = (recipient = {}, campaignId) => {
+const sanitizeRecipient = (recipient = {}, campaignId, agentConfigName) => {
   const phoneSource = recipient.phone_number || recipient.phoneNumber || recipient.phone;
   const normalizedPhone = normalizePhoneNumber(phoneSource);
 
@@ -275,6 +276,7 @@ const sanitizeRecipient = (recipient = {}, campaignId) => {
     campaignContactId,
     campaignId,
     establishmentId,
+    agentConfigName,
   });
 
   delete enforcedDynamicVariables.couponCode;
@@ -290,12 +292,12 @@ const sanitizeRecipient = (recipient = {}, campaignId) => {
   };
 };
 
-const buildRecipientsPayload = (recipients = [], campaignId) => {
+const buildRecipientsPayload = (recipients = [], campaignId, agentConfigName) => {
   const validRecipients = [];
   const invalidRecipients = [];
 
   for (const recipient of recipients) {
-    const sanitized = sanitizeRecipient(recipient, campaignId);
+    const sanitized = sanitizeRecipient(recipient, campaignId, agentConfigName);
     if (!sanitized.phoneNumber || !sanitized.campaignContactId) {
       invalidRecipients.push({
         recipient,
@@ -542,6 +544,7 @@ const submitCampaignBatch = async ({
   scheduledTimeUnix,
   callName,
   agentPhoneNumberId,
+  agentConfigName,
 }) => {
   if (!campaignId) {
     throw new Error("campaignId is required");
@@ -559,7 +562,7 @@ const submitCampaignBatch = async ({
     throw new Error("recipients must be a non-empty array");
   }
 
-  const { validRecipients, invalidRecipients } = buildRecipientsPayload(recipients, campaignId);
+  const { validRecipients, invalidRecipients } = buildRecipientsPayload(recipients, campaignId, agentConfigName);
 
   if (validRecipients.length === 0) {
     throw new Error("No valid recipients found for batch dispatch");
