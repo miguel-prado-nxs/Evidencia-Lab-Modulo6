@@ -184,9 +184,16 @@ async function handleCallCompleted(req, res) {
 
         if (enrichment) {
           const updateData = {
-            callStatus: mappedStatus.toLowerCase(),
             updatedAt: new Date(),
           };
+
+          // No pisar callStatus si el MCP del agente ya escribió un outcome
+          // conversacional (INTERESTED, QUALIFIED, CLOSED_WON, etc.). Solo
+          // setear cuando viene vacio o en estado previo a la llamada.
+          const preCallStates = new Set([null, undefined, "", "pending", "calling"]);
+          if (preCallStates.has(enrichment.callStatus)) {
+            updateData.callStatus = mappedStatus.toLowerCase();
+          }
 
           if (callDurationSeconds) updateData.callDuration = callDurationSeconds;
           if (callTranscript) updateData.callTranscript = callTranscript;

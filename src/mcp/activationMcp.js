@@ -198,7 +198,13 @@ function createActivationServer() {
     {
       conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
-      outcome: z.enum(["DEMO_SCHEDULED", "DEMO_DECLINED", "FOLLOW_UP_LATER", "NOT_INTERESTED"]).describe("Resultado de la conversación"),
+      outcome: z.enum([
+        "ACTIVATED",
+        "DEMO_SCHEDULED",
+        "DEMO_DECLINED",
+        "FOLLOW_UP_LATER",
+        "NOT_INTERESTED",
+      ]).describe("Outcome PLG: ACTIVATED (cuenta creada y pasa a LEAD), DEMO_SCHEDULED, DEMO_DECLINED, FOLLOW_UP_LATER, NOT_INTERESTED"),
       demo_date: z.string().optional().describe("Fecha agendada si aplica (ISO 8601)"),
       call_summary: z.string().describe("Resumen breve"),
     },

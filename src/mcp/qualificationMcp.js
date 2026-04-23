@@ -72,7 +72,17 @@ function createQualificationServer() {
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
-      outcome: z.enum(["DEMO_SCHEDULED", "NOT_INTERESTED", "FOLLOW_UP", "DISQUALIFIED", "NO_ANSWER", "VOICEMAIL"]),
+      outcome: z.enum([
+        "QUALIFIED",
+        "NOT_QUALIFIED",
+        "FOLLOW_UP_LATER",
+        "DEMO_SCHEDULED",
+        "NOT_INTERESTED",
+        "FOLLOW_UP",
+        "DISQUALIFIED",
+        "NO_ANSWER",
+        "VOICEMAIL",
+      ]).describe("Outcome PLG: QUALIFIED (pasa a PROSPECT), NOT_QUALIFIED, FOLLOW_UP_LATER, o legacy"),
       qualification_score: z.enum(["A", "B", "C", "D"]).optional(),
       coupon_sent: z.boolean().optional(),
       call_summary: z.string(),

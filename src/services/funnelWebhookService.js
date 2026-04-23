@@ -45,6 +45,16 @@ function truncateCallSummary(summary, maxLength = 1000) {
   return summary.length > maxLength ? summary.substring(0, maxLength) : summary;
 }
 
+// Valida email: rechaza placeholders sin resolver ({{...}}) y strings obviamente
+// invalidos. Evita guardar basura como "{{previousEmail}}" en BD.
+function isValidEmail(value) {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes("{{") || trimmed.includes("}}")) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
 // Guardar el outcome original en callStatus
 // El check constraint en BD ahora permite todos los outcomes posibles
 function getCallStatus(outcome) {
@@ -287,32 +297,72 @@ async function saveDiscoveryData({
   painPoint,
   interestLevel,
   notes,
+  restaurantName,
+  restaurantAge,
+  branchCount,
+  salesChannel,
+  orderMethod,
+  closingMethod,
+  mainDifficulty,
+  frequentErrors,
+  timeLost,
+  closingClarity,
+  previousSystems,
+  improvementInterest,
+  problemPriority,
+  dailyOrders,
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  const enrichmentUpdate = {};
-  if (contactName) enrichmentUpdate.decisionMakerName = contactName;
+  // 1. Siempre persistir decisionMakerName si viene (se perdia por la logica
+  //    exclusiva anterior). Es la columna plana que consulta el checklist.
+  const columnUpdate = {};
+  if (contactName) columnUpdate.decisionMakerName = contactName;
 
-  if (businessType || painPoint || interestLevel || notes) {
-    await upsertEnrichmentSnapshot(establishmentId, "discovery", {
-      conversationId,
-      businessType,
-      painPoint,
-      interestLevel,
-      notes,
-    });
-  } else if (Object.keys(enrichmentUpdate).length > 0) {
+  if (Object.keys(columnUpdate).length > 0) {
     await prisma.establishmentEnrichment.upsert({
       where: { establishmentId },
-      create: { establishmentId, ...enrichmentUpdate },
-      update: enrichmentUpdate,
+      create: { establishmentId, ...columnUpdate },
+      update: columnUpdate,
     });
+  }
+
+  // 2. Snapshot JSON con todos los campos PLG capturados por el agente.
+  //    Solo se incluyen claves con valor para no sobreescribir con undefined.
+  const snapshot = {
+    conversationId,
+    contactName,
+    businessType,
+    painPoint,
+    interestLevel,
+    notes,
+    restaurantName,
+    restaurantAge,
+    branchCount,
+    salesChannel,
+    orderMethod,
+    closingMethod,
+    mainDifficulty,
+    frequentErrors,
+    timeLost,
+    closingClarity,
+    previousSystems,
+    improvementInterest,
+    problemPriority,
+    dailyOrders,
+  };
+  const cleanSnapshot = Object.fromEntries(
+    Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  if (Object.keys(cleanSnapshot).length > 0) {
+    await upsertEnrichmentSnapshot(establishmentId, "discovery", cleanSnapshot);
   }
 
   logger.info("[FunnelWebhook:Discovery] saveDiscoveryData", {
     establishmentId,
     contactName,
     interestLevel,
+    fieldsCount: Object.keys(cleanSnapshot).length,
   });
   return { success: true };
 }
@@ -331,12 +381,18 @@ async function endDiscoveryCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // Outcomes conversacionales que marcan discovery_completed
-  // Usar originalOutcome para determinar si hubo conversación (antes del mapeo)
-  const CONVERSATIONAL_OUTCOMES = ["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED"];
-  const isConversational = CONVERSATIONAL_OUTCOMES.includes(originalOutcome || outcome);
+  // Outcomes conversacionales que marcan discovery_completed.
+  // Usar originalOutcome (antes del mapeo INTERESTED->ADVANCE_TO_ACTIVATION).
+  const CONVERSATIONAL_OUTCOMES = [
+    "INTERESTED",
+    "ADVANCE_TO_ACTIVATION",
+    "FOLLOW_UP_LATER",
+    "NOT_INTERESTED",
+  ];
+  const effectiveOutcome = (originalOutcome || outcome || "").toUpperCase();
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
 
-  // 1. Guardar datos finales
+  // 1. Guardar datos finales (incluye decisionMakerName en columna plana)
   await saveDiscoveryData({
     conversationId,
     establishmentId,
@@ -354,6 +410,9 @@ async function endDiscoveryCall({
     gatekeeperInfo: conversationId ? { conversationId } : null,
     callDurationSeconds: callDuration || 0,
   };
+  // Reforzar decisionMakerName aqui tambien por si saveDiscoveryData no lo
+  // recibio (ej. agente solo llamo end_discovery_call).
+  if (contactName) updateData.decisionMakerName = contactName;
 
   // SOLO actualizar enrichmentStatus si hubo conversación
   if (isConversational) {
@@ -418,20 +477,45 @@ async function saveActivationData({
   featuresOfInterest,
   urgencyLevel,
   notes,
+  accountCreated,
+  businessRegistered,
+  menuLoaded,
+  firstOrderRegistered,
+  confusionAreas,
+  resolveFirst,
+  implementationTime,
+  soloOrTeam,
+  perceivedComplexity,
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  await upsertEnrichmentSnapshot(establishmentId, "activation", {
+  const snapshot = {
     conversationId,
     painPointsConfirmed,
     featuresOfInterest,
     urgencyLevel,
     notes,
-  });
+    accountCreated,
+    businessRegistered,
+    menuLoaded,
+    firstOrderRegistered,
+    confusionAreas,
+    resolveFirst,
+    implementationTime,
+    soloOrTeam,
+    perceivedComplexity,
+  };
+  const cleanSnapshot = Object.fromEntries(
+    Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+
+  await upsertEnrichmentSnapshot(establishmentId, "activation", cleanSnapshot);
 
   logger.info("[FunnelWebhook:Activation] saveActivationData", {
     establishmentId,
     urgencyLevel,
+    accountCreated,
+    fieldsCount: Object.keys(cleanSnapshot).length,
   });
   return { success: true };
 }
@@ -442,6 +526,15 @@ async function confirmOrUpdateEmail({
   email,
 }) {
   if (!establishmentId || !email) throw new Error("establishment_id y email requeridos");
+
+  // Rechazar placeholders no resueltos ({{previousEmail}}) y emails invalidos.
+  if (!isValidEmail(email)) {
+    logger.warn("[FunnelWebhook:Activation] confirmOrUpdateEmail email invalido, ignorado", {
+      establishmentId,
+      email,
+    });
+    return { success: false, error: "invalid_email", email };
+  }
 
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
@@ -466,6 +559,14 @@ async function scheduleDemo({
 }) {
   if (!establishmentId || !startTime || !email)
     throw new Error("establishment_id, email y start_time requeridos");
+
+  if (!isValidEmail(email)) {
+    logger.warn("[FunnelWebhook:Activation] scheduleDemo email invalido", {
+      establishmentId,
+      email,
+    });
+    return { success: false, error: "invalid_email", email };
+  }
 
   // Ensure email is saved before Calendly call
   await prisma.establishmentEnrichment.upsert({
@@ -525,9 +626,16 @@ async function endActivationCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // Outcomes conversacionales que marcan activation_completed
-  const CONVERSATIONAL_OUTCOMES = ["DEMO_SCHEDULED", "FOLLOW_UP_LATER"];
-  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
+  // Outcomes conversacionales que marcan activation_completed (PLG + legacy)
+  const CONVERSATIONAL_OUTCOMES = [
+    "ACTIVATED",
+    "DEMO_SCHEDULED",
+    "DEMO_DECLINED",
+    "FOLLOW_UP_LATER",
+    "NOT_INTERESTED",
+  ];
+  const effectiveOutcome = (outcome || "").toUpperCase();
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
@@ -535,10 +643,13 @@ async function endActivationCall({
     callSummary: truncateCallSummary(callSummary),
   };
 
-  // SOLO actualizar enrichmentStatus si hubo conversación
+  // SOLO subir enrichmentStatus y level si hubo conversacion util.
+  // LEAD solo para los outcomes que realmente avanzan (ACTIVATED/DEMO_SCHEDULED).
   if (isConversational) {
     updateData.enrichmentStatus = "activation_completed";
-    updateData.level = "LEAD";
+    if (effectiveOutcome === "ACTIVATED" || effectiveOutcome === "DEMO_SCHEDULED") {
+      updateData.level = "LEAD";
+    }
   }
 
   await prisma.establishmentEnrichment.upsert({
@@ -894,6 +1005,14 @@ async function scheduleCalendlyDemo({
   if (!establishmentId || !startTime || !email)
     throw new Error("establishment_id, email y start_time requeridos");
 
+  if (!isValidEmail(email)) {
+    logger.warn("[FunnelWebhook:Qualification] scheduleCalendlyDemo email invalido", {
+      establishmentId,
+      email,
+    });
+    return { success: false, error: "invalid_email", email };
+  }
+
   // Ensure contact data is saved
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
@@ -977,9 +1096,18 @@ async function endAndClose({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // Outcomes conversacionales que marcan qualification_completed
-  const CONVERSATIONAL_OUTCOMES = ["DEMO_SCHEDULED", "FOLLOW_UP"];
-  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
+  // Outcomes conversacionales que marcan qualification_completed (PLG + legacy)
+  const CONVERSATIONAL_OUTCOMES = [
+    "QUALIFIED",
+    "NOT_QUALIFIED",
+    "FOLLOW_UP_LATER",
+    "DEMO_SCHEDULED",
+    "FOLLOW_UP",
+    "DISQUALIFIED",
+    "NOT_INTERESTED",
+  ];
+  const effectiveOutcome = (outcome || "").toUpperCase();
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const truncatedSummary = truncateCallSummary(callSummary);
@@ -988,10 +1116,14 @@ async function endAndClose({
     callSummary: truncatedSummary,
   };
 
-  // SOLO actualizar enrichmentStatus si hubo conversación
+  // Subir enrichmentStatus a qualification_completed si hubo conversacion.
+  // level=PROSPECT solo para outcomes que realmente califican al prospecto.
   if (isConversational) {
     updateData.enrichmentStatus = "qualification_completed";
-    updateData.level = "PROSPECT";
+    const advancesToProspect = ["QUALIFIED", "DEMO_SCHEDULED", "FOLLOW_UP_LATER", "FOLLOW_UP"];
+    if (advancesToProspect.includes(effectiveOutcome)) {
+      updateData.level = "PROSPECT";
+    }
     updateData.qualification_completed = true;
     if (truncatedSummary) {
       updateData.qualification_notes = truncatedSummary;
@@ -1148,8 +1280,9 @@ async function scheduleOnboarding({
   if (!establishmentId || !onboardingDate)
     throw new Error("establishment_id y onboarding_date requeridos");
 
-  // Ensure email is up to date
-  if (email) {
+  // Ensure email is up to date (solo si es valido, no placeholder)
+  const emailOk = isValidEmail(email);
+  if (email && emailOk) {
     await prisma.establishmentEnrichment.upsert({
       where: { establishmentId },
       create: {
@@ -1162,11 +1295,16 @@ async function scheduleOnboarding({
         ...(contactName ? { decisionMakerName: contactName } : {}),
       },
     });
+  } else if (email) {
+    logger.warn("[FunnelWebhook:Conversion] scheduleOnboarding email invalido, no se persiste", {
+      establishmentId,
+      email,
+    });
   }
 
   // Create a Calendly invitee for onboarding if token available
   let calendlyResult = { success: false, note: "No Calendly token" };
-  if (CALENDLY_TOKEN && email) {
+  if (CALENDLY_TOKEN && emailOk) {
     calendlyResult = await _createCalendlyInvitee({
       establishmentId,
       contactName,
@@ -1202,6 +1340,66 @@ async function scheduleOnboarding({
   return { success: true, calendlyResult };
 }
 
+// Persistir objecion detectada en conversion (llamada por conversionMcp.save_objection_data)
+async function saveObjectionData({
+  conversationId,
+  establishmentId,
+  objectionType,
+  objectionDetail,
+  objectionResolved,
+  resolutionMethod,
+}) {
+  if (!establishmentId) throw new Error("establishment_id requerido");
+
+  await upsertEnrichmentSnapshot(establishmentId, "conversion", {
+    conversationId,
+    objectionType,
+    objectionDetail,
+    objectionResolved,
+    resolutionMethod,
+  });
+
+  logger.info("[FunnelWebhook:Conversion] saveObjectionData", {
+    establishmentId,
+    objectionType,
+    objectionResolved,
+  });
+  return { success: true };
+}
+
+// Persistir resultado conversacional previo al cierre (llamada por conversionMcp.save_conversation_outcome)
+async function saveConversationOutcome({
+  conversationId,
+  establishmentId,
+  decisionStatus,
+  decisionTimeline,
+  dependsOnOthers,
+  conditionsToAdvance,
+  perceivedValue,
+  couponOffered,
+  couponTypeOffered,
+}) {
+  if (!establishmentId) throw new Error("establishment_id requerido");
+
+  await upsertEnrichmentSnapshot(establishmentId, "conversion", {
+    conversationId,
+    decisionStatus,
+    decisionTimeline,
+    dependsOnOthers,
+    conditionsToAdvance,
+    perceivedValue,
+    couponOffered,
+    couponTypeOffered,
+  });
+
+  logger.info("[FunnelWebhook:Conversion] saveConversationOutcome", {
+    establishmentId,
+    decisionStatus,
+    perceivedValue,
+  });
+  return { success: true };
+}
+
 async function endConversionCall({
   conversationId,
   establishmentId,
@@ -1213,9 +1411,18 @@ async function endConversionCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan conversion_completed
-  const CONVERSATIONAL_OUTCOMES = ["CLOSED_WON", "FOLLOW_UP_LATER", "NEEDS_VALIDATION", "READY", "NEEDS_TIME"];
-  const isConversational = CONVERSATIONAL_OUTCOMES.includes(outcome);
-  const isWon = outcome === "CLOSED_WON";
+  const CONVERSATIONAL_OUTCOMES = [
+    "CLOSED_WON",
+    "FOLLOW_UP_LATER",
+    "NEEDS_VALIDATION",
+    "READY",
+    "NEEDS_TIME",
+    "NOT_NOW",
+    "LOST",
+  ];
+  const effectiveOutcome = (outcome || "").toUpperCase();
+  const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
+  const isWon = effectiveOutcome === "CLOSED_WON";
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
@@ -1362,6 +1569,8 @@ module.exports = {
   calculateROI,
   saveDealTerms,
   scheduleOnboarding,
+  saveObjectionData,
+  saveConversationOutcome,
   endConversionCall,
   // Helpers de sincronización
   syncCampaignContactStatus,
