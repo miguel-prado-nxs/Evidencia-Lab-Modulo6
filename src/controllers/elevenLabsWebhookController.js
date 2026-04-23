@@ -188,10 +188,22 @@ async function handleCallCompleted(req, res) {
           };
 
           // No pisar callStatus si el MCP del agente ya escribió un outcome
-          // conversacional (INTERESTED, QUALIFIED, CLOSED_WON, etc.). Solo
-          // setear cuando viene vacio o en estado previo a la llamada.
+          // conversacional (INTERESTED, QUALIFIED, CLOSED_WON, etc.).
+          // Lógica: Sobrescribir si:
+          // 1. callStatus es null/pending/calling (pre-call)
+          // 2. callStatus es "completed" PERO hay evidencia de conversación en JSON
+          //    (el agente escribió datos, recuperar su outcome real)
+          // Dejar "completed" huérfano sin datos (webhook sin conversación real)
           const preCallStates = new Set([null, undefined, "", "pending", "calling"]);
-          if (preCallStates.has(enrichment.callStatus)) {
+          const hasConversationEvidence =
+            enrichment.establishmentData &&
+            typeof enrichment.establishmentData === "object" &&
+            Object.keys(enrichment.establishmentData).length > 0;
+          const shouldUpdate =
+            preCallStates.has(enrichment.callStatus) ||
+            (enrichment.callStatus === "completed" && hasConversationEvidence);
+
+          if (shouldUpdate) {
             updateData.callStatus = mappedStatus.toLowerCase();
           }
 
