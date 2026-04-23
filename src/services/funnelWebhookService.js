@@ -45,26 +45,12 @@ function truncateCallSummary(summary, maxLength = 1000) {
   return summary.length > maxLength ? summary.substring(0, maxLength) : summary;
 }
 
-// Mapear outcomes a valores permitidos por check constraint en BD
-// CHECK (call_status IN ('completed', 'no_answer', 'voicemail', 'failed'))
-function mapOutcomeToCallStatus(outcome) {
-  if (!outcome) return "completed";
-
-  const o = outcome.toUpperCase();
-
-  // Outcomes conversacionales → completed
-  if (["INTERESTED", "ADVANCE_TO_ACTIVATION", "FOLLOW_UP_LATER", "NOT_INTERESTED",
-    "DEMO_SCHEDULED", "FOLLOW_UP", "QUALIFIED", "ACTIVATED", "CLOSED_WON",
-    "READY", "NEEDS_TIME", "NEEDS_VALIDATION"].includes(o)) {
-    return "completed";
-  }
-
-  // Outcomes específicos
-  if (o === "NO_ANSWER") return "no_answer";
-  if (o === "VOICEMAIL") return "voicemail";
-  if (o === "WRONG_NUMBER" || o === "FAILED" || o === "NOT_NOW" || o === "LOST" || o === "DISQUALIFIED" || o === "DEMO_DECLINED") return "failed";
-
-  return "completed";
+// Guardar el outcome original en callStatus
+// El check constraint en BD ahora permite todos los outcomes posibles
+function getCallStatus(outcome) {
+  // Retornar el outcome original directamente
+  // Si viene mapeado (ej: ADVANCE_TO_ACTIVATION), usarlo tal cual
+  return outcome || null;
 }
 
 async function upsertEnrichmentSnapshot(establishmentId, stage, data) {
@@ -364,7 +350,7 @@ async function endDiscoveryCall({
   // 2. Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
     callSummary: truncateCallSummary(callSummary),
-    callStatus: mapOutcomeToCallStatus(outcome),
+    callStatus: getCallStatus(outcome),
     gatekeeperInfo: conversationId ? { conversationId } : null,
     callDurationSeconds: callDuration || 0,
   };
@@ -545,7 +531,7 @@ async function endActivationCall({
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
-    callStatus: mapOutcomeToCallStatus(outcome),
+    callStatus: getCallStatus(outcome),
     callSummary: truncateCallSummary(callSummary),
   };
 
@@ -998,7 +984,7 @@ async function endAndClose({
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const truncatedSummary = truncateCallSummary(callSummary);
   const updateData = {
-    callStatus: mapOutcomeToCallStatus(outcome),
+    callStatus: getCallStatus(outcome),
     callSummary: truncatedSummary,
   };
 
@@ -1233,7 +1219,7 @@ async function endConversionCall({
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
-    callStatus: mapOutcomeToCallStatus(outcome),
+    callStatus: getCallStatus(outcome),
     callSummary: truncateCallSummary(callSummary),
   };
 
