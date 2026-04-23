@@ -135,12 +135,12 @@ const login = async (req, res, next) => {
           role: user.role,
           partner: user.partner
             ? {
-                id: user.partner.id,
-                code: user.partner.code,
-                type: user.partner.type,
-                tier: user.partner.tier,
-                status: user.partner.status,
-              }
+              id: user.partner.id,
+              code: user.partner.code,
+              type: user.partner.type,
+              tier: user.partner.tier,
+              status: user.partner.status,
+            }
             : null,
         },
       },
@@ -163,13 +163,13 @@ const me = async (req, res) => {
       role: user.role,
       partner: user.partner
         ? {
-            id: user.partner.id,
-            code: user.partner.code,
-            type: user.partner.type,
-            tier: user.partner.tier,
-            status: user.partner.status,
-            referralLink: user.partner.referralLink,
-          }
+          id: user.partner.id,
+          code: user.partner.code,
+          type: user.partner.type,
+          tier: user.partner.tier,
+          status: user.partner.status,
+          referralLink: user.partner.referralLink,
+        }
         : null,
     },
   });
@@ -281,13 +281,13 @@ const oauthCallback = async (req, res, next) => {
             role: user.role,
             partner: user.partner
               ? {
-                  id: user.partner.id,
-                  code: user.partner.code,
-                  type: user.partner.type,
-                  tier: user.partner.tier,
-                  status: user.partner.status,
-                  referralLink: user.partner.referralLink,
-                }
+                id: user.partner.id,
+                code: user.partner.code,
+                type: user.partner.type,
+                tier: user.partner.tier,
+                status: user.partner.status,
+                referralLink: user.partner.referralLink,
+              }
               : null,
           },
         },
@@ -337,13 +337,13 @@ const oauthCallback = async (req, res, next) => {
             role: user.role,
             partner: user.partner
               ? {
-                  id: user.partner.id,
-                  code: user.partner.code,
-                  type: user.partner.type,
-                  tier: user.partner.tier,
-                  status: user.partner.status,
-                  referralLink: user.partner.referralLink,
-                }
+                id: user.partner.id,
+                code: user.partner.code,
+                type: user.partner.type,
+                tier: user.partner.tier,
+                status: user.partner.status,
+                referralLink: user.partner.referralLink,
+              }
               : null,
           },
         },
@@ -581,7 +581,7 @@ const resetPassword = async (req, res, next) => {
 
     // Actualizar contraseña
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    
+
     await prisma.$transaction([
       prisma.user.update({
         where: { id: resetToken.userId },

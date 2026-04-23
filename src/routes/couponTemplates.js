@@ -1,7 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const couponTemplatesController = require("../controllers/couponTemplatesController");
-const { authenticateJWT } = require("../middleware/auth");
+const { authenticateJWT, requireAdmin, verifyJWTLight, requireAdminLight } = require("../middleware/auth");
+const { uploadSingle } = require("../middleware/upload");
 const { validate } = require("../middleware/validation");
 const { z } = require("zod");
 
@@ -48,6 +49,11 @@ const updateTemplateSchema = z.object({
 });
 
 // router.use(authenticateJWT);
+
+// La ruta debe ir antes de /:type para que no sea capturada como parámetro.
+// Usa verifyJWTLight (sin DB lookup) porque el login vive en demo-form-service:
+// el userId del token NO existe en la tabla users de este backend.
+router.post("/upload-image", verifyJWTLight, requireAdminLight, uploadSingle, couponTemplatesController.uploadImage);
 
 router.get("/", couponTemplatesController.list);
 router.get("/:type", couponTemplatesController.getByType);

@@ -1,5 +1,7 @@
+const fs = require("fs");
 const prisma = require("../config/database");
 const logger = require("../config/logger");
+const cloudflareImagesService = require("../services/cloudflareImagesService");
 
 const list = async (req, res, next) => {
   try {
@@ -188,10 +190,48 @@ const remove = async (req, res, next) => {
   }
 };
 
+/**
+ * Recibe un archivo de imagen (multipart via multer), lo sube a Cloudflare Images
+ * y retorna la URL pública. El frontend la guarda en formData.mediaUrl.
+ */
+const uploadImage = async (req, res, next) => {
+  const tempPath = req.file?.path;
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "No se recibió ningún archivo." });
+    }
+
+    const buffer = fs.readFileSync(tempPath);
+    const { imageId, url } = await cloudflareImagesService.uploadImage(
+      buffer,
+      req.file.originalname,
+      req.file.mimetype
+    );
+
+    res.json({ success: true, data: { url, imageId } });
+  } catch (error) {
+    // Error de validación (tipo/tamaño) o de API: responder 400, no propagar al errorHandler
+    if (
+      error.message.includes("Tipo de archivo") ||
+      error.message.includes("excede el máximo") ||
+      error.message.includes("Cloudflare Images no está configurado")
+    ) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    next(error);
+  } finally {
+    // Limpiar archivo temporal sin importar el resultado
+    if (tempPath) {
+      try { fs.unlinkSync(tempPath); } catch (_) {}
+    }
+  }
+};
+
 module.exports = {
   list,
   getByType,
   create,
   update,
-  remove
+  remove,
+  uploadImage,
 };

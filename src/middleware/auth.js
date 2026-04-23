@@ -20,7 +20,7 @@ const authenticateJWT = async (req, res, next) => {
 
     // Buscar usuario en la base de datos (soportar tanto userId como id para compatibilidad)
     const userId = decoded.userId || decoded.id;
-    
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -80,7 +80,7 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
 
       // Soportar tanto userId como id para compatibilidad
       const userId = decoded.userId || decoded.id;
-      
+
       if (!userId) {
         return res.status(401).json({
           success: false,
@@ -389,15 +389,15 @@ const requireActivePartner = (req, res, next) => {
 
 // Generar token JWT
 const generateToken = (user) => {
-  return jwt.sign(
-    {
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-    },
-    config.auth.jwtSecret,
-    { expiresIn: config.auth.jwtExpiresIn }
-  );
+  const payload = {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  };
+
+  const token = jwt.sign(payload, config.auth.jwtSecret, { expiresIn: config.auth.jwtExpiresIn });
+
+  return token;
 };
 
 /**
@@ -423,6 +423,58 @@ const requireVentasAdmin = (req, res, next) => {
   next();
 };
 
+/**
+ * Verifica firma/expiración del JWT SIN consultar la BD de usuarios.
+ * Útil cuando el token puede venir de un servicio hermano (ej. demo-form-service)
+ * que usa otra BD de usuarios. Confía en los claims del token.
+ * Popula req.user con { id, email, role (uppercase) } desde el payload.
+ */
+const verifyJWTLight = (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, error: "Token de autenticación requerido" });
+    }
+
+    const token = authHeader.split(" ")[1];
+    const payload = jwt.verify(token, config.auth.jwtSecret);
+
+    const userId = payload.userId || payload.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: "Token inválido: falta ID de usuario" });
+    }
+
+    req.user = {
+      id: userId,
+      email: payload.email || null,
+      // Normalizar rol a mayúsculas para consistencia (demo-form usa "admin", partners usa "ADMIN")
+      role: (payload.role || "").toUpperCase(),
+    };
+
+    next();
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ success: false, error: "Token expirado" });
+    }
+    logger.warn("[verifyJWTLight] Token inválido", { message: error.message });
+    return res.status(401).json({ success: false, error: "Token inválido" });
+  }
+};
+
+/**
+ * Versión "light" de requireAdmin: asume que req.user viene de verifyJWTLight
+ * (sin objeto Partner anidado). Verifica solo el campo role normalizado.
+ */
+const requireAdminLight = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, error: "No autenticado" });
+  }
+  if (req.user.role !== "ADMIN") {
+    return res.status(403).json({ success: false, error: "Acceso denegado: se requiere rol ADMIN" });
+  }
+  next();
+};
+
 module.exports = {
   authenticateJWT,
   authenticateJWTOrServiceKey,
@@ -432,4 +484,6 @@ module.exports = {
   requireActivePartner,
   requireVentasAdmin,
   generateToken,
+  verifyJWTLight,
+  requireAdminLight,
 };

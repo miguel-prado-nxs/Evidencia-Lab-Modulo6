@@ -9,9 +9,9 @@ const config = {
     url: process.env.DATABASE_URL,
   },
   auth: {
-    jwtSecret: process.env.JWT_SECRET || "your-secret-key",
+    jwtSecret: process.env.JWT_SECRET,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-    apiKeySecret: process.env.API_KEY_SECRET || "api-key-secret",
+    apiKeySecret: process.env.API_KEY_SECRET,
   },
   security: {
     allowedOrigins: (process.env.ALLOWED_ORIGINS || "http://localhost:3003").split(","),
@@ -59,7 +59,22 @@ const config = {
   elevenlabs: {
     webhookSecret: process.env.ELEVENLABS_WEBHOOK_SECRET || "",
   },
+  // Cloudflare Images (hosting de imágenes para cupones y recursos)
+  cloudflare: {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
+    imagesApiToken: process.env.CLOUDFLARE_IMAGES_API_TOKEN || "",
+    // Variante por defecto a retornar en los uploads (configurable en Cloudflare Images)
+    defaultVariant: process.env.CLOUDFLARE_IMAGES_VARIANT || "public",
+  },
 };
+
+// Validación de variables críticas al arrancar — falla rápido si faltan.
+if (!config.auth.jwtSecret) {
+  throw new Error("JWT_SECRET no está definido en variables de entorno. Debe coincidir con el de demo-form-service.");
+}
+if (!config.auth.apiKeySecret) {
+  throw new Error("API_KEY_SECRET no está definido en variables de entorno.");
+}
 
 module.exports = config;
 
