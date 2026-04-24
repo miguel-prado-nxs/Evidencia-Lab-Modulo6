@@ -276,8 +276,10 @@ const getEligibleCount = async (req, res) => {
 
     const prerequisite = STAGE_PREREQUISITES[campaignType];
     const radiusMeters = parseFloat(radiusKm) * 1000;
+    const lat = parseFloat(centerLat);
+    const lng = parseFloat(centerLng);
 
-    // Construir filtros
+    // Construir filtros de audiencia (activityCodes + employeeRanges)
     const filters = {};
     if (activityCodes) {
       filters.activityCode = Array.isArray(activityCodes) ? activityCodes.join(",") : activityCodes;
@@ -286,20 +288,25 @@ const getEligibleCount = async (req, res) => {
       filters.employeeRange = Array.isArray(employeeRanges) ? employeeRanges.join(",") : employeeRanges;
     }
 
-    // Contar establecimientos totales por radio
-    const establishments = await geoService.findEstablishmentsInRadius(
-      parseFloat(centerLat),
-      parseFloat(centerLng),
-      radiusMeters,
-      filters
-    );
+    // Contar establecimientos por tipo de restaurante (sin filtro de empleados) y filtrados completos en paralelo
+    const activityOnlyFilters = {};
+    if (activityCodes) {
+      activityOnlyFilters.activityCode = Array.isArray(activityCodes) ? activityCodes.join(",") : activityCodes;
+    }
 
+    const [allInZone, establishments] = await Promise.all([
+      geoService.findEstablishmentsInRadius(lat, lng, radiusMeters, activityOnlyFilters),
+      geoService.findEstablishmentsInRadius(lat, lng, radiusMeters, filters),
+    ]);
+
+    const totalInZone = allInZone.length;
     const total = establishments.length;
     const establishmentIds = establishments.map(e => e.id);
 
-    // si no hay prerequisitos, todos son elegibles
+    // si no hay prerequisitos, todos los filtrados son elegibles
     if (!prerequisite) {
       return res.json({
+        totalInZone,
         total,
         eligible: total,
         campaignType,
@@ -322,18 +329,17 @@ const getEligibleCount = async (req, res) => {
       ? `No han completado ${campaignType === 'QUALIFICATION' ? 'Discovery' : campaignType === 'ACTIVATION' ? 'Qualification' : 'Activation'}`
       : null;
 
-    // Debug logging
     logger.info("[getEligibleCount] Debug info", {
       campaignType,
       prerequisite,
-      totalEstablishmentsInRadius: total,
-      establishmentIdsCount: establishmentIds.length,
-      establishmentIds: establishmentIds.slice(0, 5), // primeros 5 para debug
+      totalInZone,
+      totalWithFilters: total,
       eligibleCount,
       eligibleIds: eligible.map(e => e.establishmentId).slice(0, 5),
     });
 
     res.json({
+      totalInZone,
       total,
       eligible: eligibleCount,
       campaignType,
