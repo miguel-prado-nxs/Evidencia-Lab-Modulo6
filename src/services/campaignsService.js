@@ -192,6 +192,17 @@ const createCampaign = async (data) => {
     );
   }
 
+  // Solo ACTIVATION y CONVERSION pueden tener cupones
+  const COUPON_ELIGIBLE_TYPES = ["ACTIVATION", "CONVERSION"];
+  if (
+    (couponPrefix || (Array.isArray(couponTemplateIds) && couponTemplateIds.length > 0)) &&
+    !COUPON_ELIGIBLE_TYPES.includes(campaignType)
+  ) {
+    throw new Error(
+      `Coupons are only allowed for ACTIVATION or CONVERSION campaigns. Got: ${campaignType}`
+    );
+  }
+
   if (centerLat && centerLng && !radiusMeters) {
     throw new Error("radiusMeters is required when centerLat and centerLng are provided");
   }
@@ -214,8 +225,9 @@ const createCampaign = async (data) => {
       filters,
       agentConfigId,
       agentConfigName,
-      offer,
-      couponPrefix,
+      offer: offer || null,
+      // couponPrefix es FK a coupon_templates — enviar null si viene vacío
+      couponPrefix: couponPrefix || null,
       couponTemplateIds: couponTemplateIds || [],
       createdBy,
     },
@@ -334,6 +346,23 @@ const updateCampaign = async (id, data) => {
 
   if (radiusMeters && radiusMeters < 0) {
     throw new Error("radiusMeters must be a positive number");
+  }
+
+  // Validar cupones por tipo de campaña al actualizar
+  const effectiveCampaignType = type
+    ? type
+    : agentConfigId
+      ? getCampaignTypeFromAgent(agentConfigId)
+      : existingCampaign.type;
+
+  const COUPON_ELIGIBLE_TYPES_UPDATE = ["ACTIVATION", "CONVERSION"];
+  if (
+    (couponPrefix || (Array.isArray(couponTemplateIds) && couponTemplateIds.length > 0)) &&
+    !COUPON_ELIGIBLE_TYPES_UPDATE.includes(effectiveCampaignType)
+  ) {
+    throw new Error(
+      `Coupons are only allowed for ACTIVATION or CONVERSION campaigns. Got: ${effectiveCampaignType}`
+    );
   }
 
   const updateData = {};
