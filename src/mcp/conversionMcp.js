@@ -2,6 +2,65 @@ const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { z } = require("zod");
 const svc = require("../services/funnelWebhookService");
 
+// Normaliza enums: acepta valores en español y los mapea a inglés
+const normalizeEnum = (value, enumType) => {
+  if (!value || typeof value !== "string") return value;
+  const normalized = value.trim().toUpperCase();
+
+  if (enumType === "objectionType") {
+    const objectionMap = {
+      PRICE: "PRICE",
+      PRECIO: "PRICE",
+      RISK: "RISK",
+      RIESGO: "RISK",
+      COMPLEXITY: "COMPLEXITY",
+      COMPLEJIDAD: "COMPLEXITY",
+      TIME: "TIME",
+      TIEMPO: "TIME",
+      PRIORITY: "PRIORITY",
+      PRIORIDAD: "PRIORITY",
+      OTHER: "OTHER",
+      OTRO: "OTHER",
+    };
+    return objectionMap[normalized] || value;
+  }
+
+  if (enumType === "decisionStatus") {
+    const decisionMap = {
+      READY: "READY",
+      LISTO: "READY",
+      PREPARADO: "READY",
+      NEEDS_TIME: "NEEDS_TIME",
+      NECESITA_TIEMPO: "NEEDS_TIME",
+      NECESITA_ANALIZAR: "NEEDS_TIME",
+      FOLLOW_UP_LATER: "NEEDS_TIME",
+      NEEDS_VALIDATION: "NEEDS_VALIDATION",
+      NECESITA_VALIDACIÓN: "NEEDS_VALIDATION",
+      NEEDS_REVIEW: "NEEDS_VALIDATION",
+      NOT_NOW: "NOT_NOW",
+      AHORA_NO: "NOT_NOW",
+      POR_AHORA_NO: "NOT_NOW",
+    };
+    return decisionMap[normalized] || value;
+  }
+
+  if (enumType === "perceivedValue") {
+    const valueMap = {
+      LOW: "LOW",
+      BAJO: "LOW",
+      MEDIUM: "MEDIUM",
+      MEDIO: "MEDIUM",
+      MEDIA: "MEDIUM",
+      HIGH: "HIGH",
+      ALTO: "HIGH",
+      MUY_ALTO: "HIGH",
+    };
+    return valueMap[normalized] || value;
+  }
+
+  return value;
+};
+
 function createConversionServer() {
   const server = new McpServer({ name: "funnel-conversion", version: "1.0.0" });
 
@@ -55,7 +114,7 @@ function createConversionServer() {
         const result = await svc.saveObjectionData({
           conversationId: conversation_id,
           establishmentId: establishment_id,
-          objectionType: objection_type,
+          objectionType: normalizeEnum(objection_type, "objectionType"),
           objectionDetail: objection_detail,
           objectionResolved: objection_resolved,
           resolutionMethod: resolution_method,
@@ -86,11 +145,11 @@ function createConversionServer() {
         const result = await svc.saveConversationOutcome({
           conversationId: conversation_id,
           establishmentId: establishment_id,
-          decisionStatus: decision_status,
+          decisionStatus: normalizeEnum(decision_status, "decisionStatus"),
           decisionTimeline: decision_timeline,
           dependsOnOthers: depends_on_others,
           conditionsToAdvance: conditions_to_advance,
-          perceivedValue: perceived_value,
+          perceivedValue: normalizeEnum(perceived_value, "perceivedValue"),
           couponOffered: coupon_offered,
           couponTypeOffered: coupon_type_offered,
         });
