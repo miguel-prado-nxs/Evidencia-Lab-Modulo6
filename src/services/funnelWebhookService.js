@@ -413,7 +413,7 @@ async function endDiscoveryCall({
   // 2. Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
     callSummary: truncateCallSummary(callSummary),
-    callStatus: getCallStatus(outcome),
+    callStatus: getCallStatus(effectiveOutcome),
     gatekeeperInfo: conversationId ? { conversationId } : null,
     callDurationSeconds: callDuration || 0,
   };
