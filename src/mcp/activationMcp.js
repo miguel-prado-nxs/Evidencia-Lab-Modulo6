@@ -9,12 +9,31 @@ const normalizeEnum = (value) => {
   const spanishToEnglish = {
     ALTO: "HIGH",
     HIGH: "HIGH",
+    MUY_ALTO: "HIGH",
+    MUY_COMPLEJO: "HIGH",
+    COMPLEJO: "HIGH",
+    COMPLICADO: "HIGH",
+    DIFÍCIL: "HIGH",
     MEDIO: "MEDIUM",
     MEDIA: "MEDIUM",
     MEDIUM: "MEDIUM",
+    MODERADO: "MEDIUM",
+    SENCILLO: "LOW",
+    SENCILLO_Y_PRÁCTICO: "LOW",
+    SIMPLE: "LOW",
+    FÁCIL: "LOW",
     BAJO: "LOW",
     LOW: "LOW",
+    MUY_BAJO: "LOW",
   };
+
+  // Si no encuentra mapeo exacto, intenta inferir por palabras clave
+  if (!spanishToEnglish[normalized]) {
+    if (normalized.includes("ALTO") || normalized.includes("COMPLEJO") || normalized.includes("DIFÍCIL")) return "HIGH";
+    if (normalized.includes("SENCILLO") || normalized.includes("SIMPLE") || normalized.includes("FÁCIL")) return "LOW";
+    if (normalized.includes("MEDIO") || normalized.includes("MODERADO")) return "MEDIUM";
+  }
+
   return spanishToEnglish[normalized] || value;
 };
 
