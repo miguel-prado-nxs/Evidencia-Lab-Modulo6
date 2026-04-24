@@ -9,13 +9,55 @@ const normalizeEnum = (value, options = {}) => {
   const spanishToEnglish = {
     ALTO: "HIGH",
     HIGH: "HIGH",
+    MUY_ALTO: "HIGH",
+    URGENTE: "HIGH",
+    URGENCIA: "HIGH",
+    INMEDIATO: "HIGH",
+    AHORITA: "HIGH",
+    CUANTO_ANTES: "HIGH",
     MEDIO: "MEDIUM",
-    MEDIA: "MEDIUM", // común en español
+    MEDIA: "MEDIUM",
     MEDIUM: "MEDIUM",
+    MODERADO: "MEDIUM",
+    MEDIANO: "MEDIUM",
     BAJO: "LOW",
     LOW: "LOW",
+    MUY_BAJO: "LOW",
+    NO_URGENTE: "LOW",
+    PUEDE_ESPERAR: "LOW",
+    SIN_PRISA: "LOW",
   };
-  return spanishToEnglish[normalized] || value;
+
+  // Primero intenta mapeo exacto
+  if (spanishToEnglish[normalized]) return spanishToEnglish[normalized];
+
+  // Si no encuentra mapeo exacto, intenta inferir por palabras clave
+  const lowerValue = normalized.toLowerCase();
+  if (
+    lowerValue.includes("ESTE MES") ||
+    lowerValue.includes("SEMANA") ||
+    lowerValue.includes("AHORA") ||
+    lowerValue.includes("RÁPIDO") ||
+    lowerValue.includes("URGENTE") ||
+    lowerValue.includes("INMEDIATO") ||
+    lowerValue.includes("CUANTO ANTES") ||
+    lowerValue.includes("PRONTO")
+  ) {
+    return "HIGH";
+  }
+
+  if (
+    lowerValue.includes("PUEDE ESPERAR") ||
+    lowerValue.includes("SIN PRISA") ||
+    lowerValue.includes("NO URGENTE") ||
+    lowerValue.includes("CUANDO PUEDAN") ||
+    lowerValue.includes("DESPUÉS")
+  ) {
+    return "LOW";
+  }
+
+  // Default a MEDIUM si está en el medio
+  return "MEDIUM";
 };
 
 function createQualificationServer() {
