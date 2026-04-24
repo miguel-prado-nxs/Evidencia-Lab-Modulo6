@@ -293,6 +293,7 @@ async function saveDiscoveryData({
   conversationId,
   establishmentId,
   contactName,
+  contactEmail,
   businessType,
   painPoint,
   interestLevel,
@@ -314,10 +315,13 @@ async function saveDiscoveryData({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // 1. Siempre persistir decisionMakerName si viene (se perdia por la logica
-  //    exclusiva anterior). Es la columna plana que consulta el checklist.
+  // 1. Persistir decisionMakerName y decisionMakerEmail si vienen
+  //    Son columnas planas que consultan los siguientes agentes
   const columnUpdate = {};
   if (contactName) columnUpdate.decisionMakerName = contactName;
+  if (contactEmail && isValidEmail(contactEmail)) {
+    columnUpdate.decisionMakerEmail = contactEmail;
+  }
 
   if (Object.keys(columnUpdate).length > 0) {
     await prisma.establishmentEnrichment.upsert({
@@ -332,6 +336,7 @@ async function saveDiscoveryData({
   const snapshot = {
     conversationId,
     contactName,
+    contactEmail,
     businessType,
     painPoint,
     interestLevel,
@@ -373,6 +378,7 @@ async function endDiscoveryCall({
   outcome,
   originalOutcome,
   contactName,
+  contactEmail,
   businessType,
   painPoint,
   interestLevel,
@@ -392,11 +398,12 @@ async function endDiscoveryCall({
   const effectiveOutcome = (originalOutcome || outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
 
-  // 1. Guardar datos finales (incluye decisionMakerName en columna plana)
+  // 1. Guardar datos finales (incluye decisionMakerName y email en columna plana)
   await saveDiscoveryData({
     conversationId,
     establishmentId,
     contactName,
+    contactEmail,
     businessType,
     painPoint,
     interestLevel,
@@ -410,9 +417,12 @@ async function endDiscoveryCall({
     gatekeeperInfo: conversationId ? { conversationId } : null,
     callDurationSeconds: callDuration || 0,
   };
-  // Reforzar decisionMakerName aqui tambien por si saveDiscoveryData no lo
+  // Reforzar decisionMakerName y email aqui tambien por si saveDiscoveryData no los
   // recibio (ej. agente solo llamo end_discovery_call).
   if (contactName) updateData.decisionMakerName = contactName;
+  if (contactEmail && isValidEmail(contactEmail)) {
+    updateData.decisionMakerEmail = contactEmail;
+  }
 
   // SOLO actualizar enrichmentStatus si hubo conversación
   if (isConversational) {

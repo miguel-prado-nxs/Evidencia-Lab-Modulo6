@@ -12,6 +12,7 @@ function createDiscoveryServer() {
       conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
       contact_name: z.string().optional().describe("Nombre del contacto"),
+      contact_email: z.string().optional().describe("Email del decision maker (para envios posteriores)"),
       business_type: z.string().optional().describe("Tipo de negocio"),
       pain_point: z.string().optional().describe("Principal problema identificado"),
       interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Nivel de interés evaluado"),
@@ -30,12 +31,13 @@ function createDiscoveryServer() {
       improvement_interest: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Interés en mejoras"),
       problem_priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Prioridad del problema"),
     },
-    async ({ conversation_id, establishment_id, contact_name, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
+    async ({ conversation_id, establishment_id, contact_name, contact_email, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
       try {
         const result = await svc.saveDiscoveryData({
           conversationId: conversation_id,
           establishmentId: establishment_id,
           contactName: contact_name,
+          contactEmail: contact_email,
           businessType: business_type,
           painPoint: pain_point,
           interestLevel: interest_level,
