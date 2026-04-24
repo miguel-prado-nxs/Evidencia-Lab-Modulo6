@@ -19,8 +19,8 @@ const createCampaignSchema = z.object({
     filters: z.record(z.any()).nullable().optional(),
     agentConfigId: z.string().min(1, "Agente es requerido"), // Ahora obligatorio
     agentConfigName: z.string().optional(),
-    offer: z.string().optional(),
-    couponPrefix: z.string().optional(),
+    offer: z.string().nullable().optional(),
+    couponPrefix: z.string().nullable().optional(),
     couponTemplateIds: z.array(z.string()).optional(),
   }),
 });
@@ -39,8 +39,8 @@ const updateCampaignSchema = z.object({
     filters: z.record(z.any()).optional(),
     agentConfigId: z.string().optional(),
     agentConfigName: z.string().optional(),
-    offer: z.string().optional(),
-    couponPrefix: z.string().optional(),
+    offer: z.string().nullable().optional(),
+    couponPrefix: z.string().nullable().optional(),
     couponTemplateIds: z.array(z.string()).optional(),
     scheduledAt: z.string().optional(),
   }),
