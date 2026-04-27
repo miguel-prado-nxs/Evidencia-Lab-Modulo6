@@ -32,28 +32,30 @@ const normalizeEnum = (value, options = {}) => {
   if (spanishToEnglish[normalized]) return spanishToEnglish[normalized];
 
   // Si no encuentra mapeo exacto, intenta inferir por palabras clave
-  const lowerValue = normalized.toLowerCase();
+  // IMPORTANTE: Detectar negaciones PRIMERO para evitar falsos positivos
   if (
-    lowerValue.includes("ESTE MES") ||
-    lowerValue.includes("SEMANA") ||
-    lowerValue.includes("AHORA") ||
-    lowerValue.includes("RÁPIDO") ||
-    lowerValue.includes("URGENTE") ||
-    lowerValue.includes("INMEDIATO") ||
-    lowerValue.includes("CUANTO ANTES") ||
-    lowerValue.includes("PRONTO")
+    normalized.includes("NO URGENTE") ||
+    normalized.includes("NO ES URGENTE") ||
+    normalized.includes("PUEDE ESPERAR") ||
+    normalized.includes("SIN PRISA") ||
+    normalized.includes("CUANDO PUEDAN") ||
+    normalized.includes("DESPUÉS") ||
+    normalized.includes("ESPERAR")
   ) {
-    return "HIGH";
+    return "LOW";
   }
 
   if (
-    lowerValue.includes("PUEDE ESPERAR") ||
-    lowerValue.includes("SIN PRISA") ||
-    lowerValue.includes("NO URGENTE") ||
-    lowerValue.includes("CUANDO PUEDAN") ||
-    lowerValue.includes("DESPUÉS")
+    normalized.includes("ESTE MES") ||
+    normalized.includes("SEMANA") ||
+    normalized.includes("AHORA") ||
+    normalized.includes("RÁPIDO") ||
+    normalized.includes("URGENTE") ||
+    normalized.includes("INMEDIATO") ||
+    normalized.includes("CUANTO ANTES") ||
+    normalized.includes("PRONTO")
   ) {
-    return "LOW";
+    return "HIGH";
   }
 
   // Default a MEDIUM si está en el medio
