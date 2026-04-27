@@ -2,6 +2,56 @@ const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { z } = require("zod");
 const svc = require("../services/funnelWebhookService");
 
+// Normaliza enums: acepta valores en español y los mapea a inglés
+const normalizeEnum = (value) => {
+  if (!value || typeof value !== "string") return value;
+  const normalized = value.trim().toUpperCase();
+  const spanishToEnglish = {
+    ALTO: "HIGH",
+    HIGH: "HIGH",
+    MUY_ALTO: "HIGH",
+    ALTO_INTERÉS: "HIGH",
+    MUY_INTERESADO: "HIGH",
+    MEDIO: "MEDIUM",
+    MEDIA: "MEDIUM",
+    MEDIUM: "MEDIUM",
+    MODERADO: "MEDIUM",
+    BAJO: "LOW",
+    LOW: "LOW",
+    POCO_INTERÉS: "LOW",
+    SIN_INTERÉS: "LOW",
+  };
+
+  // Primero intenta mapeo exacto
+  if (spanishToEnglish[normalized]) return spanishToEnglish[normalized];
+
+  // Si no encuentra, intenta inferir por palabras clave
+  const lowerValue = normalized.toLowerCase();
+  if (
+    lowerValue.includes("ALTO") ||
+    lowerValue.includes("MUCHO") ||
+    lowerValue.includes("MUY") ||
+    lowerValue.includes("INTEGRAR") ||
+    lowerValue.includes("MEJORAR") ||
+    lowerValue.includes("URGENTE") ||
+    lowerValue.includes("INMEDIATO")
+  ) {
+    return "HIGH";
+  }
+
+  if (
+    lowerValue.includes("POCO") ||
+    lowerValue.includes("NO") ||
+    lowerValue.includes("SIN") ||
+    lowerValue.includes("BAJO")
+  ) {
+    return "LOW";
+  }
+
+  // Default a MEDIUM
+  return "MEDIUM";
+};
+
 function createDiscoveryServer() {
   const server = new McpServer({ name: "funnel-discovery", version: "1.0.0" });
 
@@ -40,7 +90,7 @@ function createDiscoveryServer() {
           contactEmail: contact_email,
           businessType: business_type,
           painPoint: pain_point,
-          interestLevel: interest_level,
+          interestLevel: normalizeEnum(interest_level),
           notes,
           restaurantName: restaurant_name,
           restaurantAge: restaurant_age,
@@ -51,10 +101,10 @@ function createDiscoveryServer() {
           mainDifficulty: main_difficulty,
           frequentErrors: frequent_errors,
           timeLost: time_lost,
-          closingClarity: closing_clarity,
+          closingClarity: normalizeEnum(closing_clarity),
           previousSystems: previous_systems,
-          improvementInterest: improvement_interest,
-          problemPriority: problem_priority,
+          improvementInterest: normalizeEnum(improvement_interest),
+          problemPriority: normalizeEnum(problem_priority),
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
@@ -89,7 +139,7 @@ function createDiscoveryServer() {
           contactName: contact_name,
           businessType: business_type,
           painPoint: pain_point,
-          interestLevel: interest_level,
+          interestLevel: normalizeEnum(interest_level),
           callSummary: call_summary,
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
