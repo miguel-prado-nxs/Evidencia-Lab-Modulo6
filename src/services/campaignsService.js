@@ -900,11 +900,58 @@ const startCampaign = async (campaignId, options = {}) => {
         establishmentData: true,
         decisionMakerName: true,
         decisionMakerEmail: true,
-        enrichmentStatus: true
+        enrichmentStatus: true,
+        level: true,
       }
     })
 
     const stageData = enrichment?.establishmentData || {};
+
+    // Gating de cupones por contact: UPGRADEPRO y REFER son post-venta exclusivamente.
+    // El filtro se aplica aqui (dispatch), no al crear campaña, porque el batch puede
+    // mezclar prospectos y clientes activos.
+    // Nota: usamos solo level=CLIENT como señal de cliente activo — productPurchased y
+    // clientStatus no se usan actualmente en el flujo y no son confiables como filtro.
+    const isClient = enrichment?.level === 'CLIENT';
+
+    const campaignTemplates = contactSpecificContext?.coupons?.templates || [];
+
+    const eligibleTemplates = campaignTemplates.filter(t => {
+      const code = t.type;
+      if (code === 'UPGRADEPRO') return isClient;
+      if (code === 'REFER') return isClient;
+      // PLUS30, 50OFF, COMEBACK aplican a prospectos/leads (no clientes activos)
+      if (['PLUS30', '50OFF', 'COMEBACK'].includes(code)) return !isClient;
+      return true;
+    });
+
+    // Resolver el cupón principal para este contact: usar el principal de la campaña si
+    // sigue siendo elegible, sino el primer alternativo que aplique, sino null.
+    const campaignPrincipal = contactSpecificContext?.coupons?.couponType
+      || campaign.couponPrefix
+      || contactData.couponType
+      || null;
+
+    const resolvedCouponType =
+      eligibleTemplates.find(t => t.type === campaignPrincipal)?.type
+      || eligibleTemplates[0]?.type
+      || null;
+
+    if (campaignPrincipal && !resolvedCouponType) {
+      logger.info("[CampaignStart] Cupon principal no elegible para este contact, ningun alternativo disponible", {
+        contactId: contact.id,
+        establishmentId: contact.establishmentId,
+        campaignPrincipal,
+        level: enrichment?.level,
+      });
+    } else if (campaignPrincipal && resolvedCouponType !== campaignPrincipal) {
+      logger.info("[CampaignStart] Cupon principal sustituido por alternativo elegible para este contact", {
+        contactId: contact.id,
+        original: campaignPrincipal,
+        resolved: resolvedCouponType,
+        level: enrichment?.level,
+      });
+    }
 
     return {
       campaignContactId: contact.id,
@@ -947,9 +994,10 @@ const startCampaign = async (campaignId, options = {}) => {
         previous_email: enrichment?.decisionMakerEmail || email || '',
         // Contexto de campaña para ElevenLabs (Convertidos a string para evitar "CADENA VACÍA")
         campaignContext: contactSpecificContext ? JSON.stringify(contactSpecificContext) : "",
-        couponsAvailable: contactSpecificContext?.coupons?.available ? "true" : "false",
-        couponTypes: contactSpecificContext?.coupons?.templates?.map(t => t.type).join(", ") || "",
-        couponType: contactSpecificContext?.coupons?.couponType || campaign.couponPrefix || contactData.couponType || null,
+        // Cupones ya filtrados por elegibilidad del contact especifico
+        couponsAvailable: resolvedCouponType ? "true" : "false",
+        couponTypes: eligibleTemplates.map(t => t.type).join(", ") || "",
+        couponType: resolvedCouponType,
         couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send",
         agentInstructions: contactSpecificContext?.agentInstructions || null,
         // Datos del stage
