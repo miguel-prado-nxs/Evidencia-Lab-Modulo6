@@ -8,6 +8,7 @@ const normalizeEnum = (value) => {
   const normalized = value.trim().toUpperCase();
   const spanishToEnglish = {
     ALTO: "HIGH",
+    ALTA: "HIGH",
     HIGH: "HIGH",
     MUY_ALTO: "HIGH",
     ALTO_INTERÉS: "HIGH",
@@ -16,7 +17,9 @@ const normalizeEnum = (value) => {
     MEDIA: "MEDIUM",
     MEDIUM: "MEDIUM",
     MODERADO: "MEDIUM",
+    MEDIANO: "MEDIUM",
     BAJO: "LOW",
+    BAJA: "LOW",
     LOW: "LOW",
     POCO_INTERÉS: "LOW",
     SIN_INTERÉS: "LOW",
@@ -25,25 +28,27 @@ const normalizeEnum = (value) => {
   // Primero intenta mapeo exacto
   if (spanishToEnglish[normalized]) return spanishToEnglish[normalized];
 
-  // Si no encuentra, intenta inferir por palabras clave
-  const lowerValue = normalized.toLowerCase();
+  // Si no encuentra, intenta inferir por palabras clave (usar normalized en MAYÚSCULAS)
   if (
-    lowerValue.includes("ALTO") ||
-    lowerValue.includes("MUCHO") ||
-    lowerValue.includes("MUY") ||
-    lowerValue.includes("INTEGRAR") ||
-    lowerValue.includes("MEJORAR") ||
-    lowerValue.includes("URGENTE") ||
-    lowerValue.includes("INMEDIATO")
+    normalized.includes("ALTO") ||
+    normalized.includes("MUCHO") ||
+    normalized.includes("MUY") ||
+    normalized.includes("INTEGRAR") ||
+    normalized.includes("MEJORAR") ||
+    normalized.includes("URGENTE") ||
+    normalized.includes("INMEDIATO") ||
+    normalized.includes("IMPORTANTE")
   ) {
     return "HIGH";
   }
 
   if (
-    lowerValue.includes("POCO") ||
-    lowerValue.includes("NO") ||
-    lowerValue.includes("SIN") ||
-    lowerValue.includes("BAJO")
+    normalized.includes("CONFUSIÓN") ||
+    normalized.includes("POCO") ||
+    normalized.includes("NO") ||
+    normalized.includes("SIN") ||
+    normalized.includes("BAJO") ||
+    normalized.includes("CLARO")
   ) {
     return "LOW";
   }
