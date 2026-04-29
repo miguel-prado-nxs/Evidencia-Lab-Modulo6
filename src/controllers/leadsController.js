@@ -2,6 +2,7 @@ const leadService = require("../services/leadService");
 const logger = require("../config/logger");
 const axios = require("axios");
 const config = require("../config/env");
+const elevenLabsService = require("../services/elevenLabsService");
 
 // Listar leads
 const list = async (req, res, next) => {
@@ -613,8 +614,10 @@ const autoQualify = async (req, res, next) => {
       logger.warn("[AUTO-QUALIFY] No se pudo obtener agent_config, continuando sin él");
     }
 
-    // Extraer voice_id y agent_name del agentConfig (igual que en autoEnrich)
-    const finalVoiceId = agentConfig?.openai_voice || null;
+    // Obtener voice_id ACTUAL del agente en ElevenLabs (no de la BD)
+    // Si hay agentConfig con ID, lo usamos; si no, usamos el del env
+    const qualificationAgentId = process.env.ELEVENLABS_QUALIFICATION_AGENT_ID || agentConfig?.id;
+    const finalVoiceId = qualificationAgentId ? await elevenLabsService.getAgentVoiceId(qualificationAgentId) : null;
     const finalAgentName = agentConfig?.personality_name || agentConfig?.name || null;
 
     // Llamar al agente de Qualification en agentes-crm-sdk

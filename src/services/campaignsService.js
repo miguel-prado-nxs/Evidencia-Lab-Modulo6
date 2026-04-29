@@ -706,45 +706,15 @@ const startCampaign = async (campaignId, options = {}) => {
     voiceId: resolvedAgentProfile.voiceId,
   });
 
-  // Obtener configuración de voz del Agent Builder (demo-form-service) para sobrescribir la de ElevenLabs
-  let agentBuilderVoiceId = null;
-  let agentBuilderPersonalityName = null;
+  // Usar la voz ACTUAL del agente desde ElevenLabs (obtenida arriba en fetchAgentProfile)
+  // Esto asegura que siempre usa la voz configurada en ElevenLabs UI, no voces viejas de la BD
+  const agentBuilderVoiceId = resolvedAgentProfile.voiceId;
+  const agentBuilderPersonalityName = resolvedAgentProfile.voiceName;
 
-  try {
-    const demoFormUrl = process.env.DEMO_FORM_SERVICE_URL || "http://localhost:3001/api";
-    const agentsConfigKey = process.env.AGENTS_CONFIG_KEY;
-
-    // Determinar si es SDR o Calificación basado en el agentId de la campaña
-    const sdrAgentId = process.env.ELEVENLABS_SDR_AGENT_ID;
-    const qualificationAgentId = process.env.ELEVENLABS_QUALIFICATION_AGENT_ID;
-
-    let configType = "SDR"; // Default a SDR
-    if (resolvedAgentId === qualificationAgentId) {
-      configType = "QUALIFICATION";
-    }
-
-    const configUrl = `${demoFormUrl}/agent-configs/default/${configType}`;
-    logger.info(`[CampaignStart] Detectado tipo de agente: ${configType}. Consultando config en: ${configUrl}`);
-
-    const configResponse = await axios.get(configUrl, {
-      headers: { "X-API-Key": agentsConfigKey || "" },
-      timeout: 5000,
-    });
-
-    if (configResponse.data?.success && configResponse.data?.data) {
-      const data = configResponse.data.data;
-      agentBuilderVoiceId = data.openai_voice || data.voice || null;
-      agentBuilderPersonalityName = data.personality_name || null;
-      logger.info(`[CampaignStart] Usando configuración de voz por defecto de Agent Builder (${configType})`, {
-        voiceId: agentBuilderVoiceId,
-        personalityName: agentBuilderPersonalityName
-      });
-    } else {
-      logger.warn(`[CampaignStart] La respuesta del Agent Builder (${configType}) no contenía data válida`);
-    }
-  } catch (error) {
-    logger.warn("[CampaignStart] No se pudo obtener la configuración por defecto de Agent Builder. Se usará la de ElevenLabs.", { error: error.message });
-  }
+  logger.info(`[CampaignStart] Usando voz actual del agente ElevenLabs`, {
+    voiceId: agentBuilderVoiceId,
+    voiceName: agentBuilderPersonalityName
+  });
 
   let contacts = await prisma.campaignContact.findMany({
     where: {
@@ -1029,6 +999,7 @@ const startCampaign = async (campaignId, options = {}) => {
     campaignId,
     recipients,
     agentId: resolvedAgentId,
+    agentConfigId: campaign.agentConfigId,
     targetConcurrencyLimit,
     maxRecipientsPerRequest,
     scheduledTimeUnix: resolvedScheduledTimeUnix,

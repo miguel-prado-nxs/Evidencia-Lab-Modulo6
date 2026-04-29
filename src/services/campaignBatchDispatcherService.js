@@ -4,6 +4,63 @@ const logger = require("../config/logger");
 
 const ELEVENLABS_BATCH_SUBMIT_URL =
   process.env.ELEVENLABS_BATCH_SUBMIT_URL || "https://api.elevenlabs.io/v1/convai/batch-calling/submit";
+const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
+const ELEVENLABS_AGENT_DETAILS_URL = (agentId) => `https://api.elevenlabs.io/v1/convai/agents/${agentId}`;
+
+const extractVoiceIdFromAgent = (agent = {}) => {
+  return (
+    agent.voice_id ||
+    agent.voiceId ||
+    agent.conversation_config?.tts?.voice_id ||
+    agent.conversation_config?.voice?.voice_id ||
+    agent.conversation_config?.voice?.id ||
+    null
+  );
+};
+
+const fetchAgentProfile = async (agentId) => {
+  if (!agentId || !process.env.ELEVENLABS_API_KEY) {
+    return { voiceId: null };
+  }
+
+  try {
+    const detailsUrl = ELEVENLABS_AGENT_DETAILS_URL(agentId);
+    logger.info("[fetchAgentProfile] Fetching agent details", { agentId, url: detailsUrl });
+
+    const response = await axios.get(detailsUrl, {
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+      },
+      timeout: 10000,
+    });
+
+    logger.info("[fetchAgentProfile] Agent details received", {
+      agentId,
+      status: response.status,
+      responseKeys: Object.keys(response.data),
+    });
+
+    logger.info("[fetchAgentProfile] FULL RESPONSE", {
+      agentId,
+      fullResponse: JSON.stringify(response.data, null, 2),
+    });
+
+    const voiceId = extractVoiceIdFromAgent(response.data);
+    logger.info("[fetchAgentProfile] Voice extracted", {
+      agentId,
+      voiceId,
+      agentName: response.data.name,
+    });
+
+    return { voiceId };
+  } catch (error) {
+    logger.warn("Failed to fetch ElevenLabs agent profile for voice", {
+      agentId,
+      error: error.message,
+    });
+    return { voiceId: null };
+  }
+};
 
 const DEFAULT_TIMEOUT_MS = parseInt(process.env.ELEVENLABS_BATCH_TIMEOUT_MS || "15000", 10);
 const DEFAULT_MAX_RECIPIENTS = parseInt(
@@ -386,13 +443,25 @@ const submitChunkToProvider = async ({
   scheduledTimeUnix,
   callName,
   agentPhoneNumberId,
+  elevenlabsAgentId,
 }) => {
+  let realtimeVoiceId = null;
+  if (elevenlabsAgentId) {
+    const agentProfile = await fetchAgentProfile(elevenlabsAgentId);
+    realtimeVoiceId = agentProfile.voiceId;
+    logger.info("[BatchDispatcher] Voice fetched from ElevenLabs agent", {
+      agentId: elevenlabsAgentId,
+      voiceId: realtimeVoiceId,
+      campaignId,
+    });
+  }
+
   const payload = {
     call_name: callName || `campaign-${campaignId}-${Date.now()}`,
     agent_id: agentId,
     target_concurrency_limit: targetConcurrencyLimit,
     recipients: chunk.map((recipient) => {
-      const voiceId = recipient.dynamicVariables?.voice_id || recipient.dynamicVariables?.voiceId;
+      const voiceId = realtimeVoiceId;
 
       const recipientData = {
         phone_number: recipient.phoneNumber,
@@ -539,6 +608,7 @@ const submitCampaignBatch = async ({
   campaignId,
   recipients,
   agentId,
+  agentConfigId,
   targetConcurrencyLimit = DEFAULT_TARGET_CONCURRENCY,
   maxRecipientsPerRequest = DEFAULT_MAX_RECIPIENTS,
   scheduledTimeUnix,
@@ -618,6 +688,7 @@ const submitCampaignBatch = async ({
       scheduledTimeUnix,
       callName: callName ? `${callName}-chunk-${index + 1}` : undefined,
       agentPhoneNumberId,
+      elevenlabsAgentId: agentId,
     });
 
     chunkResults.push(chunkResult);
