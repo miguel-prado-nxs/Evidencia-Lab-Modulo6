@@ -859,17 +859,17 @@ const startCampaign = async (campaignId, options = {}) => {
       campaign.agentConfigName ||
       "Asesor EasyOrder";
 
-    // Prioridad 1: Agent Builder, Prioridad 2: ElevenLabs, Prioridad 3: Contact Data
+    // Prioridad 1: ElevenLabs, Prioridad 2: Agent Builder, Prioridad 3: Contact Data
     const personalityName =
-      agentBuilderPersonalityName ||
       resolvedAgentProfile.voiceName ||
+      agentBuilderPersonalityName ||
       resolvedAgentProfile.voiceId ||
       contactData.personality_name ||
       contactData.personalityName ||
       agentName;
 
-    const finalVoiceName = agentBuilderPersonalityName || resolvedAgentProfile.voiceName || null;
-    const finalVoiceId = agentBuilderVoiceId || resolvedAgentProfile.voiceId || null;
+    const finalVoiceName = resolvedAgentProfile.voiceName || agentBuilderPersonalityName || null;
+    const finalVoiceId = resolvedAgentProfile.voiceId || agentBuilderVoiceId || null;
 
     const phoneNumber =
       contact.establishmentPhone ||
