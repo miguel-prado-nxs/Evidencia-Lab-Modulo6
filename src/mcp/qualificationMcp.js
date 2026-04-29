@@ -126,45 +126,6 @@ function createQualificationServer() {
     }
   );
 
-
-  server.tool(
-    "save_qualification_call",
-    "Guarda el resultado final de calificación. Llamar antes de end_call.",
-    {
-      conversation_id: z.string(),
-      establishment_id: z.string(),
-      outcome: z.enum([
-        "QUALIFIED",
-        "NOT_QUALIFIED",
-        "FOLLOW_UP_LATER",
-        "DEMO_SCHEDULED",
-        "NOT_INTERESTED",
-        "FOLLOW_UP",
-        "DISQUALIFIED",
-        "NO_ANSWER",
-        "VOICEMAIL",
-      ]).describe("Outcome PLG: QUALIFIED (pasa a PROSPECT), NOT_QUALIFIED, FOLLOW_UP_LATER, o legacy"),
-      qualification_score: z.enum(["A", "B", "C", "D"]).optional(),
-      coupon_sent: z.boolean().optional(),
-      call_summary: z.string(),
-    },
-    async ({ conversation_id, establishment_id, outcome, qualification_score, coupon_sent, call_summary }) => {
-      try {
-        const result = await svc.endAndClose({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
-          outcome,
-          qualificationScore: qualification_score,
-          couponSent: coupon_sent,
-          callSummary: call_summary,
-        });
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
-      } catch (err) {
-        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
-      }
-    }
-  );
-
   server.tool(
     "end_qualification_call",
     "Señal de fin de llamada. Llamar siempre al final, después de end_and_close.",
