@@ -128,7 +128,7 @@ function createQualificationServer() {
 
 
   server.tool(
-    "end_qualification_call",
+    "save_qualification_call",
     "Guarda el resultado final de calificación. Llamar antes de end_call.",
     {
       conversation_id: z.string(),
