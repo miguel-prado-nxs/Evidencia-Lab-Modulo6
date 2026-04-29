@@ -66,7 +66,7 @@ function createQualificationServer() {
   const server = new McpServer({ name: "funnel-qualification", version: "1.0.0" });
 
   server.tool(
-    "save_qualification_result",
+    "save_qualification_data",
     "Guarda información de calificación con datos operacionales y de marketing. Llamar después de explorar cada área.",
     {
       conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
@@ -166,7 +166,7 @@ function createQualificationServer() {
   );
 
   server.tool(
-    "end_call",
+    "end_qualification_call",
     "Señal de fin de llamada. Llamar siempre al final, después de end_and_close.",
     {
       conversation_id: z.string().optional(),

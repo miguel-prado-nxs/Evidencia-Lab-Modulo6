@@ -125,47 +125,6 @@ function createActivationServer() {
   );
 
   server.tool(
-    "schedule_calendly_demo",
-    "Agenda la demo en Calendly incluyendo los scores BANT y FPDI.",
-    {
-      conversation_id: z.string(),
-      establishment_id: z.string(),
-      contact_name: z.string(),
-      email: z.string(),
-      start_time: z.string().describe("ISO 8601, ej: 2026-04-05T10:00:00-06:00"),
-      bant_scores: z.object({
-        need: z.number().int().optional(),
-        authority: z.number().int().optional(),
-        budget: z.number().int().optional(),
-        timeline: z.number().int().optional(),
-      }).optional(),
-      fpdi: z.object({
-        fear: z.string().optional(),
-        pain: z.string().optional(),
-        desire: z.string().optional(),
-        intent: z.string().optional(),
-      }).optional(),
-    },
-    async ({ conversation_id, establishment_id, contact_name, email, start_time, bant_scores, fpdi }) => {
-      try {
-        const result = await svc.scheduleCalendlyDemo({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
-          contactName: contact_name,
-          email,
-          startTime: start_time,
-          bantScores: bant_scores,
-          fpdi,
-        });
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
-      } catch (err) {
-        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
-      }
-    }
-  );
-
-
-  server.tool(
     "schedule_demo",
     "Agenda la demo en Calendly y envía confirmación al prospecto.",
     {
