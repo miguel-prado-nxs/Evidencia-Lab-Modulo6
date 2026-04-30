@@ -6,9 +6,47 @@ const axios = require('axios');
 const geoService = require("../services/geoService");
 const prisma = require("../config/database");
 
+const getReengagementCandidates = async (req, res, next) => {
+  try {
+    const {
+      sourceCampaignId,
+      outcomes,
+      lastCalledFrom,
+      lastCalledTo,
+      campaignTypes,
+      agentConfigId,
+      excludeActiveCampaigns,
+      excludeClients,
+      limit,
+    } = req.query;
+
+    const result = await campaignsService.getReengagementCandidates({
+      sourceCampaignId,
+      outcomes: outcomes ? outcomes.split(',').map(o => o.trim()) : undefined,
+      lastCalledFrom,
+      lastCalledTo,
+      campaignTypes: campaignTypes ? campaignTypes.split(',').map(t => t.trim()) : undefined,
+      agentConfigId,
+      excludeActiveCampaigns: excludeActiveCampaigns !== 'false',
+      excludeClients: excludeClients !== 'false',
+      limit: limit ? parseInt(limit) : undefined,
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const create = async (req, res, next) => {
   try {
-    const { name, description, type, centerLat, centerLng, radiusMeters, activityCodes, employeeRanges, filters, agentConfigId, agentConfigName, offer, couponPrefix, couponTemplateIds } = req.body;
+    const {
+      name, description, type, centerLat, centerLng, radiusMeters,
+      activityCodes, employeeRanges, filters, agentConfigId, agentConfigName,
+      offer, couponPrefix, couponTemplateIds,
+      // Reenganche
+      establishmentIds, sourceCampaignId,
+    } = req.body;
 
     const campaign = await campaignsService.createCampaign({
       name,
@@ -26,6 +64,8 @@ const create = async (req, res, next) => {
       couponPrefix,
       couponTemplateIds,
       createdBy: req.user?.id,
+      establishmentIds,
+      sourceCampaignId,
     });
 
     res.status(201).json({
@@ -692,6 +732,7 @@ module.exports = {
   getCampaignSendPreview,
   validateBeforeStart,
   getCouponBreakdown,
+  getReengagementCandidates,
   pause,
   cancel,
   resume,
