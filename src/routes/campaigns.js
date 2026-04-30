@@ -10,18 +10,21 @@ const createCampaignSchema = z.object({
   body: z.object({
     name: z.string().min(1, "Nombre de campaña requerido"),
     description: z.string().optional(),
-    type: z.enum(["DISCOVERY", "ACTIVATION", "QUALIFICATION", "CONVERSION"]).optional(), // Opcional, se calcula del agente
-    centerLat: z.number().optional(),
-    centerLng: z.number().optional(),
-    radiusMeters: z.number().int().positive().optional(),
+    type: z.enum(["DISCOVERY", "ACTIVATION", "QUALIFICATION", "CONVERSION"]).optional(),
+    centerLat: z.number().nullable().optional(),
+    centerLng: z.number().nullable().optional(),
+    radiusMeters: z.number().int().positive().nullable().optional(),
     activityCodes: z.array(z.string()).optional(),
     employeeRanges: z.array(z.string()).optional(),
     filters: z.record(z.any()).nullable().optional(),
-    agentConfigId: z.string().min(1, "Agente es requerido"), // Ahora obligatorio
+    agentConfigId: z.string().min(1, "Agente es requerido"),
     agentConfigName: z.string().optional(),
     offer: z.string().nullable().optional(),
     couponPrefix: z.string().nullable().optional(),
     couponTemplateIds: z.array(z.string()).optional(),
+    // Reenganche: lista pre-armada de IDs (omite filtro geo)
+    establishmentIds: z.array(z.string()).max(500, "Máximo 500 establecimientos por dispatch").optional(),
+    sourceCampaignId: z.string().optional(),
   }),
 });
 
@@ -90,6 +93,8 @@ router.post("/", validate(createCampaignSchema), campaignsController.create);
 router.get("/", campaignsController.list);
 router.get("/agents", campaignsController.getAgents);
 router.get('/eligible-count', campaignsController.getEligibleCount);
+// Ruta antes de /:id para evitar colisión de matching
+router.get('/reengagement-candidates', campaignsController.getReengagementCandidates);
 router.get("/:id", campaignsController.getById);
 router.patch("/:id", validate(updateCampaignSchema), campaignsController.update);
 router.delete("/:id", campaignsController.delete);

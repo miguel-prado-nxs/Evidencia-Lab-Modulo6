@@ -149,6 +149,140 @@ const STAGE_PREREQUISITES = {
 }
 
 
+const REENGAGEMENT_VALID_OUTCOMES = [
+  'NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER',
+  'OBJECTION_UNRESOLVED', 'DEMO_DECLINED', 'NOT_INTERESTED', 'DISQUALIFIED',
+];
+const REENGAGEMENT_VALID_CAMPAIGN_TYPES = ['DISCOVERY', 'QUALIFICATION', 'ACTIVATION', 'CONVERSION'];
+
+// Retorna establecimientos candidatos para una campaña de reenganche.
+// Filtra por outcome guardado en CampaignContact.establishmentData, rango de fechas,
+// tipo de campaña origen, y opcionalmente excluye contacts en campañas activas o clients.
+const getReengagementCandidates = async ({
+  sourceCampaignId,
+  outcomes = ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER'],
+  lastCalledFrom,
+  lastCalledTo,
+  campaignTypes = ['ACTIVATION', 'CONVERSION'],
+  agentConfigId,
+  excludeActiveCampaigns = true,
+  excludeClients = true,
+  limit = 500,
+} = {}) => {
+  const safeLimit = Math.min(Math.max(1, parseInt(limit) || 500), 1000);
+  // Validar contra whitelist para construir SQL inline de forma segura
+  const safeOutcomes = outcomes.filter(o => REENGAGEMENT_VALID_OUTCOMES.includes(o));
+  const safeTypes = campaignTypes.filter(t => REENGAGEMENT_VALID_CAMPAIGN_TYPES.includes(t));
+
+  if (safeOutcomes.length === 0) safeOutcomes.push('NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER');
+  if (safeTypes.length === 0) safeTypes.push('ACTIVATION', 'CONVERSION');
+
+  const fromDate = lastCalledFrom ? new Date(lastCalledFrom) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const toDate = lastCalledTo ? new Date(lastCalledTo) : new Date();
+
+  // Literales SQL seguros (validados contra whitelist, no input directo de usuario)
+  const outcomesLiteral = safeOutcomes.map(o => `'${o}'`).join(',');
+  const typesLiteral = safeTypes.map(t => `'${t}'`).join(',');
+
+  const queryParams = [fromDate, toDate, safeLimit];
+  let paramIdx = 3;
+
+  let whereClauses = `
+    cc.establishment_data->>'outcome' IN (${outcomesLiteral})
+    AND c.status = 'COMPLETED'
+    AND c.type::text IN (${typesLiteral})
+    AND cc.updated_at >= $1
+    AND cc.updated_at <= $2
+  `;
+
+  if (sourceCampaignId) {
+    queryParams.push(sourceCampaignId);
+    whereClauses += ` AND cc.campaign_id = $${++paramIdx}`;
+  }
+
+  if (agentConfigId) {
+    queryParams.push(agentConfigId);
+    whereClauses += ` AND c.agent_config_id = $${++paramIdx}`;
+  }
+
+  if (excludeClients) {
+    whereClauses += ` AND (ee.level IS NULL OR ee.level::text != 'CLIENT')`;
+  }
+
+  const activeExcludeSubquery = excludeActiveCampaigns
+    ? `AND cc.establishment_id NOT IN (
+        SELECT DISTINCT cc2.establishment_id
+        FROM campaign_contacts cc2
+        JOIN campaigns c2 ON c2.id = cc2.campaign_id
+        WHERE c2.status::text IN ('ACTIVE', 'SCHEDULED')
+      )`
+    : '';
+
+  // Siempre excluir contactos que ya convirtieron (CLOSED_WON) en cualquier campaña pasada,
+  // como barrera adicional cuando level=CLIENT aún no se ha persistido en enrichment
+  const closedWonExcludeSubquery = `
+    AND cc.establishment_id NOT IN (
+      SELECT DISTINCT cc3.establishment_id
+      FROM campaign_contacts cc3
+      WHERE cc3.establishment_data->>'outcome' = 'CLOSED_WON'
+    )
+  `;
+
+  // DISTINCT ON mantiene la llamada más reciente por establishment_id
+  const query = `
+    SELECT DISTINCT ON (cc.establishment_id)
+      cc.establishment_id AS "establishmentId",
+      cc.establishment_name AS "establishmentName",
+      cc.establishment_phone AS "establishmentPhone",
+      cc.establishment_data->>'outcome' AS outcome,
+      cc.updated_at AS "lastCalledAt",
+      c.id AS "sourceCampaignId",
+      c.name AS "sourceCampaignName",
+      ee.level
+    FROM campaign_contacts cc
+    JOIN campaigns c ON c.id = cc.campaign_id
+    LEFT JOIN establishment_enrichments ee ON ee.establishment_id = cc.establishment_id
+    WHERE ${whereClauses}
+    ${activeExcludeSubquery}
+    ${closedWonExcludeSubquery}
+    ORDER BY cc.establishment_id, cc.updated_at DESC
+    LIMIT $3
+  `;
+
+  const candidates = await prisma.$queryRawUnsafe(query, ...queryParams);
+
+  const byOutcome = {};
+  const byLevel = {};
+  for (const c of candidates) {
+    byOutcome[c.outcome] = (byOutcome[c.outcome] || 0) + 1;
+    const lvl = c.level || 'UNKNOWN';
+    byLevel[lvl] = (byLevel[lvl] || 0) + 1;
+  }
+
+  logger.info('[campaignsService:getReengagementCandidates] Query completed', {
+    total: candidates.length,
+    sourceCampaignId: sourceCampaignId || null,
+    appliedFilters: { safeOutcomes, safeTypes, excludeActiveCampaigns, excludeClients },
+  });
+
+  return {
+    candidates,
+    total: candidates.length,
+    breakdown: { byOutcome, byLevel },
+    appliedFilters: {
+      outcomes: safeOutcomes,
+      lastCalledFrom: fromDate.toISOString(),
+      lastCalledTo: toDate.toISOString(),
+      campaignTypes: safeTypes,
+      agentConfigId: agentConfigId || null,
+      excludeActiveCampaigns,
+      excludeClients,
+      sourceCampaignId: sourceCampaignId || null,
+      limit: safeLimit,
+    },
+  };
+};
+
 const createCampaign = async (data) => {
   const {
     name,
@@ -166,6 +300,9 @@ const createCampaign = async (data) => {
     couponPrefix,
     couponTemplateIds,
     createdBy,
+    // Reenganche: lista pre-armada de IDs, omite filtro geo
+    establishmentIds,
+    sourceCampaignId,
   } = data;
 
   if (!name) {
@@ -203,13 +340,25 @@ const createCampaign = async (data) => {
     );
   }
 
-  if (centerLat && centerLng && !radiusMeters) {
-    throw new Error("radiusMeters is required when centerLat and centerLng are provided");
+  const isReengagement = Array.isArray(establishmentIds) && establishmentIds.length > 0;
+
+  if (isReengagement && establishmentIds.length > 500) {
+    throw new Error("El máximo de establecimientos para una campaña de reenganche es 500");
   }
 
-  if (radiusMeters && radiusMeters < 0) {
-    throw new Error("radiusMeters must be a positive number");
+  if (!isReengagement) {
+    if (centerLat && centerLng && !radiusMeters) {
+      throw new Error("radiusMeters is required when centerLat and centerLng are provided");
+    }
+    if (radiusMeters && radiusMeters < 0) {
+      throw new Error("radiusMeters must be a positive number");
+    }
   }
+
+  // Guardar metadata de reenganche en el campo filters para trazabilidad
+  const campaignFilters = isReengagement
+    ? { ...filters, _reengagement: { sourceCampaignId: sourceCampaignId || null, totalPreloaded: establishmentIds.length } }
+    : filters;
 
   const campaign = await prisma.campaign.create({
     data: {
@@ -217,12 +366,12 @@ const createCampaign = async (data) => {
       description,
       type: campaignType,
       status: "DRAFT",
-      centerLat,
-      centerLng,
-      radiusMeters,
+      centerLat: isReengagement ? null : centerLat,
+      centerLng: isReengagement ? null : centerLng,
+      radiusMeters: isReengagement ? null : radiusMeters,
       activityCodes: activityCodes || [],
       employeeRanges: employeeRanges || [],
-      filters,
+      filters: campaignFilters,
       agentConfigId,
       agentConfigName,
       offer: offer || null,
@@ -233,7 +382,14 @@ const createCampaign = async (data) => {
     },
   });
 
-  if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
+  if (isReengagement) {
+    await assignContactsToCampaign(campaign.id, establishmentIds);
+    logger.info('[campaignsService:createCampaign] Reengancement campaign created with preloaded contacts', {
+      campaignId: campaign.id,
+      sourceCampaignId: sourceCampaignId || null,
+      establishmentCount: establishmentIds.length,
+    });
+  } else if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
     await assignContactsWithGeoFilter(campaign.id, {
       ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
       activityCodes: campaign.activityCodes || [],
@@ -932,8 +1088,9 @@ const startCampaign = async (campaignId, options = {}) => {
       || contactData.couponType
       || null;
 
+    // Intentar match por tipo (ej. "COMEBACK") o por ID del template (UUID que guarda couponPrefix)
     const resolvedCouponType =
-      eligibleTemplates.find(t => t.type === campaignPrincipal)?.type
+      eligibleTemplates.find(t => t.type === campaignPrincipal || t.id === campaignPrincipal)?.type
       || eligibleTemplates[0]?.type
       || null;
 
@@ -1888,5 +2045,6 @@ module.exports = {
   retryCampaignContacts,
   getCampaignTypeFromAgent,
   getValidCampaignAgentIds,
+  getReengagementCandidates,
   STAGE_PREREQUISITES,
 };
