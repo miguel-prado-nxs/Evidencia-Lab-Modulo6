@@ -598,23 +598,29 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
     throw new Error("establishmentIds must be a non-empty array");
   }
 
-  const uniqueEstablishmentIds = [...new Set(establishmentIds.filter(Boolean))];
-  console.log(`[assignContactsToCampaign] Unique establishment IDs received: ${uniqueEstablishmentIds.length}`);
+  const rawUniqueIds = [...new Set(establishmentIds.filter(Boolean))];
+  console.log(`[assignContactsToCampaign] Unique establishment IDs received: ${rawUniqueIds.length}`);
 
   const campaignType = getCampaignTypeFromAgent(campaign.agentConfigId);
   const prerequisite = STAGE_PREREQUISITES[campaignType];
 
+  // Filtrar por prerequisito de etapa ANTES de derivar los IDs finales
+  let filteredIds = rawUniqueIds;
   if (prerequisite) {
     const eligible = await prisma.establishmentEnrichment.findMany({
       where: {
-        establishmentId: { in: establishmentIds },
-        enrichmentStatus: prerequisite
+        establishmentId: { in: rawUniqueIds },
+        enrichmentStatus: prerequisite,
       },
-      select: { establishmentId: true }
+      select: { establishmentId: true },
     });
-    const eligibleIds = new Set(eligible.map(e => e.establishmentId));
-    establishmentIds = establishmentIds.filter(id => eligibleIds.has(id));
+    const eligibleSet = new Set(eligible.map(e => e.establishmentId));
+    filteredIds = rawUniqueIds.filter(id => eligibleSet.has(id));
+    console.log(`[assignContactsToCampaign] After prerequisite filter (${prerequisite}): ${filteredIds.length} eligible`);
   }
+
+  // uniqueEstablishmentIds ya refleja el filtro de prerequisito
+  const uniqueEstablishmentIds = filteredIds;
 
   let establishments = [];
 
