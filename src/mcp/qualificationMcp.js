@@ -172,7 +172,7 @@ function createQualificationServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "Voicemail detected and logged. Now call voicemail_detection system tool to end the call.",
+              message: "VOICEMAIL DETECTED. CALL end_qualification_call IMMEDIATELY with outcome='VOICEMAIL'. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]

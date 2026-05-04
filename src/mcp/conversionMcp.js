@@ -206,7 +206,7 @@ function createConversionServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "Voicemail detected and logged. Now call voicemail_detection system tool to end the call.",
+              message: "VOICEMAIL DETECTED. CALL end_conversion_call IMMEDIATELY with outcome='VOICEMAIL'. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
