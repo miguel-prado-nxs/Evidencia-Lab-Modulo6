@@ -252,6 +252,70 @@ async function handleCallCompleted(req, res) {
 }
 
 /**
+ * POST /api/v1/webhooks/elevenlabs/voicemail-detected
+ *
+ * Recibe notificación INMEDIATA cuando el MCP detecta voicemail.
+ * Se dispara en segundos, no espera a que termine la llamada.
+ *
+ * Payload:
+ * {
+ *   establishment_id: string,
+ *   conversation_id: string,
+ *   status: "voicemail",
+ *   detection_reason: string,
+ *   timestamp: ISO8601
+ * }
+ */
+async function handleVoicemailDetected(req, res) {
+  try {
+    const body = req.body;
+    const establishmentId = body.establishment_id || body.establishmentId;
+    const conversationId = body.conversation_id || body.conversationId;
+    const detectionReason = body.detection_reason || body.detectionReason;
+
+    logger.info("[Voicemail Webhook] Voicemail detectado", {
+      establishmentId,
+      conversationId,
+      reason: detectionReason,
+    });
+
+    if (!establishmentId) {
+      return res.status(400).json({ error: "Missing establishment_id" });
+    }
+
+    // Actualizar enrichment inmediatamente
+    const enrichment = await prisma.establishmentEnrichment.findUnique({
+      where: { establishmentId },
+    });
+
+    if (enrichment) {
+      await prisma.establishmentEnrichment.update({
+        where: { establishmentId },
+        data: {
+          callStatus: "voicemail",
+          enrichmentStatus: "discovery_completed",
+          callSummary: detectionReason || "Voicemail detectado automáticamente",
+          updatedAt: new Date(),
+        },
+      });
+
+      logger.info("[Voicemail Webhook] Enrichment actualizado", {
+        establishmentId,
+        status: "voicemail",
+      });
+    }
+
+    return res.status(200).json({ received: true, status: "voicemail" });
+  } catch (error) {
+    logger.error("[Voicemail Webhook] Error:", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res.status(200).json({ received: true, error: error.message });
+  }
+}
+
+/**
  * GET /api/v1/webhooks/elevenlabs/health
  * Health check del endpoint de webhooks
  */
@@ -261,6 +325,7 @@ async function webhookHealth(req, res) {
     service: "elevenlabs-webhooks",
     endpoints: [
       "POST /api/v1/webhooks/elevenlabs/call-completed",
+      "POST /api/v1/webhooks/elevenlabs/voicemail-detected",
     ],
     timestamp: new Date().toISOString(),
   });
@@ -268,5 +333,6 @@ async function webhookHealth(req, res) {
 
 module.exports = {
   handleCallCompleted,
+  handleVoicemailDetected,
   webhookHealth,
 };

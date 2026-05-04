@@ -13,6 +13,9 @@ const elevenLabsWebhookController = require("../controllers/elevenLabsWebhookCon
 // ElevenLabs call completion webhook
 router.post("/elevenlabs/call-completed", elevenLabsWebhookController.handleCallCompleted);
 
+// Voicemail detection webhook (llamado inmediatamente por el MCP al detectar voicemail)
+router.post("/elevenlabs/voicemail-detected", elevenLabsWebhookController.handleVoicemailDetected);
+
 // Health check
 router.get("/elevenlabs/health", elevenLabsWebhookController.webhookHealth);
 

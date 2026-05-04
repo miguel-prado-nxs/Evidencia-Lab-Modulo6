@@ -1,6 +1,8 @@
 const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
 const { z } = require("zod");
 const svc = require("../services/funnelWebhookService");
+const logger = require("../config/logger");
+const config = require("../config/env");
 
 // Normaliza enums: acepta valores en español y los mapea a inglés
 const normalizeEnum = (value, enumType) => {
@@ -180,6 +182,25 @@ function createConversionServer() {
           detectedAt: new Date().toISOString(),
         });
 
+        // NUEVO: Notificar al backend INMEDIATAMENTE por webhook
+        const webhookUrl = `${config.server.apiBaseUrl || 'http://localhost:3004'}/api/v1/webhooks/elevenlabs/voicemail-detected`;
+        fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            establishment_id,
+            conversation_id,
+            status: "voicemail",
+            detection_reason,
+            timestamp: new Date().toISOString(),
+          })
+        }).catch(err => {
+          logger.error("[mark_voicemail_detected Webhook] Error notificando backend:", {
+            url: webhookUrl,
+            error: err.message
+          });
+        });
+
         return {
           content: [{
             type: "text",
@@ -191,7 +212,7 @@ function createConversionServer() {
           }]
         };
       } catch (err) {
-        console.error('[mark_voicemail_detected ERROR]', err);
+        logger.error('[mark_voicemail_detected ERROR]', err);
         return {
           content: [{
             type: "text",
