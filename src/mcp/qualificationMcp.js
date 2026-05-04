@@ -127,6 +127,39 @@ function createQualificationServer() {
   );
 
   server.tool(
+    "analyze_voicemail_context",
+    "Analiza el transcript actual para detectar si estoy hablando con un buzón de voz que la detección automática no capturó",
+    {
+      conversation_id: z.string(),
+      recent_transcript: z.string().describe("Últimos 30 segundos de transcript"),
+    },
+    async ({ conversation_id, recent_transcript }) => {
+      // Tu lógica: buscar patterns en español mexicano
+      const isVoicemail = /grave su mensaje|marque la tecla|marque \d|después del tono|no se encuentra disponible/i.test(recent_transcript);
+
+      if (isVoicemail) {
+        // Loggear en tu DB que cayó en buzón no detectado
+        await svc.logVoicemailMissedDetection({ conversationId: conversation_id });
+
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              is_voicemail: true,
+              action: "end_call_immediately",
+              reason: "detected_via_mcp_fallback"
+            })
+          }]
+        };
+      }
+
+      return {
+        content: [{ type: "text", text: JSON.stringify({ is_voicemail: false }) }]
+      };
+    }
+  );
+
+  server.tool(
     "end_qualification_call",
     "Señal de fin de llamada. Llamar siempre al final, después de end_and_close.",
     {
