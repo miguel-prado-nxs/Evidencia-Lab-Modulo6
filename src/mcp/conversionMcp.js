@@ -161,35 +161,49 @@ function createConversionServer() {
   );
 
   server.tool(
-    "analyze_voicemail_context",
-    "Analiza el transcript actual para detectar si estoy hablando con un buzón de voz que la detección automática no capturó",
+    "mark_voicemail_detected",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, debes llamar inmediatamente a la system tool voicemail_detection para terminar la llamada.",
     {
       conversation_id: z.string(),
-      recent_transcript: z.string().describe("Últimos 30 segundos de transcript"),
+      establishment_id: z.string(),
+      detection_reason: z.string().describe("Por qué detectaste el buzón (ej: 'escuché: grave su mensaje después del tono')"),
+      transcript_snippet: z.string().optional().describe("Fragmento del audio que confirmó que es buzón"),
     },
-    async ({ conversation_id, recent_transcript }) => {
-      // Tu lógica: buscar patterns en español mexicano
-      const isVoicemail = /grave su mensaje|marque la tecla|marque \d|después del tono|no se encuentra disponible/i.test(recent_transcript);
-
-      if (isVoicemail) {
-        // Loggear en tu DB que cayó en buzón no detectado
-        await svc.logVoicemailMissedDetection({ conversationId: conversation_id });
+    async ({ conversation_id, establishment_id, detection_reason, transcript_snippet }) => {
+      try {
+        // Registrar en tu DB que cayó en voicemail
+        const result = await svc.markVoicemail({
+          conversationId: conversation_id,
+          establishmentId: establishment_id,
+          detectionReason: detection_reason,
+          transcriptSnippet: transcript_snippet,
+          detectedAt: new Date().toISOString(),
+        });
 
         return {
           content: [{
             type: "text",
             text: JSON.stringify({
-              is_voicemail: true,
-              action: "end_call_immediately",
-              reason: "detected_via_mcp_fallback"
+              success: true,
+              message: "Voicemail detected and logged. Now call voicemail_detection system tool to end the call.",
+              ...result
             })
           }]
         };
+      } catch (err) {
+        console.error('[mark_voicemail_detected ERROR]', err);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              success: false,
+              error: err.message,
+              fallback: "Call voicemail_detection system tool immediately to end call"
+            })
+          }],
+          isError: true
+        };
       }
-
-      return {
-        content: [{ type: "text", text: JSON.stringify({ is_voicemail: false }) }]
-      };
     }
   );
 
