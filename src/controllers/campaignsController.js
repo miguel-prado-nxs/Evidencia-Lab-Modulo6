@@ -1,10 +1,99 @@
 const campaignsService = require("../services/campaignsService");
 const campaignCouponValidationService = require("../services/campaignCouponValidationService");
-const { STAGE_PREREQUISITES } = require("../services/campaignsService");
+const {
+  STAGE_PREREQUISITES,
+  PRIOR_STAGE_DISPLAY,
+  classifyEstablishmentsByStage,
+} = require("../services/campaignsService");
 const logger = require("../config/logger");
 const axios = require('axios');
 const geoService = require("../services/geoService");
 const prisma = require("../config/database");
+
+// Construye un texto user-facing claro y específico por caso
+// para el endpoint de elegibilidad. Devuelve null si todos son elegibles.
+const buildEligibilityMessage = ({
+  campaignType,
+  totalInZone,
+  total,
+  eligibleCount,
+  excludedNoPrereq,
+  excludedAdvanced,
+}) => {
+  const priorStageName = PRIOR_STAGE_DISPLAY[campaignType];
+  const typeName = campaignType
+    ? campaignType.charAt(0) + campaignType.slice(1).toLowerCase()
+    : 'campaña';
+
+  if (totalInZone === 0) {
+    return {
+      tone: 'error',
+      headline: 'Sin restaurantes en la zona',
+      detail: 'No se encontraron restaurantes dentro del radio seleccionado. Amplía el radio o mueve el centro del mapa.',
+    };
+  }
+
+  if (total === 0) {
+    return {
+      tone: 'error',
+      headline: 'Sin coincidencias con los filtros',
+      detail: `Hay ${totalInZone} restaurantes en la zona, pero ninguno coincide con los tipos de actividad o rangos de empleados elegidos.`,
+    };
+  }
+
+  if (eligibleCount === 0) {
+    if (campaignType === 'DISCOVERY') {
+      return {
+        tone: 'error',
+        headline: 'Todos en etapas posteriores',
+        detail: `Los ${total} restaurantes de esta zona ya pasaron por Discovery. Para no sobrescribir su progreso del funnel, no se pueden incluir en una campaña de Discovery.`,
+      };
+    }
+    if (excludedAdvanced > 0 && excludedNoPrereq === 0) {
+      return {
+        tone: 'error',
+        headline: `Todos están más avanzados que ${typeName}`,
+        detail: `Los ${total} restaurantes ya están en una etapa igual o posterior. No se incluyen para no sobrescribir su estado del funnel.`,
+      };
+    }
+    if (excludedNoPrereq > 0 && excludedAdvanced === 0) {
+      return {
+        tone: 'error',
+        headline: `Falta completar ${priorStageName}`,
+        detail: `Ninguno de los ${total} restaurantes ha completado ${priorStageName}. Ejecuta primero una campaña de ${priorStageName} en esta zona.`,
+      };
+    }
+    return {
+      tone: 'error',
+      headline: `Sin restaurantes elegibles para ${typeName}`,
+      detail: `Ninguno cumple la etapa exacta requerida (${priorStageName} completado). ${excludedNoPrereq} aún no llegan a esa etapa y ${excludedAdvanced} ya están más avanzados.`,
+    };
+  }
+
+  // Hay elegibles pero también excluidos: explicar exactamente qué pasa con los excluidos.
+  const excludedTotal = excludedNoPrereq + excludedAdvanced;
+  if (excludedTotal === 0) return null;
+
+  if (excludedNoPrereq > 0 && excludedAdvanced > 0) {
+    return {
+      tone: 'warning',
+      headline: `${eligibleCount} de ${total} elegibles`,
+      detail: `${excludedNoPrereq} restaurante(s) aún no completan ${priorStageName} y ${excludedAdvanced} ya están en una etapa posterior (se omiten para no sobrescribir su progreso).`,
+    };
+  }
+  if (excludedNoPrereq > 0) {
+    return {
+      tone: 'warning',
+      headline: `${eligibleCount} de ${total} elegibles`,
+      detail: `${excludedNoPrereq} restaurante(s) aún no completan ${priorStageName} y se omiten del batch.`,
+    };
+  }
+  return {
+    tone: 'warning',
+    headline: `${eligibleCount} de ${total} elegibles`,
+    detail: `${excludedAdvanced} restaurante(s) ya están en una etapa igual o posterior a ${typeName} y se omiten para no sobrescribir su progreso del funnel.`,
+  };
+};
 
 const getReengagementCandidates = async (req, res, next) => {
   try {
@@ -343,31 +432,19 @@ const getEligibleCount = async (req, res) => {
     const total = establishments.length;
     const establishmentIds = establishments.map(e => e.id);
 
-    // si no hay prerequisitos, todos los filtrados son elegibles
-    if (!prerequisite) {
-      return res.json({
-        totalInZone,
-        total,
-        eligible: total,
-        campaignType,
-        prerequisite: null,
-        ineligibleReason: null,
-      });
-    }
+    // Clasificación unificada por rango: misma lógica que la asignación real al crear campaña
+    const { eligibleIds, excludedNoPrereq, excludedAdvanced } =
+      await classifyEstablishmentsByStage(establishmentIds, campaignType);
+    const eligibleCount = eligibleIds.length;
 
-    // Filtrar por prerequisito
-    const eligible = await prisma.establishmentEnrichment.findMany({
-      where: {
-        establishmentId: { in: establishmentIds },
-        enrichmentStatus: prerequisite,
-      },
-      select: { establishmentId: true },
+    const message = buildEligibilityMessage({
+      campaignType,
+      totalInZone,
+      total,
+      eligibleCount,
+      excludedNoPrereq,
+      excludedAdvanced,
     });
-
-    const eligibleCount = eligible.length;
-    const ineligibleReason = eligibleCount === 0
-      ? `No han completado ${campaignType === 'QUALIFICATION' ? 'Discovery' : campaignType === 'ACTIVATION' ? 'Qualification' : 'Activation'}`
-      : null;
 
     logger.info("[getEligibleCount] Debug info", {
       campaignType,
@@ -375,16 +452,22 @@ const getEligibleCount = async (req, res) => {
       totalInZone,
       totalWithFilters: total,
       eligibleCount,
-      eligibleIds: eligible.map(e => e.establishmentId).slice(0, 5),
+      excludedNoPrereq,
+      excludedAdvanced,
     });
 
     res.json({
       totalInZone,
       total,
       eligible: eligibleCount,
+      excludedNoPrereq,
+      excludedAdvanced,
       campaignType,
       prerequisite,
-      ineligibleReason,
+      priorStageName: PRIOR_STAGE_DISPLAY[campaignType] || null,
+      // Compat retro: ineligibleReason (string corto). El nuevo `message` tiene headline+detail+tone.
+      ineligibleReason: message && message.tone === 'error' ? message.detail : null,
+      message,
     });
 
   } catch (error) {

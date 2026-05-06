@@ -141,11 +141,85 @@ const normalizeScheduledTimeUnix = (scheduledTimeUnix) => {
   return parsed;
 };
 
+// Etapas lineales del funnel. Sin registro / sin status del funnel = rank 0.
+const FUNNEL_STATUSES = [
+  'discovery_completed',
+  'qualification_completed',
+  'activation_completed',
+  'conversion_completed',
+];
+
+const STAGE_RANK = {
+  discovery_completed: 1,
+  qualification_completed: 2,
+  activation_completed: 3,
+  conversion_completed: 4,
+};
+
+const CAMPAIGN_RANK = {
+  DISCOVERY: 1,
+  QUALIFICATION: 2,
+  ACTIVATION: 3,
+  CONVERSION: 4,
+};
+
+// Compatibilidad con consumidores actuales: status exacto inmediatamente anterior.
 const STAGE_PREREQUISITES = {
   DISCOVERY: null,
   QUALIFICATION: 'discovery_completed',
   ACTIVATION: 'qualification_completed',
   CONVERSION: 'activation_completed',
+};
+
+const PRIOR_STAGE_DISPLAY = {
+  DISCOVERY: null,
+  QUALIFICATION: 'Discovery',
+  ACTIVATION: 'Qualification',
+  CONVERSION: 'Activation',
+};
+
+function getStageRank(enrichmentStatus) {
+  if (!enrichmentStatus) return 0;
+  return STAGE_RANK[enrichmentStatus] ?? 0;
+}
+
+// Clasifica establishments según el funnel para una campaña de tipo X:
+// - eligibleIds: rank == campaignRank - 1 (etapa inmediatamente anterior)
+// - excludedNoPrereq: rank < campaignRank - 1 (aun no llegan a la etapa requerida)
+// - excludedAdvanced: rank >= campaignRank (igual o posterior a la etapa objetivo;
+//   no deben recibir la campaña para no sobrescribir su progreso)
+async function classifyEstablishmentsByStage(establishmentIds, campaignType) {
+  const ids = [...new Set((establishmentIds || []).filter(Boolean))];
+  const campaignRank = CAMPAIGN_RANK[campaignType];
+  if (!campaignRank || ids.length === 0) {
+    return { eligibleIds: ids, excludedNoPrereq: 0, excludedAdvanced: 0 };
+  }
+  const requiredPriorRank = campaignRank - 1;
+
+  // Solo nos interesan los que tienen un status del funnel; el resto es rank 0.
+  const records = await prisma.establishmentEnrichment.findMany({
+    where: {
+      establishmentId: { in: ids },
+      enrichmentStatus: { in: FUNNEL_STATUSES },
+    },
+    select: { establishmentId: true, enrichmentStatus: true },
+  });
+  const rankById = new Map(
+    records.map(r => [r.establishmentId, getStageRank(r.enrichmentStatus)])
+  );
+
+  const eligibleIds = [];
+  let excludedNoPrereq = 0;
+  let excludedAdvanced = 0;
+
+  for (const id of ids) {
+    const rank = rankById.get(id) ?? 0;
+    if (rank === requiredPriorRank) eligibleIds.push(id);
+    else if (rank < requiredPriorRank) excludedNoPrereq++;
+    else excludedAdvanced++;
+  }
+
+  return { eligibleIds, excludedNoPrereq, excludedAdvanced };
 }
 
 
@@ -602,25 +676,19 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
   console.log(`[assignContactsToCampaign] Unique establishment IDs received: ${rawUniqueIds.length}`);
 
   const campaignType = getCampaignTypeFromAgent(campaign.agentConfigId);
-  const prerequisite = STAGE_PREREQUISITES[campaignType];
 
-  // Filtrar por prerequisito de etapa ANTES de derivar los IDs finales
-  let filteredIds = rawUniqueIds;
-  if (prerequisite) {
-    const eligible = await prisma.establishmentEnrichment.findMany({
-      where: {
-        establishmentId: { in: rawUniqueIds },
-        enrichmentStatus: prerequisite,
-      },
-      select: { establishmentId: true },
-    });
-    const eligibleSet = new Set(eligible.map(e => e.establishmentId));
-    filteredIds = rawUniqueIds.filter(id => eligibleSet.has(id));
-    console.log(`[assignContactsToCampaign] After prerequisite filter (${prerequisite}): ${filteredIds.length} eligible`);
-  }
+  // Clasifica por rango de funnel: solo entran los que están en la etapa inmediatamente anterior.
+  // Excluye tanto los que aún no llegan al prerequisito como los que ya están en una etapa
+  // igual o posterior (evita sobrescritura de progreso al ejecutar campañas de etapas anteriores).
+  const { eligibleIds, excludedNoPrereq, excludedAdvanced } =
+    await classifyEstablishmentsByStage(rawUniqueIds, campaignType);
 
-  // uniqueEstablishmentIds ya refleja el filtro de prerequisito
-  const uniqueEstablishmentIds = filteredIds;
+  console.log(
+    `[assignContactsToCampaign] type=${campaignType} total=${rawUniqueIds.length} ` +
+    `eligible=${eligibleIds.length} excludedNoPrereq=${excludedNoPrereq} excludedAdvanced=${excludedAdvanced}`
+  );
+
+  const uniqueEstablishmentIds = eligibleIds;
 
   let establishments = [];
 
@@ -2023,5 +2091,9 @@ module.exports = {
   getCampaignTypeFromAgent,
   getValidCampaignAgentIds,
   getReengagementCandidates,
+  classifyEstablishmentsByStage,
   STAGE_PREREQUISITES,
+  PRIOR_STAGE_DISPLAY,
+  CAMPAIGN_RANK,
+  STAGE_RANK,
 };
