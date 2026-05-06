@@ -235,7 +235,7 @@ function createConversionServer() {
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
-      outcome: z.enum(["CLOSED_WON", "READY", "NEEDS_TIME", "NEEDS_VALIDATION", "NOT_NOW", "LOST", "FOLLOW_UP_LATER"]),
+      outcome: z.enum(["CLOSED_WON", "FOLLOW_UP_LATER", "NEEDS_VALIDATION", "NOT_INTERESTED", "LOST", "NO_ANSWER", "VOICEMAIL"]),
       plan_closed: z.string().optional().describe("Plan cerrado (si CLOSED_WON)"),
       monthly_revenue: z.number().optional().describe("Ingreso mensual acordado en MXN"),
       call_summary: z.string().describe("Resumen del cierre"),
@@ -244,13 +244,10 @@ function createConversionServer() {
     },
     async ({ conversation_id, establishment_id, outcome, plan_closed, monthly_revenue, call_summary, decision_timeline, next_steps }) => {
       try {
-        // Mapear FOLLOW_UP_LATER a NEEDS_TIME
-        const mappedOutcome = outcome === "FOLLOW_UP_LATER" ? "NEEDS_TIME" : outcome;
-
         const result = await svc.endConversionCall({
           conversationId: conversation_id,
           establishmentId: establishment_id,
-          outcome: mappedOutcome,
+          outcome: outcome,
           planClosed: plan_closed,
           monthlyRevenue: monthly_revenue,
           callSummary: call_summary,

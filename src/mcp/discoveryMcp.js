@@ -126,7 +126,7 @@ function createDiscoveryServer() {
     {
       conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
-      outcome: z.enum(["INTERESTED", "ADVANCE_TO_ACTIVATION", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("RESULTADO DE LA LLAMADA: INTERESTED (mostró interés), FOLLOW_UP_LATER (llamar después), NOT_INTERESTED (no interesado), WRONG_NUMBER (número incorrecto), NO_ANSWER (sin respuesta), VOICEMAIL (buzón de voz)"),
+      outcome: z.enum(["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("RESULTADO DE LA LLAMADA: INTERESTED (mostró interés), FOLLOW_UP_LATER (llamar después), NOT_INTERESTED (no interesado), WRONG_NUMBER (número incorrecto), NO_ANSWER (sin respuesta), VOICEMAIL (buzón de voz)"),
       contact_name: z.string().optional().describe("Nombre del contacto o decision maker"),
       business_type: z.string().optional().describe("Tipo de negocio (ej: restaurante, panadería, cafetería)"),
       pain_point: z.string().optional().describe("Problema principal identificado en la conversación"),

@@ -196,14 +196,16 @@ function createQualificationServer() {
 
   server.tool(
     "end_qualification_call",
-    "Señal de fin de llamada. Llamar siempre al final, después de end_and_close.",
+    "Guarda el resultado final de la conversación de Qualification y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().optional(),
-      establishment_id: z.string().optional(),
+      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      outcome: z.enum(["QUALIFIED", "NOT_QUALIFIED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "NO_ANSWER", "VOICEMAIL"]).describe("Outcome: QUALIFIED, NOT_QUALIFIED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
+      call_summary: z.string().describe("Resumen breve de la conversación"),
     },
-    async ({ conversation_id, establishment_id }) => {
+    async ({ conversation_id, establishment_id, outcome, call_summary }) => {
       try {
-        const result = await svc.endCall({ conversationId: conversation_id, establishmentId: establishment_id });
+        const result = await svc.endCall({ conversationId: conversation_id, establishmentId: establishment_id, outcome, callSummary: call_summary });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };

@@ -263,10 +263,11 @@ function createActivationServer() {
       outcome: z.enum([
         "ACTIVATED",
         "DEMO_SCHEDULED",
-        "DEMO_DECLINED",
         "FOLLOW_UP_LATER",
         "NOT_INTERESTED",
-      ]).describe("Outcome PLG: ACTIVATED (cuenta creada y pasa a LEAD), DEMO_SCHEDULED, DEMO_DECLINED, FOLLOW_UP_LATER, NOT_INTERESTED"),
+        "NO_ANSWER",
+        "VOICEMAIL",
+      ]).describe("Outcome PLG: ACTIVATED (cuenta creada y pasa a LEAD), DEMO_SCHEDULED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
       demo_date: z.string().optional().describe("Fecha agendada si aplica (ISO 8601)"),
       call_summary: z.string().describe("Resumen breve"),
     },
