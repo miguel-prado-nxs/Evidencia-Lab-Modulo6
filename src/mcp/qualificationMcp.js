@@ -205,7 +205,7 @@ function createQualificationServer() {
     },
     async ({ conversation_id, establishment_id, outcome, call_summary }) => {
       try {
-        const result = await svc.endCall({ conversationId: conversation_id, establishmentId: establishment_id, outcome, callSummary: call_summary });
+        const result = await svc.endQualificationCall({ conversationId: conversation_id, establishmentId: establishment_id, outcome, callSummary: call_summary });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };

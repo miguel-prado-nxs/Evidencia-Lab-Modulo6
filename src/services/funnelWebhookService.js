@@ -636,13 +636,14 @@ async function endActivationCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // Outcomes conversacionales que marcan activation_completed (PLG + legacy)
+  // Outcomes conversacionales que marcan activation_completed
   const CONVERSATIONAL_OUTCOMES = [
     "ACTIVATED",
     "DEMO_SCHEDULED",
-    "DEMO_DECLINED",
     "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
+    "NO_ANSWER",
+    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -1104,25 +1105,22 @@ async function handleNegativeResponse({
   return { success: true };
 }
 
-async function endAndClose({
+async function endQualificationCall({
   conversationId,
   establishmentId,
   outcome,
-  qualificationScore,
-  couponSent,
   callSummary,
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // Outcomes conversacionales que marcan qualification_completed (PLG + legacy)
+  // Outcomes conversacionales que marcan qualification_completed
   const CONVERSATIONAL_OUTCOMES = [
     "QUALIFIED",
     "NOT_QUALIFIED",
     "FOLLOW_UP_LATER",
-    "DEMO_SCHEDULED",
-    "FOLLOW_UP",
-    "DISQUALIFIED",
     "NOT_INTERESTED",
+    "NO_ANSWER",
+    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -1134,11 +1132,10 @@ async function endAndClose({
     callSummary: truncatedSummary,
   };
 
-  // Subir enrichmentStatus a qualification_completed si hubo conversacion.
-  // level=PROSPECT solo para outcomes que realmente califican al prospecto.
+  // Subir enrichmentStatus a qualification_completed si hubo conversacion
   if (isConversational) {
     updateData.enrichmentStatus = "qualification_completed";
-    const advancesToProspect = ["QUALIFIED", "DEMO_SCHEDULED", "FOLLOW_UP_LATER", "FOLLOW_UP"];
+    const advancesToProspect = ["QUALIFIED", "FOLLOW_UP_LATER"];
     if (advancesToProspect.includes(effectiveOutcome)) {
       updateData.level = "PROSPECT";
     }
@@ -1157,32 +1154,27 @@ async function endAndClose({
     update: updateData,
   });
 
-  // Guardar la snapshot final de qualification con outcome y scores
+  // Guardar la snapshot final de qualification con outcome
   await upsertEnrichmentSnapshot(establishmentId, "qualification", {
     conversationId,
     outcome,
-    qualificationScore,
-    couponSent,
     callSummary,
   });
-
-  const levelMap = { A: "LEAD", B: "LEAD", C: "PROSPECT", D: "CONTACT" };
 
   logEnrichmentEvent({
     establishmentId,
     source: "CAMPAIGN",
     conversationId,
     agentStage: "QUALIFICATION",
-    levelReached: levelMap[qualificationScore] || "PROSPECT",
-    enrichmentSnapshot: { outcome, qualificationScore, couponSent, callSummary },
+    levelReached: ["QUALIFIED", "FOLLOW_UP_LATER"].includes(effectiveOutcome) ? "PROSPECT" : "CONTACT",
+    enrichmentSnapshot: { outcome, callSummary },
     enrichedByType: "AGENT",
-    notes: `Qualification outcome: ${outcome}, Score: ${qualificationScore}`,
+    notes: `Qualification outcome: ${outcome}`,
   }).catch(() => { });
 
-  logger.info("[FunnelWebhook:Qualification] endAndClose", {
+  logger.info("[FunnelWebhook:Qualification] endQualificationCall", {
     establishmentId,
     outcome,
-    qualificationScore,
   });
 
   await syncCampaignContactStatus({
@@ -1190,7 +1182,6 @@ async function endAndClose({
     conversationId,
     outcome,
     agentStage: "QUALIFICATION",
-    couponSent,
     callSummary,
   });
 
@@ -1442,10 +1433,10 @@ async function endConversionCall({
     "CLOSED_WON",
     "FOLLOW_UP_LATER",
     "NEEDS_VALIDATION",
-    "READY",
-    "NEEDS_TIME",
-    "NOT_NOW",
+    "NOT_INTERESTED",
     "LOST",
+    "NO_ANSWER",
+    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -1599,8 +1590,7 @@ module.exports = {
   getCalendlyAvailability,
   scheduleCalendlyDemo,
   handleNegativeResponse,
-  endAndClose,
-  endCall,
+  endQualificationCall,
   // Conversion
   calculateROI,
   saveDealTerms,
