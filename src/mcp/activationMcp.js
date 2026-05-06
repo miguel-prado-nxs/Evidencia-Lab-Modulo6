@@ -286,6 +286,23 @@ function createActivationServer() {
     }
   );
 
+  server.tool(
+    "hang_up_call",
+    "Cuelga la llamada inmediatamente. Usar DESPUÉS de end_activation_call.",
+    {
+      reason: z.string().optional().describe("Razón del cierre")
+    },
+    async ({ reason }) => {
+      logger.info("[hang_up_call] Cierre de llamada solicitado", { reason });
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify({ success: true, message: "Llamada terminada", hangUp: true })
+        }]
+      };
+    }
+  );
+
   return server;
 }
 
