@@ -76,15 +76,15 @@ function createConversionServer() {
     "send_coupon_whatsapp",
     "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
     {
-      conversation_id: z.string().describe("ID de la conversación ({{conversationId}})"),
-      establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
-      campaign_id: z.string().optional().describe("ID de la campaña ({{campaignId}})"),
-      campaign_contact_id: z.string().optional().describe("ID del contacto en la campaña ({{campaignContactId}})"),
-      phone: z.string().optional().describe("Teléfono del prospecto ({{phoneNumber}})"),
-      coupon_type: z.string().optional().describe("Tipo de cupón asignado a esta llamada ({{couponType}}). Usar EXACTAMENTE este valor, sin modificarlo."),
+      conversation_id: z.string().describe("ID de la conversación. Valor: {{conversationId}}"),
+      establishment_id: z.string().describe("ID del establecimiento. Valor: {{establishment_id}}"),
+      campaign_id: z.string().describe("ID de la campaña. Valor: {{campaignId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
+      campaign_contact_id: z.string().describe("ID del contacto en la campaña. Valor: {{campaignContactId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
+      phone: z.string().optional().describe("Teléfono del prospecto. Valor: {{phoneNumber}}"),
+      coupon_type: z.string().optional().describe("Tipo de cupón asignado. Valor: {{couponType}}. Usar EXACTAMENTE este valor sin modificarlo."),
       scenario: z.string().optional().describe("Escenario detectado: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead."),
-      prospect_name: z.string().optional().describe("Nombre del prospecto ({{previousContactName}})"),
-      business_name: z.string().optional().describe("Nombre del negocio ({{businessName}})"),
+      prospect_name: z.string().optional().describe("Nombre del prospecto. Valor: {{previousContactName}}"),
+      business_name: z.string().optional().describe("Nombre del negocio. Valor: {{businessName}}"),
     },
     async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
