@@ -85,6 +85,16 @@ const loadCouponTemplatesSchema = z.object({
   }),
 });
 
+const continueCampaignSchema = z.object({
+  body: z.object({
+    name: z.string().optional(),
+    scheduledAt: z.string().optional(),
+    couponPrefix: z.string().optional(),
+    couponTemplateIds: z.array(z.string()).optional(),
+    offer: z.string().optional(),
+  }),
+});
+
 router.post("/elevenlabs-webhook", campaignWebhookController.handleElevenLabsWebhook);
 
 // router.use(authenticateJWT);
@@ -115,5 +125,9 @@ router.get("/:id/coupon-breakdown", campaignsController.getCouponBreakdown);
 router.post("/:id/load-coupon-templates", validate(loadCouponTemplatesSchema), campaignsController.loadCouponTemplates);
 router.get("/:id/send-preview", campaignsController.getCampaignSendPreview);
 router.get("/:id/validate-before-start", campaignsController.validateBeforeStart);
+
+// Continuar campaña al siguiente stage del funnel
+router.get("/:id/continuation-preview", campaignsController.getContinuationPreview);
+router.post("/:id/continue", validate(continueCampaignSchema), campaignsController.postContinueCampaign);
 
 module.exports = router;
