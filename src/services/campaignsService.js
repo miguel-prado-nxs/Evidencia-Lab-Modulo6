@@ -163,6 +163,28 @@ const CAMPAIGN_RANK = {
   CONVERSION: 4,
 };
 
+// Siguiente etapa en el funnel para la feature de "continuar campaña"
+const NEXT_STAGE = {
+  DISCOVERY: 'QUALIFICATION',
+  QUALIFICATION: 'ACTIVATION',
+  ACTIVATION: 'CONVERSION',
+  CONVERSION: null,
+};
+
+// Inverso de AGENT_TO_CAMPAIGN_TYPE_MAP — usado por continueCampaign
+const CAMPAIGN_TYPE_TO_AGENT = Object.fromEntries(
+  Object.entries(AGENT_TO_CAMPAIGN_TYPE_MAP).map(([k, v]) => [v, k])
+);
+
+const CAMPAIGN_TYPE_TO_AGENT_NAME = {
+  DISCOVERY: 'Agente Discovery',
+  QUALIFICATION: 'Agente Qualification',
+  ACTIVATION: 'Agente Activation',
+  CONVERSION: 'Agente Conversion',
+};
+
+const COUPON_REQUIRED_TYPES = ['ACTIVATION', 'CONVERSION'];
+
 // Compatibilidad con consumidores actuales: status exacto inmediatamente anterior.
 const STAGE_PREREQUISITES = {
   DISCOVERY: null,
@@ -2071,6 +2093,162 @@ const getCouponBreakdown = async (campaignId) => {
   };
 };
 
+// Lee todos los contactos de la campaña origen y clasifica cuáles son elegibles
+// para el siguiente stage según enrichmentStatus. Read-only — no crea nada.
+const previewContinuation = async (sourceCampaignId) => {
+  const source = await prisma.campaign.findUnique({
+    where: { id: sourceCampaignId },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      status: true,
+      updatedAt: true,
+      centerLat: true,
+      centerLng: true,
+      radiusMeters: true,
+      activityCodes: true,
+      employeeRanges: true,
+      filters: true,
+      description: true,
+    },
+  });
+
+  if (!source) {
+    const err = new Error('Campaña origen no encontrada');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  if (source.status !== 'COMPLETED') {
+    const err = new Error(`Solo se pueden continuar campañas completadas. Estado actual: ${source.status}`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const nextType = NEXT_STAGE[source.type];
+  if (!nextType) {
+    const err = new Error('Las campañas de Conversion son la etapa final del funnel y no pueden continuarse');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const contacts = await prisma.campaignContact.findMany({
+    where: { campaignId: sourceCampaignId },
+    select: { establishmentId: true },
+  });
+
+  const establishmentIds = contacts.map(c => c.establishmentId).filter(Boolean);
+  const totalSourceContacts = establishmentIds.length;
+
+  const { eligibleIds, excludedNoPrereq, excludedAdvanced } =
+    await classifyEstablishmentsByStage(establishmentIds, nextType);
+
+  const msElapsed = Date.now() - new Date(source.updatedAt).getTime();
+  const daysSinceCompletion = msElapsed / (1000 * 60 * 60 * 24);
+
+  const capitalize = (s) => s.charAt(0) + s.slice(1).toLowerCase();
+
+  return {
+    sourceCampaignId,
+    sourceCampaignName: source.name,
+    sourceType: source.type,
+    nextType,
+    suggestedName: `${source.name} - ${capitalize(nextType)}`,
+    eligibleCount: eligibleIds.length,
+    eligibleIds,
+    totalSourceContacts,
+    excludedNoPrereq,
+    excludedAdvanced,
+    daysSinceCompletion,
+    requiresCoupon: COUPON_REQUIRED_TYPES.includes(nextType),
+    sourceFilters: {
+      centerLat: source.centerLat,
+      centerLng: source.centerLng,
+      radiusMeters: source.radiusMeters,
+      activityCodes: source.activityCodes,
+      employeeRanges: source.employeeRanges,
+      filters: source.filters,
+      description: source.description,
+    },
+  };
+};
+
+// Crea la campaña del siguiente stage heredando filtros y contactos elegibles de la origen.
+// Para ACTIVATION/CONVERSION requiere couponPrefix.
+const continueCampaign = async (sourceCampaignId, opts = {}) => {
+  const { name, scheduledAt, couponPrefix, couponTemplateIds, offer, createdBy } = opts;
+
+  const preview = await previewContinuation(sourceCampaignId);
+
+  if (preview.requiresCoupon && !couponPrefix) {
+    const err = new Error(`Las campañas de ${preview.nextType} requieren un cupón principal. Por favor selecciona un cupón antes de continuar.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (preview.eligibleIds.length === 0) {
+    const err = new Error(`No hay restaurantes elegibles para continuar a ${preview.nextType}. Ninguno completó la etapa de ${preview.sourceType}.`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const { sourceFilters } = preview;
+
+  let campaign = await createCampaign({
+    name: name || preview.suggestedName,
+    description: sourceFilters.description,
+    centerLat: sourceFilters.centerLat,
+    centerLng: sourceFilters.centerLng,
+    radiusMeters: sourceFilters.radiusMeters,
+    activityCodes: sourceFilters.activityCodes,
+    employeeRanges: sourceFilters.employeeRanges,
+    filters: sourceFilters.filters,
+    agentConfigId: CAMPAIGN_TYPE_TO_AGENT[preview.nextType],
+    agentConfigName: CAMPAIGN_TYPE_TO_AGENT_NAME[preview.nextType],
+    offer: offer || null,
+    couponPrefix: couponPrefix || null,
+    couponTemplateIds: couponTemplateIds || [],
+    createdBy,
+    establishmentIds: preview.eligibleIds,
+    sourceCampaignId,
+  });
+
+  // createCampaign nula las coordenadas cuando recibe establishmentIds (lógica de reenganche).
+  // Para continuación las restauramos para que el mapa y los detalles muestren el área original.
+  if (sourceFilters.centerLat && sourceFilters.centerLng && sourceFilters.radiusMeters) {
+    campaign = await prisma.campaign.update({
+      where: { id: campaign.id },
+      data: {
+        centerLat: sourceFilters.centerLat,
+        centerLng: sourceFilters.centerLng,
+        radiusMeters: sourceFilters.radiusMeters,
+      },
+    });
+  }
+
+  // Si el usuario eligió programar para más tarde, marcar como SCHEDULED
+  if (scheduledAt) {
+    const scheduledDate = new Date(scheduledAt);
+    if (!isNaN(scheduledDate.getTime()) && scheduledDate > new Date()) {
+      campaign = await prisma.campaign.update({
+        where: { id: campaign.id },
+        data: { status: 'SCHEDULED', scheduledAt: scheduledDate },
+      });
+    }
+  }
+
+  logger.info('[campaignsService:continueCampaign] Continuation campaign created', {
+    sourceCampaignId,
+    newCampaignId: campaign.id,
+    nextType: preview.nextType,
+    eligibleCount: preview.eligibleIds.length,
+    scheduled: !!scheduledAt,
+  });
+
+  return campaign;
+};
+
 module.exports = {
   createCampaign,
   getCampaignById,
@@ -2092,8 +2270,11 @@ module.exports = {
   getValidCampaignAgentIds,
   getReengagementCandidates,
   classifyEstablishmentsByStage,
+  previewContinuation,
+  continueCampaign,
   STAGE_PREREQUISITES,
   PRIOR_STAGE_DISPLAY,
   CAMPAIGN_RANK,
   STAGE_RANK,
+  NEXT_STAGE,
 };

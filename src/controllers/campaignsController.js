@@ -795,6 +795,34 @@ const retry = async (req, res, next) => {
     next(error);
   }
 };
+const getContinuationPreview = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const preview = await campaignsService.previewContinuation(id);
+    res.json({ success: true, data: preview });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const postContinueCampaign = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, scheduledAt, couponPrefix, couponTemplateIds, offer } = req.body;
+    const campaign = await campaignsService.continueCampaign(id, {
+      name,
+      scheduledAt,
+      couponPrefix,
+      couponTemplateIds,
+      offer,
+      createdBy: req.user?.id,
+    });
+    res.status(201).json({ success: true, data: campaign });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -820,4 +848,6 @@ module.exports = {
   cancel,
   resume,
   retry,
+  getContinuationPreview,
+  postContinueCampaign,
 };
