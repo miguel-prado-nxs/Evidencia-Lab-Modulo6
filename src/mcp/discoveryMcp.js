@@ -4,6 +4,12 @@ const svc = require("../services/funnelWebhookService");
 const logger = require("../config/logger");
 const config = require("../config/env");
 
+// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{conversationId}}")
+const sanitizeVar = (value) => {
+  if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
+  return value || null;
+};
+
 // Normaliza enums: acepta valores en español y los mapea a inglés
 const normalizeEnum = (value) => {
   if (!value || typeof value !== "string") return value;
@@ -91,8 +97,8 @@ function createDiscoveryServer() {
     async ({ conversation_id, establishment_id, contact_name, contact_email, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
       try {
         const result = await svc.saveDiscoveryData({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
           contactName: contact_name,
           contactEmail: contact_email,
           businessType: business_type,
@@ -139,8 +145,8 @@ function createDiscoveryServer() {
         const mappedOutcome = outcome === "INTERESTED" ? "ADVANCE_TO_ACTIVATION" : outcome;
 
         const result = await svc.endDiscoveryCall({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
           outcome: mappedOutcome,
           originalOutcome: outcome,
           contactName: contact_name,
@@ -169,8 +175,8 @@ function createDiscoveryServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -236,8 +242,8 @@ function createDiscoveryServer() {
     async ({ conversation_id, establishment_id, phone, prospect_name, business_name }) => {
       try {
         const result = await svc.sendWhatsappInfo({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
           phone,
           prospectName: prospect_name,
           businessName: business_name,
