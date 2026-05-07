@@ -244,9 +244,9 @@ function createDiscoveryServer() {
         const result = await svc.sendWhatsappInfo({
           conversationId: sanitizeVar(conversation_id),
           establishmentId: sanitizeVar(establishment_id),
-          phone,
-          prospectName: prospect_name,
-          businessName: business_name,
+          phone: sanitizeVar(phone),
+          prospectName: sanitizeVar(prospect_name),
+          businessName: sanitizeVar(business_name),
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
