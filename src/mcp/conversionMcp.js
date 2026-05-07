@@ -4,6 +4,12 @@ const svc = require("../services/funnelWebhookService");
 const logger = require("../config/logger");
 const config = require("../config/env");
 
+// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{conversationId}}")
+const sanitizeVar = (value) => {
+  if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
+  return value || null;
+};
+
 // Normaliza enums: acepta valores en español y los mapea a inglés
 const normalizeEnum = (value, enumType) => {
   if (!value || typeof value !== "string") return value;
@@ -83,16 +89,16 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
         const result = await svc.sendCouponWhatsapp({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
-          campaignId: campaign_id,
-          campaignContactId: campaign_contact_id,
-          phone,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
+          campaignId: sanitizeVar(campaign_id),
+          campaignContactId: sanitizeVar(campaign_contact_id),
+          phone: sanitizeVar(phone),
           coupon: {},
-          couponType: coupon_type,
+          couponType: sanitizeVar(coupon_type),
           scenario,
-          prospectName: prospect_name,
-          businessName: business_name,
+          prospectName: sanitizeVar(prospect_name),
+          businessName: sanitizeVar(business_name),
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
@@ -115,8 +121,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, objection_type, objection_detail, objection_resolved, resolution_method }) => {
       try {
         const result = await svc.saveObjectionData({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
           objectionType: normalizeEnum(objection_type, "objectionType"),
           objectionDetail: objection_detail,
           objectionResolved: objection_resolved,
@@ -146,8 +152,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, decision_status, decision_timeline, depends_on_others, conditions_to_advance, perceived_value, coupon_offered, coupon_type_offered }) => {
       try {
         const result = await svc.saveConversationOutcome({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
           decisionStatus: normalizeEnum(decision_status, "decisionStatus"),
           decisionTimeline: decision_timeline,
           dependsOnOthers: depends_on_others,
@@ -246,8 +252,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, outcome, plan_closed, monthly_revenue, call_summary, decision_timeline, next_steps }) => {
       try {
         const result = await svc.endConversionCall({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id),
+          establishmentId: sanitizeVar(establishment_id),
           outcome: outcome,
           planClosed: plan_closed,
           monthlyRevenue: monthly_revenue,

@@ -206,8 +206,8 @@ const buildCouponSendInstructions = (templates, campaignCouponType = null) => {
  * @param {Array} templates - Templates de cupones (primero = principal)
  * @returns {string} Instrucciones para el agente
  */
-const buildAgentInstructions = (campaign, templates) => {
-  const primaryType = campaign.couponPrefix || templates[0]?.couponType;
+const buildAgentInstructions = (campaign, templates, resolvedPrimaryType) => {
+  const primaryType = resolvedPrimaryType || templates[0]?.couponType;
   const primaryTemplate = templates.find(t => t.couponType === primaryType) || templates[0];
   const alternativeTemplates = templates.filter(t => t.couponType !== primaryType);
   const isHybrid = alternativeTemplates.length > 0;
