@@ -878,9 +878,33 @@ async function sendCouponWhatsapp({
 
   if (!resolvedPhone) throw new Error("phone no pudo ser resuelto (ni por el agente ni en la BD)");
 
-  // Fallback de couponType
+  // Fallback de couponType: si no vino del agente, resolverlo desde la campaña
+  if (!resolvedCouponType && resolvedCampaignId) {
+    const campaignData = await prisma.campaign.findUnique({
+      where: { id: resolvedCampaignId },
+      select: { couponPrefix: true, couponTemplateIds: true },
+    });
+
+    if (campaignData?.couponPrefix) {
+      const tpl = await prisma.couponTemplate.findFirst({
+        where: { OR: [{ id: campaignData.couponPrefix }, { couponType: campaignData.couponPrefix }] },
+        select: { couponType: true },
+      });
+      if (tpl) resolvedCouponType = tpl.couponType;
+    }
+
+    if (!resolvedCouponType && campaignData?.couponTemplateIds?.length > 0) {
+      const tpl = await prisma.couponTemplate.findFirst({
+        where: { id: { in: campaignData.couponTemplateIds } },
+        orderBy: { priority: "desc" },
+        select: { couponType: true },
+      });
+      if (tpl) resolvedCouponType = tpl.couponType;
+    }
+  }
+
   if (!resolvedCouponType && !scenario) {
-    resolvedCouponType = "PLUS30"; // Tipo por defecto si no se puede resolver
+    resolvedCouponType = "PLUS30"; // Tipo por defecto si no se puede resolver de ninguna fuente
   }
 
   // Obtener nombre si no viene
