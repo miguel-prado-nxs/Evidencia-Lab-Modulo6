@@ -3,6 +3,8 @@ const prisma = require("../config/database");
 const logger = require("../config/logger");
 const cloudflareImagesService = require("../services/cloudflareImagesService");
 
+const URL_MICROSTRIPE = process.env.MICROSTRIPE || "http://localhost:3002/api/stripe";
+
 const list = async (req, res, next) => {
   try {
     const { active, scenario } = req.query;
@@ -76,8 +78,25 @@ const create = async (req, res, next) => {
       validUntil,
       validDays,
       validFor,
-      priority
+      priority,
+      stripeProductId
     } = req.body;
+
+    const couponCreateStripe = await fetch(`${URL_MICROSTRIPE}/promotion-codes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        customerId: "admin_easyorder",
+        productId: stripeProductId,
+        percentOff,
+        name: name,
+        codes: [couponType]
+      })
+    });
+
+    const couponData = await couponCreateStripe.json();
 
     const template = await prisma.couponTemplate.create({
       data: {
@@ -96,7 +115,9 @@ const create = async (req, res, next) => {
         validUntil: validUntil ? new Date(validUntil) : undefined,
         validDays: validDays || [],
         validFor: validFor || [],
-        priority: priority || 0
+        priority: priority || 0,
+        stripe_product_id: stripeProductId || null,
+        stripe_coupon_id: couponData.coupon.id || null
       }
     });
 
@@ -132,7 +153,8 @@ const update = async (req, res, next) => {
       validDays,
       validFor,
       active,
-      priority
+      priority,
+      stripeProductId
     } = req.body;
 
     const updateData = {};
@@ -152,6 +174,8 @@ const update = async (req, res, next) => {
     if (validFor !== undefined) updateData.validFor = validFor;
     if (active !== undefined) updateData.active = active;
     if (priority !== undefined) updateData.priority = priority;
+    if (stripeProductId !== undefined) updateData.stripe_product_id = stripeProductId;
+    if (stripe_coupon_id !== undefined) updateData.stripe_coupon_id = stripe_coupon_id;
 
     const template = await prisma.couponTemplate.update({
       where: { couponType: type },
@@ -222,7 +246,7 @@ const uploadImage = async (req, res, next) => {
   } finally {
     // Limpiar archivo temporal sin importar el resultado
     if (tempPath) {
-      try { fs.unlinkSync(tempPath); } catch (_) {}
+      try { fs.unlinkSync(tempPath); } catch (_) { }
     }
   }
 };

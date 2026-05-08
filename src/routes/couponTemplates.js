@@ -24,6 +24,8 @@ const createTemplateSchema = z.object({
     validDays: z.array(z.string()).optional(),
     validFor: z.array(z.string()).optional(),
     priority: z.number().int().optional(),
+    stripe_product_id: z.string().optional()
+
   }),
 });
 
@@ -45,6 +47,7 @@ const updateTemplateSchema = z.object({
     validFor: z.array(z.string()).optional(),
     active: z.boolean().optional(),
     priority: z.number().int().optional(),
+    stripe_product_id: z.string().optional()
   }),
 });
 
