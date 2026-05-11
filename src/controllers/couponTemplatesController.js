@@ -366,11 +366,51 @@ const getProductsFromStripe = async (req, res, next) => {
 
 const syncWithStripe = async (req, res, next) => {
   try {
+    const {
+      couponId,
+      couponType,
+      customerId = "admin_easyorder",
+      productId,
+      percentOff,
+      amountOff,
+      currency = "mxn",
+      duration = "once",
+      name,
+      codes = [],
+      validUntil,
+      maxPerUser,
+      validDays = [],
+    } = req.body || {};
+
+    const couponTemplateId = couponId === undefined ? null : couponId;
+
+    if (!couponType) {
+      return res.status(400).json({
+        success: false,
+        error: "couponType es requerido para sincronizar y persistir la plantilla",
+      });
+    }
+
     const response = await fetch(`${URL_MICROSTRIPE}/promotion-codes/sync`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-      }
+      },
+      body: JSON.stringify({
+        couponId: couponTemplateId,
+        couponType,
+        customerId,
+        productId,
+        percentOff,
+        amountOff,
+        currency,
+        duration,
+        name,
+        codes,
+        validUntil,
+        maxPerUser,
+        validDays,
+      })
     });
 
     if (!response.ok) {
@@ -381,6 +421,17 @@ const syncWithStripe = async (req, res, next) => {
     }
 
     const result = await response.json();
+
+    const stripeCouponId = result.new_coupon_id || result.coupon?.id || result.data?.new_coupon_id || result.data?.coupon?.id || null;
+    const stripeProductId = productId ?? null;
+
+    await prisma.couponTemplate.update({
+      where: { couponType },
+      data: {
+        stripe_coupon_id: stripeCouponId,
+        stripe_product_id: stripeProductId,
+      },
+    });
 
     return res.status(200).json({
       success: true,
