@@ -60,6 +60,7 @@ router.post("/upload-image", verifyJWTLight, requireAdminLight, uploadSingle, co
 
 router.get("/", couponTemplatesController.list);
 router.get("/products", couponTemplatesController.getProductsFromStripe);
+router.post("/sync-stripe", couponTemplatesController.syncWithStripe);
 router.get("/:type", couponTemplatesController.getByType);
 router.post("/", validate(createTemplateSchema), couponTemplatesController.create);
 router.patch("/:type", validate(updateTemplateSchema), couponTemplatesController.update);

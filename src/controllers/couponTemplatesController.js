@@ -333,6 +333,35 @@ const getProductsFromStripe = async (req, res, next) => {
   }
 };
 
+const syncWithStripe = async (req, res, next) => {
+  try {
+    const response = await fetch(`${URL_MICROSTRIPE}/promotion-codes/sync`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        error: `Stripe service returned ${response.status}`,
+      });
+    }
+
+    const result = await response.json();
+
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+  }
+  catch (error) {
+    console.error("Error syncing coupons with Stripe:", error);
+    next(error);
+  }
+};
+
 module.exports = {
   list,
   getByType,
@@ -340,5 +369,6 @@ module.exports = {
   update,
   remove,
   uploadImage,
-  getProductsFromStripe
+  getProductsFromStripe,
+  syncWithStripe
 };
