@@ -59,6 +59,7 @@ const updateTemplateSchema = z.object({
 router.post("/upload-image", verifyJWTLight, requireAdminLight, uploadSingle, couponTemplatesController.uploadImage);
 
 router.get("/", couponTemplatesController.list);
+router.get("/products", couponTemplatesController.getProductsFromStripe);
 router.get("/:type", couponTemplatesController.getByType);
 router.post("/", validate(createTemplateSchema), couponTemplatesController.create);
 router.patch("/:type", validate(updateTemplateSchema), couponTemplatesController.update);

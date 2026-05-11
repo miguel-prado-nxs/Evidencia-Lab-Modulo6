@@ -303,6 +303,36 @@ const uploadImage = async (req, res, next) => {
   }
 };
 
+const getProductsFromStripe = async (req, res, next) => {
+  try {
+    const response = await fetch(`${URL_MICROSTRIPE}/products`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      }
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        success: false,
+        error: `Stripe service returned ${response.status}`,
+        details: await response.text()
+      });
+    }
+
+    const result = await response.json();
+
+    return res.status(200).json({
+      success: true,
+      data: result.data || result
+    });
+  }
+  catch (error) {
+    console.error("Error fetching products from Stripe:", error);
+    next(error);
+  }
+};
+
 module.exports = {
   list,
   getByType,
@@ -310,4 +340,5 @@ module.exports = {
   update,
   remove,
   uploadImage,
+  getProductsFromStripe
 };
