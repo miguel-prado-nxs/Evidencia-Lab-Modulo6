@@ -82,53 +82,81 @@ const create = async (req, res, next) => {
       stripeProductId
     } = req.body;
 
-    const couponCreateStripe = await fetch(`${URL_MICROSTRIPE}/promotion-codes`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        customerId: "admin_easyorder",
-        productId: stripeProductId,
-        percentOff,
-        name: name,
-        codes: [couponType]
-      })
-    });
+    try {
+      const couponCreateStripe = await fetch(`${URL_MICROSTRIPE}/promotion-codes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerId: "admin_easyorder",
+          productId: stripeProductId,
+          percentOff,
+          name: name,
+          codes: [couponType],
+          validUntil: validUntil,
+          maxPerUser: maxPerUser,
+          validDays: validDays
+        })
+      });
 
-    const couponData = await couponCreateStripe.json();
+      const couponData = await couponCreateStripe.json();
 
-    const template = await prisma.couponTemplate.create({
-      data: {
-        couponType,
-        name,
-        description,
-        scenarios: scenarios || [],
-        percentOff,
-        durationMonths,
-        trialDays,
-        messageTemplate,
-        mediaUrl,
-        maxPerUser: maxPerUser || 1,
-        expiresHours: expiresHours || 48,
-        validFrom: validFrom ? new Date(validFrom) : undefined,
-        validUntil: validUntil ? new Date(validUntil) : undefined,
-        validDays: validDays || [],
-        validFor: validFor || [],
-        priority: priority || 0,
-        stripe_product_id: stripeProductId || null,
-        stripe_coupon_id: couponData.coupon.id || null
+      // Validar respuesta de Stripe
+      if (!couponData.success || !couponData.coupon) {
+        logger.error(`Stripe coupon creation failed: ${couponData.error || "Unknown error"}`, {
+          couponType,
+          response: couponData
+        });
+        return res.status(400).json({
+          success: false,
+          error: couponData.error || "Failed to create coupon in Stripe"
+        });
       }
-    });
 
-    logger.info(`Coupon template created: ${template.couponType}`, {
-      templateId: template.id
-    });
+      const stripeCouponId = couponData.coupon?.id;
 
-    res.status(201).json({
-      success: true,
-      data: template
-    });
+      const template = await prisma.couponTemplate.create({
+        data: {
+          couponType,
+          name,
+          description,
+          scenarios: scenarios || [],
+          percentOff,
+          durationMonths,
+          trialDays,
+          messageTemplate,
+          mediaUrl,
+          maxPerUser: maxPerUser || 1,
+          expiresHours: expiresHours || 48,
+          validFrom: validFrom ? new Date(validFrom) : undefined,
+          validUntil: validUntil ? new Date(validUntil) : undefined,
+          validDays: validDays || [],
+          validFor: validFor || [],
+          priority: priority || 0,
+          stripe_product_id: stripeProductId || null,
+          stripe_coupon_id: stripeCouponId || null
+        }
+      });
+
+      logger.info(`Coupon template created: ${template.couponType}`, {
+        templateId: template.id
+      });
+
+      res.status(201).json({
+        success: true,
+        data: template
+      });
+    } catch (stripeError) {
+      logger.error(`Error creating coupon in Stripe: ${stripeError.message}`, {
+        couponType,
+        error: stripeError
+      });
+      return res.status(500).json({
+        success: false,
+        error: `Stripe service error: ${stripeError.message}`
+      });
+    }
   } catch (error) {
     next(error);
   }
@@ -191,7 +219,7 @@ const update = async (req, res, next) => {
     // =========================================
     // SINCRONIZAR CAMBIOS CON STRIPE
     // =========================================
-    if (currentTemplate.stripe_coupon_id && (name !== undefined || percentOff !== undefined)) {
+    if (currentTemplate.stripe_coupon_id && (name !== undefined || percentOff !== undefined || validUntil !== undefined || maxPerUser !== undefined || validDays !== undefined)) {
       try {
         const stripeResponse = await fetch(`${URL_MICROSTRIPE}/promotion-codes/${currentTemplate.stripe_coupon_id}`, {
           method: "PUT",
@@ -203,6 +231,9 @@ const update = async (req, res, next) => {
             name: name || currentTemplate.name,
             percentOff: percentOff !== undefined ? percentOff : currentTemplate.percentOff,
             productId: stripeProductId || currentTemplate.stripe_product_id,
+            validUntil: validUntil || currentTemplate.validUntil,
+            maxPerUser: maxPerUser !== undefined ? maxPerUser : currentTemplate.maxPerUser,
+            validDays: validDays || currentTemplate.validDays,
           })
         });
 
