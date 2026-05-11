@@ -111,7 +111,7 @@ function createConversionServer() {
     "save_objection_data",
     "Guarda los datos de objeciones encontradas durante la conversación de Activation. Llamar cuando se identifique una objeción.",
     {
-      conversation_id: z.string().describe("ID conversación ({{callId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       objection_type: z.enum(["PRICE", "RISK", "COMPLEXITY", "TIME", "PRIORITY", "OTHER"]).describe("Tipo de objeción identificada"),
       objection_detail: z.string().describe("Descripción detallada de la objeción"),
@@ -139,7 +139,7 @@ function createConversionServer() {
     "save_conversation_outcome",
     "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{callId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       decision_status: z.enum(["READY", "NEEDS_TIME", "NEEDS_VALIDATION", "NOT_NOW"]).describe("Estado final de la conversación"),
       decision_timeline: z.string().describe("Timeline de la decisión (ej: 'dentro de 1 semana', 'después de revisar presupuesto')"),

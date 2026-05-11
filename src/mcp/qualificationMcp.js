@@ -71,7 +71,7 @@ function createQualificationServer() {
     "save_qualification_data",
     "Guarda información de calificación con datos operacionales y de marketing. Llamar después de explorar cada área.",
     {
-      conversation_id: z.string().describe("ID conversación ({{callId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       daily_orders_range: z.string().optional().describe("Rango preciso de pedidos diarios"),
       average_ticket: z.number().optional().describe("Ticket promedio en pesos"),
@@ -198,7 +198,7 @@ function createQualificationServer() {
     "end_qualification_call",
     "Guarda el resultado final de la conversación de Qualification y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{callId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       outcome: z.enum(["QUALIFIED", "NOT_QUALIFIED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "NO_ANSWER", "VOICEMAIL"]).describe("Outcome: QUALIFIED, NOT_QUALIFIED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
       call_summary: z.string().describe("Resumen breve de la conversación"),

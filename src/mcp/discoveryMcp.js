@@ -72,7 +72,7 @@ function createDiscoveryServer() {
     "save_discovery_data",
     "Guarda temporalmente la información de descubrimiento capturada durante la conversación. Llamar cada vez que se obtiene un nuevo dato.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{callId}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
       contact_name: z.string().optional().describe("Nombre del contacto"),
       contact_email: z.string().optional().describe("Email del decision maker (para envios posteriores)"),
@@ -130,7 +130,7 @@ function createDiscoveryServer() {
     "end_discovery_call",
     "Guarda el resultado final de la conversación de Discovery y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{callId}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
       outcome: z.enum(["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("RESULTADO DE LA LLAMADA: INTERESTED (mostró interés), FOLLOW_UP_LATER (llamar después), NOT_INTERESTED (no interesado), WRONG_NUMBER (número incorrecto), NO_ANSWER (sin respuesta), VOICEMAIL (buzón de voz)"),
       contact_name: z.string().optional().describe("Nombre del contacto o decision maker"),
