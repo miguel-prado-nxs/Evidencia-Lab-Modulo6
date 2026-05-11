@@ -346,7 +346,50 @@ async function handleHangUpCall(req, res) {
       return res.status(400).json({ error: "Missing establishment_id or conversation_id" });
     }
 
-    // Actualizar el enrichment para marcar que se colgó
+    // PASO 1: Terminar sesión en ElevenLabs INMEDIATAMENTE si hay conversationId
+    if (conversationId) {
+      try {
+        const apiKey = process.env.ELEVENLABS_API_KEY ||
+                       process.env.ELEVENLABS_SDR_API_KEY ||
+                       config.agents.sdr.apiKey;
+
+        const terminateUrl = `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}/terminate`;
+
+        logger.info("[Hang Up Webhook] Terminando conversación en ElevenLabs", {
+          url: terminateUrl,
+          conversationId,
+        });
+
+        const terminateResponse = await fetch(terminateUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "xi-api-key": apiKey,
+          },
+          body: JSON.stringify({ reason }),
+        });
+
+        if (terminateResponse.ok) {
+          logger.info("[Hang Up Webhook] Conversación terminada exitosamente en ElevenLabs", {
+            conversationId,
+            status: terminateResponse.status,
+          });
+        } else {
+          logger.warn("[Hang Up Webhook] Respuesta de ElevenLabs no OK", {
+            conversationId,
+            status: terminateResponse.status,
+            statusText: terminateResponse.statusText,
+          });
+        }
+      } catch (error) {
+        logger.error("[Hang Up Webhook] Error terminando conversación en ElevenLabs", {
+          conversationId,
+          error: error.message,
+        });
+      }
+    }
+
+    // PASO 2: Actualizar el enrichment para marcar que se colgó
     if (establishmentId) {
       try {
         await prisma.establishmentEnrichment.update({
@@ -358,9 +401,9 @@ async function handleHangUpCall(req, res) {
           },
         });
 
-        logger.info("[Hang Up Webhook] Call colgado exitosamente", {
+        logger.info("[Hang Up Webhook] Enrichment actualizado", {
           establishmentId,
-          reason,
+          callStatus: "hung_up",
         });
       } catch (error) {
         logger.error("[Hang Up Webhook] Error actualizando enrichment", {
