@@ -157,6 +157,18 @@ const update = async (req, res, next) => {
       stripeProductId
     } = req.body;
 
+    // Obtener el template actual para ver qué cambió
+    const currentTemplate = await prisma.couponTemplate.findUnique({
+      where: { couponType: type }
+    });
+
+    if (!currentTemplate) {
+      return res.status(404).json({
+        success: false,
+        error: "Template not found"
+      });
+    }
+
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
@@ -175,7 +187,45 @@ const update = async (req, res, next) => {
     if (active !== undefined) updateData.active = active;
     if (priority !== undefined) updateData.priority = priority;
     if (stripeProductId !== undefined) updateData.stripe_product_id = stripeProductId;
-    if (stripe_coupon_id !== undefined) updateData.stripe_coupon_id = stripe_coupon_id;
+
+    // =========================================
+    // SINCRONIZAR CAMBIOS CON STRIPE
+    // =========================================
+    if (currentTemplate.stripe_coupon_id && (name !== undefined || percentOff !== undefined)) {
+      try {
+        const stripeResponse = await fetch(`${URL_MICROSTRIPE}/promotion-codes/${currentTemplate.stripe_coupon_id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            couponId: currentTemplate.stripe_coupon_id,
+            name: name || currentTemplate.name,
+            percentOff: percentOff !== undefined ? percentOff : currentTemplate.percentOff,
+            productId: stripeProductId || currentTemplate.stripe_product_id,
+          })
+        });
+
+        const stripeData = await stripeResponse.json();
+
+        if (stripeData.success) {
+          // El cupón fue eliminado y recreado, actualizar el ID
+          if (stripeData.new_coupon_id) {
+            console.log(`♻️  Cupón sincronizado: ${currentTemplate.stripe_coupon_id} → ${stripeData.new_coupon_id}`);
+            updateData.stripe_coupon_id = stripeData.new_coupon_id;
+          }
+          if (stripeData.coupon?.id) {
+            updateData.stripe_coupon_id = stripeData.coupon.id;
+          }
+        } else {
+          console.warn(`⚠️  Error al sincronizar con Stripe:`, stripeData.error);
+          // Continuamos sin fallar, ya que la actualización local sigue siendo válida
+        }
+      } catch (stripeError) {
+        console.error(`⚠️  Error conectando con Stripe:`, stripeError.message);
+        // Continuamos sin fallar, ya que la actualización local sigue siendo válida
+      }
+    }
 
     const template = await prisma.couponTemplate.update({
       where: { couponType: type },
@@ -183,12 +233,14 @@ const update = async (req, res, next) => {
     });
 
     logger.info(`Coupon template updated: ${template.couponType}`, {
-      templateId: template.id
+      templateId: template.id,
+      stripeSync: currentTemplate.stripe_coupon_id ? "yes" : "no"
     });
 
     res.json({
       success: true,
-      data: template
+      data: template,
+      stripe_synced: !!currentTemplate.stripe_coupon_id
     });
   } catch (error) {
     next(error);
