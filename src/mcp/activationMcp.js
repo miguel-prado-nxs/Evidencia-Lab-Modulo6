@@ -88,6 +88,7 @@ function createActivationServer() {
     }
   );
 
+  /* DESHABILITADO: Tools de Calendly no se usan en Activation
   server.tool(
     "get_calendly_availability",
     "Consulta los próximos slots disponibles en Calendly para agendar la demo.",
@@ -153,6 +154,7 @@ function createActivationServer() {
       }
     }
   );
+  */
 
   server.tool(
     "send_coupon_whatsapp",
