@@ -1598,6 +1598,19 @@ async function _createCalendlyInvitee({ establishmentId, contactName, email, sta
 // EXPORTS
 // ============================================================
 
+async function markVoicemail({ conversationId, establishmentId, detectionReason, transcriptSnippet, detectedAt }) {
+  if (!establishmentId) throw new Error("establishment_id requerido");
+
+  logger.info("[markVoicemail] Voicemail detectado", {
+    establishmentId,
+    conversationId,
+    detectionReason,
+    detectedAt,
+  });
+
+  return { success: true, message: "Voicemail detectado y registrado" };
+}
+
 module.exports = {
   // Discovery
   saveDiscoveryData,
@@ -1622,6 +1635,8 @@ module.exports = {
   saveObjectionData,
   saveConversationOutcome,
   endConversionCall,
+  // Voicemail
+  markVoicemail,
   // Helpers de sincronización
   syncCampaignContactStatus,
 };
