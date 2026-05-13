@@ -238,7 +238,6 @@ const generateCouponForCall = async ({
   });
 
   // Creacion de codigo promocional en stripe
-  console.log(`\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nCreando código promocional en Stripe para el cupón generado... en endpoint ${URL_MICROSTRIPE}/promotion-codes/insert-code`);
   try {
     // Buscar stripe_coupon_id desde el template en BD (por couponType)
     const tpl = await prisma.couponTemplate.findUnique({
