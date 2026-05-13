@@ -46,7 +46,7 @@ function createActivationServer() {
     "save_activation_data",
     "Guarda datos de activación capturados durante la conversación.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       pain_points_confirmed: z.array(z.string()).optional().describe("Pain points confirmados"),
       features_of_interest: z.array(z.string()).optional().describe("Funcionalidades que más interesan"),
@@ -88,6 +88,7 @@ function createActivationServer() {
     }
   );
 
+  /* DESHABILITADO: Tools de Calendly no se usan en Activation
   server.tool(
     "get_calendly_availability",
     "Consulta los próximos slots disponibles en Calendly para agendar la demo.",
@@ -108,7 +109,7 @@ function createActivationServer() {
     "confirm_or_update_email",
     "Confirma o actualiza el email del contacto para enviar la invitación de Calendly.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       email: z.string().describe("Email confirmado del contacto"),
     },
@@ -130,7 +131,7 @@ function createActivationServer() {
     "schedule_demo",
     "Agenda la demo en Calendly y envía confirmación al prospecto.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       contact_name: z.string().describe("Nombre del contacto"),
       email: z.string().describe("Email para la invitación"),
@@ -153,12 +154,13 @@ function createActivationServer() {
       }
     }
   );
+  */
 
   server.tool(
     "send_coupon_whatsapp",
     "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       campaign_id: z.string().optional().describe("ID de la campaña. DEBES extraer obligatoriamente el valor de tu variable dinámica {{campaignId}} y enviarlo aquí."), campaign_contact_id: z.string().optional().describe("ID contacto campaña ({{campaignContactId}})"),
       phone: z.string().optional().describe("Teléfono del prospecto ({{phoneNumber}}). Opcional, si no lo tienes omítelo y el sistema lo buscará."),
@@ -258,7 +260,7 @@ function createActivationServer() {
     "end_activation_call",
     "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       outcome: z.enum([
         "ACTIVATED",
@@ -289,12 +291,32 @@ function createActivationServer() {
 
   server.tool(
     "hang_up_call",
-    "Cuelga la llamada inmediatamente. Usar DESPUÉS de end_activation_call.",
+    "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
+      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().optional().describe("ID de la conversación ({{conversationId}})"),
       reason: z.string().optional().describe("Razón del cierre")
     },
-    async ({ reason }) => {
-      logger.info("[hang_up_call] Cierre de llamada solicitado", { reason });
+    async ({ establishment_id, conversation_id, reason }) => {
+      logger.info("[hang_up_call] Cierre de llamada solicitado", { establishment_id, conversation_id, reason });
+
+      const webhookUrl = `${config.server.apiBaseUrl || 'http://localhost:3004'}/api/v1/webhooks/elevenlabs/hang-up-call`;
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          establishment_id: establishment_id || null,
+          conversation_id: conversation_id || null,
+          reason: reason || "Cierre normal de Activation",
+          timestamp: new Date().toISOString(),
+        })
+      }).catch(err => {
+        logger.error("[hang_up_call Webhook] Error notificando backend:", {
+          url: webhookUrl,
+          error: err.message
+        });
+      });
+
       return {
         content: [{
           type: "text",

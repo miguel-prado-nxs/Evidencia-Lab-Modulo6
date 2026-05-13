@@ -4,7 +4,7 @@ const svc = require("../services/funnelWebhookService");
 const logger = require("../config/logger");
 const config = require("../config/env");
 
-// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{conversationId}}")
+// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
 const sanitizeVar = (value) => {
   if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
   return value || null;
@@ -111,7 +111,7 @@ function createConversionServer() {
     "save_objection_data",
     "Guarda los datos de objeciones encontradas durante la conversación de Activation. Llamar cuando se identifique una objeción.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       objection_type: z.enum(["PRICE", "RISK", "COMPLEXITY", "TIME", "PRIORITY", "OTHER"]).describe("Tipo de objeción identificada"),
       objection_detail: z.string().describe("Descripción detallada de la objeción"),
@@ -139,7 +139,7 @@ function createConversionServer() {
     "save_conversation_outcome",
     "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       decision_status: z.enum(["READY", "NEEDS_TIME", "NEEDS_VALIDATION", "NOT_NOW"]).describe("Estado final de la conversación"),
       decision_timeline: z.string().describe("Timeline de la decisión (ej: 'dentro de 1 semana', 'después de revisar presupuesto')"),
@@ -270,12 +270,32 @@ function createConversionServer() {
 
   server.tool(
     "hang_up_call",
-    "Cuelga la llamada inmediatamente. Usar DESPUÉS de end_conversion_call.",
+    "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
+      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().optional().describe("ID de la conversación ({{conversationId}})"),
       reason: z.string().optional().describe("Razón del cierre")
     },
-    async ({ reason }) => {
-      logger.info("[hang_up_call] Cierre de llamada solicitado", { reason });
+    async ({ establishment_id, conversation_id, reason }) => {
+      logger.info("[hang_up_call] Cierre de llamada solicitado", { establishment_id, conversation_id, reason });
+
+      const webhookUrl = `${config.server.apiBaseUrl || 'http://localhost:3004'}/api/v1/webhooks/elevenlabs/hang-up-call`;
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          establishment_id: establishment_id || null,
+          conversation_id: conversation_id || null,
+          reason: reason || "Cierre normal de Conversion",
+          timestamp: new Date().toISOString(),
+        })
+      }).catch(err => {
+        logger.error("[hang_up_call Webhook] Error notificando backend:", {
+          url: webhookUrl,
+          error: err.message
+        });
+      });
+
       return {
         content: [{
           type: "text",

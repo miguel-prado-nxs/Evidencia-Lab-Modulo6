@@ -316,6 +316,71 @@ async function handleVoicemailDetected(req, res) {
 }
 
 /**
+ * POST /api/v1/webhooks/elevenlabs/hang-up-call
+ *
+ * Recibe notificación del MCP cuando ejecuta hang_up_call.
+ * Termina inmediatamente la sesión en ElevenLabs.
+ *
+ * Payload:
+ * {
+ *   establishment_id: string,
+ *   conversation_id: string,
+ *   reason: string,
+ *   timestamp: ISO8601
+ * }
+ */
+async function handleHangUpCall(req, res) {
+  try {
+    const body = req.body;
+    const establishmentId = body.establishment_id || body.establishmentId;
+    const conversationId = body.conversation_id || body.conversationId;
+    const reason = body.reason || "Usuario colgó la llamada";
+
+    logger.info("[Hang Up Webhook] Solicitud de colgar recibida", {
+      establishmentId,
+      conversationId,
+      reason,
+    });
+
+    if (!establishmentId && !conversationId) {
+      return res.status(400).json({ error: "Missing establishment_id or conversation_id" });
+    }
+
+    // PASO 1: Actualizar el enrichment para marcar que se colgó
+    if (establishmentId) {
+      try {
+        await prisma.establishmentEnrichment.update({
+          where: { establishmentId },
+          data: {
+            callStatus: "completed",
+            callSummary: reason,
+            updatedAt: new Date(),
+          },
+        });
+
+        logger.info("[Hang Up Webhook] Enrichment actualizado", {
+          establishmentId,
+          callStatus: "hung_up",
+        });
+      } catch (error) {
+        logger.error("[Hang Up Webhook] Error actualizando enrichment", {
+          establishmentId,
+          error: error.message,
+        });
+      }
+    }
+
+    return res.status(200).json({ received: true, hangUp: true });
+  } catch (error) {
+    logger.error("[Hang Up Webhook] Error:", {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res.status(200).json({ received: true, hangUp: true });
+  }
+}
+
+/**
  * GET /api/v1/webhooks/elevenlabs/health
  * Health check del endpoint de webhooks
  */
@@ -326,6 +391,7 @@ async function webhookHealth(req, res) {
     endpoints: [
       "POST /api/v1/webhooks/elevenlabs/call-completed",
       "POST /api/v1/webhooks/elevenlabs/voicemail-detected",
+      "POST /api/v1/webhooks/elevenlabs/hang-up-call",
     ],
     timestamp: new Date().toISOString(),
   });
@@ -334,5 +400,6 @@ async function webhookHealth(req, res) {
 module.exports = {
   handleCallCompleted,
   handleVoicemailDetected,
+  handleHangUpCall,
   webhookHealth,
 };

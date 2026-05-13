@@ -71,7 +71,7 @@ function createQualificationServer() {
     "save_qualification_data",
     "Guarda información de calificación con datos operacionales y de marketing. Llamar después de explorar cada área.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       daily_orders_range: z.string().optional().describe("Rango preciso de pedidos diarios"),
       average_ticket: z.number().optional().describe("Ticket promedio en pesos"),
@@ -198,7 +198,7 @@ function createQualificationServer() {
     "end_qualification_call",
     "Guarda el resultado final de la conversación de Qualification y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       outcome: z.enum(["QUALIFIED", "NOT_QUALIFIED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "NO_ANSWER", "VOICEMAIL"]).describe("Outcome: QUALIFIED, NOT_QUALIFIED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
       call_summary: z.string().describe("Resumen breve de la conversación"),
@@ -215,12 +215,32 @@ function createQualificationServer() {
 
   server.tool(
     "hang_up_call",
-    "Cuelga la llamada inmediatamente. Usar DESPUÉS de end_qualification_call.",
+    "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
+      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().optional().describe("ID de la conversación ({{conversationId}})"),
       reason: z.string().optional().describe("Razón del cierre")
     },
-    async ({ reason }) => {
-      logger.info("[hang_up_call] Cierre de llamada solicitado", { reason });
+    async ({ establishment_id, conversation_id, reason }) => {
+      logger.info("[hang_up_call] Cierre de llamada solicitado", { establishment_id, conversation_id, reason });
+
+      const webhookUrl = `${config.server.apiBaseUrl || 'http://localhost:3004'}/api/v1/webhooks/elevenlabs/hang-up-call`;
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          establishment_id: establishment_id || null,
+          conversation_id: conversation_id || null,
+          reason: reason || "Cierre normal de Qualification",
+          timestamp: new Date().toISOString(),
+        })
+      }).catch(err => {
+        logger.error("[hang_up_call Webhook] Error notificando backend:", {
+          url: webhookUrl,
+          error: err.message
+        });
+      });
+
       return {
         content: [{
           type: "text",

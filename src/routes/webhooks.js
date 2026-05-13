@@ -16,6 +16,9 @@ router.post("/elevenlabs/call-completed", elevenLabsWebhookController.handleCall
 // Voicemail detection webhook (llamado inmediatamente por el MCP al detectar voicemail)
 router.post("/elevenlabs/voicemail-detected", elevenLabsWebhookController.handleVoicemailDetected);
 
+// Hang up call webhook (llamado por el MCP para colgar la llamada)
+router.post("/elevenlabs/hang-up-call", elevenLabsWebhookController.handleHangUpCall);
+
 // Health check
 router.get("/elevenlabs/health", elevenLabsWebhookController.webhookHealth);
 

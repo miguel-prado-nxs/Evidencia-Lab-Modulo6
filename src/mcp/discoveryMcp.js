@@ -4,7 +4,7 @@ const svc = require("../services/funnelWebhookService");
 const logger = require("../config/logger");
 const config = require("../config/env");
 
-// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{conversationId}}")
+// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
 const sanitizeVar = (value) => {
   if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
   return value || null;
@@ -72,7 +72,7 @@ function createDiscoveryServer() {
     "save_discovery_data",
     "Guarda temporalmente la información de descubrimiento capturada durante la conversación. Llamar cada vez que se obtiene un nuevo dato.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
       contact_name: z.string().optional().describe("Nombre del contacto"),
       contact_email: z.string().optional().describe("Email del decision maker (para envios posteriores)"),
@@ -130,7 +130,7 @@ function createDiscoveryServer() {
     "end_discovery_call",
     "Guarda el resultado final de la conversación de Discovery y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{conversationId}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
       outcome: z.enum(["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("RESULTADO DE LA LLAMADA: INTERESTED (mostró interés), FOLLOW_UP_LATER (llamar después), NOT_INTERESTED (no interesado), WRONG_NUMBER (número incorrecto), NO_ANSWER (sin respuesta), VOICEMAIL (buzón de voz)"),
       contact_name: z.string().optional().describe("Nombre del contacto o decision maker"),
@@ -257,12 +257,33 @@ function createDiscoveryServer() {
 
   server.tool(
     "hang_up_call",
-    "Cuelga la llamada inmediatamente. Usar DESPUÉS de end_discovery_call.",
+    "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
+      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().optional().describe("ID de la conversación ({{conversationId}})"),
       reason: z.string().optional().describe("Razón del cierre")
     },
-    async ({ reason }) => {
-      logger.info("[hang_up_call] Cierre de llamada solicitado", { reason });
+    async ({ establishment_id, conversation_id, reason }) => {
+      logger.info("[hang_up_call] Cierre de llamada solicitado", { establishment_id, conversation_id, reason });
+
+      // Notificar al backend para que cuelgue la llamada
+      const webhookUrl = `${config.server.apiBaseUrl || 'http://localhost:3004'}/api/v1/webhooks/elevenlabs/hang-up-call`;
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          establishment_id: establishment_id || null,
+          conversation_id: conversation_id || null,
+          reason: reason || "Cierre normal de Discovery",
+          timestamp: new Date().toISOString(),
+        })
+      }).catch(err => {
+        logger.error("[hang_up_call Webhook] Error notificando backend:", {
+          url: webhookUrl,
+          error: err.message
+        });
+      });
+
       return {
         content: [{
           type: "text",
