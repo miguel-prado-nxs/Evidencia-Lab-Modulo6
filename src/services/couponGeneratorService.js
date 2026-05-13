@@ -2,13 +2,14 @@ const prisma = require("../config/database");
 const logger = require("../config/logger");
 const crypto = require("crypto");
 
-const URL_MICROSTRIPE = process.env.MICROSTRIPE || "http://localhost:3002/api/stripe"; 
+const isProduction = process.env.NODE_ENV === 'production';
+const URL_MICROSTRIPE = process.env.MICROSTRIPE || (isProduction ? '' : "http://localhost:3002/api/stripe"); 
 
 const { URL } = require('url');
 const http = require('http');
 const https = require('https');
 
-const postJson = (urlString, data) => {
+const postJson = (urlString, data, timeoutMs = 10000) => {
   return new Promise((resolve, reject) => {
     try {
       const url = new URL(urlString);
@@ -19,6 +20,7 @@ const postJson = (urlString, data) => {
         url,
         {
           method: 'POST',
+          timeout: timeoutMs,
           headers: {
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(body),
@@ -47,6 +49,9 @@ const postJson = (urlString, data) => {
       );
 
       req.on('error', (err) => reject(err));
+      req.on('timeout', () => {
+        req.destroy(new Error(`Request timeout after ${timeoutMs}ms`));
+      });
       req.write(body);
       req.end();
     } catch (err) {
@@ -233,17 +238,25 @@ const generateCouponForCall = async ({
     }
   });
 
+  console.log("\n\n\n\n\\n\n\n\n Creando cupon en stripe con codigo: ", code, " y expiracion: ", expiresAt.toISOString(), "\n\n\n\n");
+
   // Creacion de codigo promocional en stripe
-  console.log("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nCreando código promocional en Stripe para el cupón generado...");
   try {
+    if (!URL_MICROSTRIPE) {
+      logger.warn('MICROSTRIPE is not configured; skipping promotion code creation', {
+        couponType: template.couponType,
+        nodeEnv: process.env.NODE_ENV,
+      });
+    }
+
     // Buscar stripe_coupon_id desde el template en BD (por couponType)
     const tpl = await prisma.couponTemplate.findUnique({
       where: { couponType: template.couponType }
     });
 
-    const stripeCouponId = tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId || tpl.stripeCouponId);
+    const stripeCouponId = tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId);
 
-    if (stripeCouponId) {
+    if (URL_MICROSTRIPE && stripeCouponId) {
       const endpoint = `${URL_MICROSTRIPE.replace(/\/$/, '')}/coupons/insertCodePromotionToCoupon`;
       const payload = {
         idCoupon: stripeCouponId,
@@ -255,13 +268,28 @@ const generateCouponForCall = async ({
         const result = await postJson(endpoint, payload);
         logger.info('Promotion code created in microstripe', { couponId: stripeCouponId, code, result });
       } catch (err) {
-        logger.warn('Failed to create promotion code in microstripe', { couponId: stripeCouponId, code, error: err.message || err });
+        logger.warn('Failed to create promotion code in microstripe', {
+          couponId: stripeCouponId,
+          code,
+          endpoint,
+          error: {
+            message: err.message,
+            code: err.code,
+            status: err.status,
+            body: err.body,
+          }
+        });
       }
-    } else {
+    } else if (!stripeCouponId) {
       logger.warn('No stripe_coupon_id found for template; skipping promotion code creation', { couponType: template.couponType });
     }
   } catch (err) {
-    logger.error('Error creating promotion code for coupon', { error: err.message || err });
+    logger.error('Error creating promotion code for coupon', {
+      error: {
+        message: err.message,
+        code: err.code,
+      }
+    });
   }
 
 
