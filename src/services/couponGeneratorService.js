@@ -238,26 +238,18 @@ const generateCouponForCall = async ({
     }
   });
 
-  console.log("\n\n\n\n\\n\n\n\n Creando cupon en stripe con codigo: ", code, " y expiracion: ", expiresAt.toISOString(), "\n\n\n\n");
-
   // Creacion de codigo promocional en stripe
+  console.log("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nCreando código promocional en Stripe para el cupón generado...");
   try {
-    if (!URL_MICROSTRIPE) {
-      logger.warn('MICROSTRIPE is not configured; skipping promotion code creation', {
-        couponType: template.couponType,
-        nodeEnv: process.env.NODE_ENV,
-      });
-    }
-
     // Buscar stripe_coupon_id desde el template en BD (por couponType)
     const tpl = await prisma.couponTemplate.findUnique({
       where: { couponType: template.couponType }
     });
 
-    const stripeCouponId = tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId);
+    const stripeCouponId = tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId || tpl.stripeCouponId);
 
-    if (URL_MICROSTRIPE && stripeCouponId) {
-      const endpoint = `${URL_MICROSTRIPE.replace(/\/$/, '')}/coupons/insertCodePromotionToCoupon`;
+    if (stripeCouponId) {
+      const endpoint = `${URL_MICROSTRIPE.replace(/\/$/, '')}/promotion-codes/insert-code`;
       const payload = {
         idCoupon: stripeCouponId,
         code,
@@ -268,28 +260,13 @@ const generateCouponForCall = async ({
         const result = await postJson(endpoint, payload);
         logger.info('Promotion code created in microstripe', { couponId: stripeCouponId, code, result });
       } catch (err) {
-        logger.warn('Failed to create promotion code in microstripe', {
-          couponId: stripeCouponId,
-          code,
-          endpoint,
-          error: {
-            message: err.message,
-            code: err.code,
-            status: err.status,
-            body: err.body,
-          }
-        });
+        logger.warn('Failed to create promotion code in microstripe', { couponId: stripeCouponId, code, error: err.message || err });
       }
-    } else if (!stripeCouponId) {
+    } else {
       logger.warn('No stripe_coupon_id found for template; skipping promotion code creation', { couponType: template.couponType });
     }
   } catch (err) {
-    logger.error('Error creating promotion code for coupon', {
-      error: {
-        message: err.message,
-        code: err.code,
-      }
-    });
+    logger.error('Error creating promotion code for coupon', { error: err.message || err });
   }
 
 
