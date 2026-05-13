@@ -2,8 +2,7 @@ const prisma = require("../config/database");
 const logger = require("../config/logger");
 const crypto = require("crypto");
 
-const isProduction = process.env.NODE_ENV === 'production';
-const URL_MICROSTRIPE = process.env.MICROSTRIPE || (isProduction ? '' : "http://localhost:3002/api/stripe"); 
+const URL_MICROSTRIPE = process.env.MICROSTRIPE || "http://localhost:3002/api/stripe";
 
 const { URL } = require('url');
 const http = require('http');
@@ -239,7 +238,7 @@ const generateCouponForCall = async ({
   });
 
   // Creacion de codigo promocional en stripe
-  console.log("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nCreando código promocional en Stripe para el cupón generado...");
+  console.log(`\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nCreando código promocional en Stripe para el cupón generado... en endpoint ${URL_MICROSTRIPE}/promotion-codes/insert-code`);
   try {
     // Buscar stripe_coupon_id desde el template en BD (por couponType)
     const tpl = await prisma.couponTemplate.findUnique({
@@ -249,7 +248,7 @@ const generateCouponForCall = async ({
     const stripeCouponId = tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId || tpl.stripeCouponId);
 
     if (stripeCouponId) {
-      const endpoint = `${URL_MICROSTRIPE.replace(/\/$/, '')}/promotion-codes/insert-code`;
+      const endpoint = `${URL_MICROSTRIPE}/promotion-codes/insert-code`;
       const payload = {
         idCoupon: stripeCouponId,
         code,
