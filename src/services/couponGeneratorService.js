@@ -2,6 +2,59 @@ const prisma = require("../config/database");
 const logger = require("../config/logger");
 const crypto = require("crypto");
 
+const URL_MICROSTRIPE = process.env.MICROSTRIPE || "http://localhost:3002/api/stripe"; 
+
+const { URL } = require('url');
+const http = require('http');
+const https = require('https');
+
+const postJson = (urlString, data) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const url = new URL(urlString);
+      const lib = url.protocol === 'https:' ? https : http;
+      const body = JSON.stringify(data);
+
+      const req = lib.request(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+          },
+        },
+        (res) => {
+          let chunks = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => (chunks += chunk));
+          res.on('end', () => {
+            try {
+              const parsed = chunks ? JSON.parse(chunks) : null;
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                resolve(parsed);
+              } else {
+                const err = new Error(`HTTP ${res.statusCode}`);
+                err.status = res.statusCode;
+                err.body = parsed;
+                reject(err);
+              }
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }
+      );
+
+      req.on('error', (err) => reject(err));
+      req.write(body);
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 /**
  * Genera un código de cupón único con formato: BASE-SUFFIX
  * @param {string} base - Base del código (ej: "EASY-PLUS30")
@@ -179,6 +232,37 @@ const generateCouponForCall = async ({
       status: 'GENERATED'
     }
   });
+
+  // Creacion de codigo promocional en stripe
+  try {
+    // Buscar stripe_coupon_id desde el template en BD (por couponType)
+    const tpl = await prisma.couponTemplate.findUnique({
+      where: { couponType: template.couponType }
+    });
+
+    const stripeCouponId = tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId || tpl.stripeCouponId);
+
+    if (stripeCouponId) {
+      const endpoint = `${URL_MICROSTRIPE.replace(/\/$/, '')}/coupons/insertCodePromotionToCoupon`;
+      const payload = {
+        idCoupon: stripeCouponId,
+        code,
+        expiresAt: expiresAt.toISOString(),
+      };
+
+      try {
+        const result = await postJson(endpoint, payload);
+        logger.info('Promotion code created in microstripe', { couponId: stripeCouponId, code, result });
+      } catch (err) {
+        logger.warn('Failed to create promotion code in microstripe', { couponId: stripeCouponId, code, error: err.message || err });
+      }
+    } else {
+      logger.warn('No stripe_coupon_id found for template; skipping promotion code creation', { couponType: template.couponType });
+    }
+  } catch (err) {
+    logger.error('Error creating promotion code for coupon', { error: err.message || err });
+  }
+
 
   // 6. Personalizar mensaje con datos del prospecto
   // codigo = couponType limpio (ej: PLUS30) — lo que ve el cliente
