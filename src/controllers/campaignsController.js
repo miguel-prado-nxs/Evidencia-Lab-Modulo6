@@ -768,6 +768,29 @@ const cancel = async (req, res, next) => {
   }
 };
 
+const reschedule = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { scheduledTimeUnix } = req.body;
+
+    if (!scheduledTimeUnix) {
+      return res.status(400).json({
+        success: false,
+        error: "scheduledTimeUnix es requerido",
+      });
+    }
+
+    const campaign = await campaignsService.rescheduleCampaign(id, scheduledTimeUnix);
+    res.json({
+      success: true,
+      data: campaign,
+      message: "Campaña reprogramada exitosamente",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const resume = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -846,6 +869,7 @@ module.exports = {
   getReengagementCandidates,
   pause,
   cancel,
+  reschedule,
   resume,
   retry,
   getContinuationPreview,

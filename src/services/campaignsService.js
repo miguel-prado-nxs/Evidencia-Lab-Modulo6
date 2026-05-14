@@ -600,6 +600,46 @@ const updateCampaign = async (id, data) => {
     throw new Error("radiusMeters must be a positive number");
   }
 
+  // Para campañas SCHEDULED: detectar si hay cambios que requieren re-dispatch.
+  // Cualquier campo que afecte el batch (zona, filtros, agente) requiere
+  // cancelar el batch existente en ElevenLabs y crear uno nuevo con los datos actualizados.
+  const isScheduled = existingCampaign.status === "SCHEDULED";
+  const REDISPATCH_FIELDS = ["centerLat", "centerLng", "radiusMeters", "activityCodes", "employeeRanges", "filters", "agentConfigId"];
+
+  // Solo hacer re-dispatch si el campo realmente cambió de valor.
+  // Arrays y objetos se comparan por valor (JSON) para evitar re-dispatch innecesario
+  // cuando el wizard envía los mismos datos sin modificaciones.
+  const hasDirtyField = (field) => {
+    if (data[field] === undefined) return false;
+    const existing = existingCampaign[field];
+    const incoming = data[field];
+    if (incoming !== null && typeof incoming === "object") {
+      return JSON.stringify(incoming) !== JSON.stringify(existing);
+    }
+    return incoming !== existing;
+  };
+  const needsRedispatch = isScheduled && REDISPATCH_FIELDS.some(hasDirtyField);
+
+  let uniqueBatchIdsToCancel = [];
+  if (needsRedispatch) {
+    // Capturar IDs antes de que el código de reasignación los elimine
+    const batchContacts = await prisma.campaignContact.findMany({
+      where: { campaignId: id, providerBatchId: { not: null } },
+      select: { providerBatchId: true },
+    });
+    uniqueBatchIdsToCancel = [...new Set(batchContacts.map((c) => c.providerBatchId).filter(Boolean))];
+
+    if (uniqueBatchIdsToCancel.length > 0) {
+      await Promise.allSettled(
+        uniqueBatchIdsToCancel.map((batchId) => campaignBatchDispatcherService.cancelProviderBatch(batchId))
+      );
+      logger.info("[CampaignUpdate] Provider batches cancelled for SCHEDULED re-dispatch", {
+        campaignId: id,
+        batchCount: uniqueBatchIdsToCancel.length,
+      });
+    }
+  }
+
   // Validar cupones por tipo de campaña al actualizar
   const effectiveCampaignType = type
     ? type
@@ -634,6 +674,14 @@ const updateCampaign = async (id, data) => {
   if (couponPrefix !== undefined) updateData.couponPrefix = couponPrefix;
   if (couponTemplateIds !== undefined) updateData.couponTemplateIds = couponTemplateIds;
 
+  // Si requiere re-dispatch, pasar temporalmente a DRAFT para que
+  // startCampaign pueda ejecutarse sin conflicto de status SCHEDULED
+  const originalScheduledAt = existingCampaign.scheduledAt;
+  if (needsRedispatch) {
+    updateData.status = "DRAFT";
+    updateData.scheduledAt = null;
+  }
+
   const campaign = await prisma.campaign.update({
     where: { id },
     data: updateData,
@@ -657,6 +705,33 @@ const updateCampaign = async (id, data) => {
   }
 
   logger.info(`Campaign updated: ${campaign.id}`, { campaignId: campaign.id });
+
+  // Re-dispatch con la misma fecha original si la campaña era SCHEDULED y hubo cambios significativos
+  if (needsRedispatch) {
+    const originalScheduledTimeUnix = originalScheduledAt
+      ? Math.floor(new Date(originalScheduledAt).getTime() / 1000)
+      : undefined;
+
+    try {
+      const redispatchResult = await startCampaign(id, { scheduledTimeUnix: originalScheduledTimeUnix });
+      logger.info("[CampaignUpdate] SCHEDULED campaign re-dispatched after significant update", {
+        campaignId: id,
+        originalScheduledAt,
+        cancelledBatches: uniqueBatchIdsToCancel.length,
+      });
+      return redispatchResult;
+    } catch (dispatchError) {
+      // El update de datos fue exitoso pero el re-dispatch falló.
+      // La campaña queda en DRAFT — el usuario puede reiniciarla manualmente.
+      logger.error("[CampaignUpdate] Re-dispatch failed. Campaign left in DRAFT for manual restart.", {
+        campaignId: id,
+        error: dispatchError.message,
+      });
+      // Retornar la campaña en su estado actual (DRAFT) sin lanzar error
+      return prisma.campaign.findUnique({ where: { id } });
+    }
+  }
+
   return campaign;
 };
 
@@ -1669,10 +1744,154 @@ const cancelCampaign = async (id) => {
     throw new Error("La campaña ya ha finalizado");
   }
 
+  // Ventana de bloqueo: no cancelar si la campaña se ejecutará en < 2 min
+  // (ElevenLabs podría estar iniciando las llamadas en este momento)
+  if (campaign.status === "SCHEDULED" && campaign.scheduledAt) {
+    const minutesUntilExecution = (new Date(campaign.scheduledAt) - new Date()) / 1000 / 60;
+    if (minutesUntilExecution < 2) {
+      const error = new Error("No se puede cancelar una campaña que se ejecutará en menos de 2 minutos");
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  // Obtener batch IDs únicos de contactos pendientes/programados para cancelar en ElevenLabs
+  const batchContacts = await prisma.campaignContact.findMany({
+    where: {
+      campaignId: id,
+      providerBatchId: { not: null },
+      status: { in: ["SCHEDULED", "CALLING", "PENDING"] },
+    },
+    select: { providerBatchId: true },
+  });
+
+  const uniqueBatchIds = [...new Set(batchContacts.map((c) => c.providerBatchId).filter(Boolean))];
+
+  if (uniqueBatchIds.length > 0) {
+    // Best-effort: intentar cancelar todos. No fallar si alguno ya fue cancelado.
+    const cancelResults = await Promise.allSettled(
+      uniqueBatchIds.map((batchId) => campaignBatchDispatcherService.cancelProviderBatch(batchId))
+    );
+
+    const failures = cancelResults
+      .map((result, i) => ({ batchId: uniqueBatchIds[i], ...result }))
+      .filter((r) => r.status === "rejected");
+
+    if (failures.length > 0) {
+      logger.warn("[CampaignCancel] Some provider batches could not be cancelled", {
+        campaignId: id,
+        failures: failures.map((f) => ({ batchId: f.batchId, reason: f.reason?.message })),
+      });
+    }
+
+    logger.info("[CampaignCancel] Provider batches processed", {
+      campaignId: id,
+      total: uniqueBatchIds.length,
+      cancelled: cancelResults.filter((r) => r.status === "fulfilled").length,
+    });
+  }
+
   return prisma.campaign.update({
     where: { id },
     data: { status: "CANCELLED" },
   });
+};
+
+/**
+ * Pospone una campaña SCHEDULED a una nueva fecha/hora.
+ * Cancela los batches existentes en ElevenLabs y los re-envía con la nueva fecha.
+ * Si el re-envío falla, la campaña queda en DRAFT para reintento manual.
+ */
+const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
+  const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+  if (!campaign) {
+    const error = new Error("Campaña no encontrada");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (campaign.status !== "SCHEDULED") {
+    const error = new Error(
+      `Solo se pueden posponer campañas SCHEDULED. Estado actual: ${campaign.status}`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Ventana de bloqueo: no reprogramar si faltan < 2 min para la ejecución original
+  if (campaign.scheduledAt) {
+    const minutesUntilExecution = (new Date(campaign.scheduledAt) - new Date()) / 1000 / 60;
+    if (minutesUntilExecution < 2) {
+      const error = new Error(
+        "No se puede posponer una campaña que se ejecutará en menos de 2 minutos"
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  // Validar que la nueva fecha sea al menos 60 segundos en el futuro
+  const resolvedNewTime = normalizeScheduledTimeUnix(newScheduledTimeUnix);
+  if (!resolvedNewTime) {
+    const error = new Error("La nueva fecha debe ser al menos 60 segundos en el futuro");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Obtener batch IDs únicos para cancelar en ElevenLabs
+  const batchContacts = await prisma.campaignContact.findMany({
+    where: { campaignId, providerBatchId: { not: null } },
+    select: { providerBatchId: true },
+  });
+  const uniqueBatchIds = [...new Set(batchContacts.map((c) => c.providerBatchId).filter(Boolean))];
+
+  // Cancelar batches existentes (best-effort)
+  if (uniqueBatchIds.length > 0) {
+    await Promise.allSettled(
+      uniqueBatchIds.map((batchId) => campaignBatchDispatcherService.cancelProviderBatch(batchId))
+    );
+    logger.info("[CampaignReschedule] Existing provider batches cancelled", {
+      campaignId,
+      batchCount: uniqueBatchIds.length,
+    });
+  }
+
+  // Resetear contactos a PENDING para que startCampaign los re-despache
+  await prisma.campaignContact.updateMany({
+    where: { campaignId },
+    data: { status: "PENDING", providerBatchId: null, sentAt: null },
+  });
+
+  // Temporalmente DRAFT para que startCampaign pueda ejecutarse sin conflicto de status
+  await prisma.campaign.update({
+    where: { id: campaignId },
+    data: { status: "DRAFT", scheduledAt: null },
+  });
+
+  try {
+    const result = await startCampaign(campaignId, { scheduledTimeUnix: resolvedNewTime });
+
+    logger.info("[CampaignReschedule] Campaign rescheduled successfully", {
+      campaignId,
+      newScheduledAt: result.scheduledAt,
+      cancelledBatches: uniqueBatchIds.length,
+    });
+
+    return result;
+  } catch (dispatchError) {
+    // Si el re-envío falla, la campaña queda en DRAFT para que el usuario pueda reintentar
+    logger.error("[CampaignReschedule] Re-dispatch failed after cancel. Campaign left in DRAFT.", {
+      campaignId,
+      error: dispatchError.message,
+    });
+
+    const wrappedError = new Error(
+      `Los batches anteriores fueron cancelados pero el re-envío falló: ${dispatchError.message}. La campaña quedó en DRAFT para reintento manual.`
+    );
+    wrappedError.statusCode = 500;
+    wrappedError.campaignLeftInDraft = true;
+    throw wrappedError;
+  }
 };
 
 const retryCampaignContacts = async (campaignId, options = {}) => {
@@ -2265,6 +2484,7 @@ module.exports = {
   resumeCampaign,
   getCouponBreakdown,
   cancelCampaign,
+  rescheduleCampaign,
   retryCampaignContacts,
   getCampaignTypeFromAgent,
   getValidCampaignAgentIds,

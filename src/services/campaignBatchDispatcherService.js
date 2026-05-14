@@ -4,6 +4,8 @@ const logger = require("../config/logger");
 
 const ELEVENLABS_BATCH_SUBMIT_URL =
   process.env.ELEVENLABS_BATCH_SUBMIT_URL || "https://api.elevenlabs.io/v1/convai/batch-calling/submit";
+const ELEVENLABS_BATCH_CANCEL_URL = (batchId) =>
+  `https://api.elevenlabs.io/v1/convai/batch-calling/${batchId}/cancel`;
 const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
 const ELEVENLABS_AGENT_DETAILS_URL = (agentId) => `https://api.elevenlabs.io/v1/convai/agents/${agentId}`;
 
@@ -764,7 +766,62 @@ const getCampaignBatchDispatchStats = async (campaignId) => {
   };
 };
 
+/**
+ * Cancels an active or scheduled batch in ElevenLabs.
+ * Treats 404 as success (batch already gone). Best-effort: caller decides how to handle errors.
+ */
+const cancelProviderBatch = async (providerBatchId) => {
+  if (!providerBatchId) {
+    throw new Error("providerBatchId is required to cancel a batch");
+  }
+
+  if (!process.env.ELEVENLABS_API_KEY) {
+    throw new Error("ELEVENLABS_API_KEY is required");
+  }
+
+  const url = ELEVENLABS_BATCH_CANCEL_URL(providerBatchId);
+  logger.info("[BatchDispatcher] Cancelling provider batch", { providerBatchId });
+
+  try {
+    const response = await axios.post(url, {}, {
+      headers: {
+        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+      },
+      timeout: DEFAULT_TIMEOUT_MS,
+    });
+
+    logger.info("[BatchDispatcher] Provider batch cancelled successfully", {
+      providerBatchId,
+      status: response.status,
+    });
+
+    return { success: true, providerBatchId };
+  } catch (error) {
+    const status = error.response?.status;
+
+    // 404 = batch not found or already cancelled — treat as success
+    if (status === 404) {
+      logger.warn("[BatchDispatcher] Batch not found in provider (may already be cancelled)", { providerBatchId });
+      return { success: true, providerBatchId, alreadyCancelled: true };
+    }
+
+    logger.error("[BatchDispatcher] Failed to cancel provider batch", {
+      providerBatchId,
+      status,
+      error: error.message,
+    });
+
+    const cancelError = new Error(
+      `Failed to cancel provider batch ${providerBatchId}: ${error.message}`
+    );
+    cancelError.statusCode = status || 500;
+    throw cancelError;
+  }
+};
+
 module.exports = {
   submitCampaignBatch,
   getCampaignBatchDispatchStats,
+  cancelProviderBatch,
 };
