@@ -294,7 +294,7 @@ function createActivationServer() {
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
       establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{conversationId}})"),
+      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {

@@ -76,7 +76,7 @@ function createConversionServer() {
     "send_coupon_whatsapp",
     "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
     {
-      conversation_id: z.string().describe("ID de la conversación. Valor: {{conversationId}}"),
+      conversation_id: z.string().describe("ID de la conversación. Valor: {{system__conversation_id}}"),
       establishment_id: z.string().describe("ID del establecimiento. Valor: {{establishment_id}}"),
       campaign_id: z.string().describe("ID de la campaña. Valor: {{campaignId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
       campaign_contact_id: z.string().describe("ID del contacto en la campaña. Valor: {{campaignContactId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
@@ -273,7 +273,7 @@ function createConversionServer() {
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
       establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{conversationId}})"),
+      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {

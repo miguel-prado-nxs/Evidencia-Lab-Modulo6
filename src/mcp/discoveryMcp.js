@@ -233,7 +233,7 @@ function createDiscoveryServer() {
     "send_whatsapp_info",
     "Envía un mensaje informativo básico de EasyOrder por WhatsApp al prospecto. SIEMPRE ejecutar al finalizar la llamada, sin importar el resultado (incluso buzón de voz o sin respuesta).",
     {
-      conversation_id: z.string().describe("ID conversación ({{conversationId}})"),
+      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
       establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
       phone: z.string().describe("Teléfono del prospecto"),
       prospect_name: z.string().optional().describe("Nombre del prospecto (si se obtuvo)"),
@@ -260,7 +260,7 @@ function createDiscoveryServer() {
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
       establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{conversationId}})"),
+      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {
