@@ -115,6 +115,7 @@ router.post("/:id/start", validate(startCampaignSchema), campaignsController.sta
 router.post("/:id/pause", campaignsController.pauseCampaign);
 router.post("/:id/resume", campaignsController.resumeCampaign);
 router.post("/:id/cancel", campaignsController.cancel);
+router.post("/:id/reschedule", campaignsController.reschedule);
 router.post("/:id/retry", campaignsController.retry);
 router.get("/:id/contacts", campaignsController.getContacts);
 router.patch("/contacts/:contactId/status", validate(updateContactStatusSchema), campaignsController.updateContactStatus);
