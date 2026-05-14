@@ -5,6 +5,18 @@ const cloudflareImagesService = require("../services/cloudflareImagesService");
 
 const URL_MICROSTRIPE = process.env.MICROSTRIPE || "http://localhost:3002/api/stripe";
 
+const normalizeStripeProductIds = (value) => {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string" && item.trim().length > 0);
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    return [value];
+  }
+
+  return [];
+};
+
 const list = async (req, res, next) => {
   try {
     const { active, scenario } = req.query;
@@ -79,8 +91,10 @@ const create = async (req, res, next) => {
       validDays,
       validFor,
       priority,
-      stripeProductId
+      stripeProductIds,
+      stripe_product_id
     } = req.body;
+    const normalizedStripeProductIds = normalizeStripeProductIds(stripeProductIds ?? stripe_product_id);
 
     try {
       const couponCreateStripe = await fetch(`${URL_MICROSTRIPE}/promotion-codes`, {
@@ -90,7 +104,7 @@ const create = async (req, res, next) => {
         },
         body: JSON.stringify({
           customerId: "admin_easyorder",
-          productId: stripeProductId,
+          productIds: normalizedStripeProductIds,
           percentOff,
           name: name,
           codes: [couponType],
@@ -134,7 +148,7 @@ const create = async (req, res, next) => {
           validDays: validDays || [],
           validFor: validFor || [],
           priority: priority || 0,
-          stripe_product_id: stripeProductId || null,
+          stripe_product_id: normalizedStripeProductIds,
           stripe_coupon_id: stripeCouponId || null
         }
       });
@@ -182,8 +196,10 @@ const update = async (req, res, next) => {
       validFor,
       active,
       priority,
-      stripeProductId
+      stripeProductIds,
+      stripe_product_id
     } = req.body;
+    const normalizedStripeProductIds = normalizeStripeProductIds(stripeProductIds ?? stripe_product_id);
 
     // Obtener el template actual para ver qué cambió
     const currentTemplate = await prisma.couponTemplate.findUnique({
@@ -214,12 +230,12 @@ const update = async (req, res, next) => {
     if (validFor !== undefined) updateData.validFor = validFor;
     if (active !== undefined) updateData.active = active;
     if (priority !== undefined) updateData.priority = priority;
-    if (stripeProductId !== undefined) updateData.stripe_product_id = stripeProductId;
+    if (stripeProductIds !== undefined || stripe_product_id !== undefined) updateData.stripe_product_id = normalizedStripeProductIds;
 
     // =========================================
     // SINCRONIZAR CAMBIOS CON STRIPE
     // =========================================
-    if (currentTemplate.stripe_coupon_id && (name !== undefined || percentOff !== undefined || validUntil !== undefined || maxPerUser !== undefined || validDays !== undefined)) {
+    if (currentTemplate.stripe_coupon_id && (name !== undefined || percentOff !== undefined || validUntil !== undefined || maxPerUser !== undefined || validDays !== undefined || stripeProductIds !== undefined || stripe_product_id !== undefined)) {
       try {
         const stripeResponse = await fetch(`${URL_MICROSTRIPE}/promotion-codes/${currentTemplate.stripe_coupon_id}`, {
           method: "PUT",
@@ -230,7 +246,7 @@ const update = async (req, res, next) => {
             couponId: currentTemplate.stripe_coupon_id,
             name: name || currentTemplate.name,
             percentOff: percentOff !== undefined ? percentOff : currentTemplate.percentOff,
-            productId: stripeProductId || currentTemplate.stripe_product_id,
+            productIds: normalizedStripeProductIds.length > 0 ? normalizedStripeProductIds : currentTemplate.stripe_product_id,
             validUntil: validUntil || currentTemplate.validUntil,
             maxPerUser: maxPerUser !== undefined ? maxPerUser : currentTemplate.maxPerUser,
             validDays: validDays || currentTemplate.validDays,
@@ -370,7 +386,7 @@ const syncWithStripe = async (req, res, next) => {
       couponId,
       couponType,
       customerId = "admin_easyorder",
-      productId,
+      productIds,
       percentOff,
       amountOff,
       currency = "mxn",
@@ -382,6 +398,7 @@ const syncWithStripe = async (req, res, next) => {
       validDays = [],
     } = req.body || {};
 
+    const normalizedProductIds = normalizeStripeProductIds(productIds);
     const couponTemplateId = couponId === undefined ? null : couponId;
 
     if (!couponType) {
@@ -400,7 +417,7 @@ const syncWithStripe = async (req, res, next) => {
         couponId: couponTemplateId,
         couponType,
         customerId,
-        productId,
+        productIds: normalizedProductIds,
         percentOff,
         amountOff,
         currency,
@@ -410,7 +427,7 @@ const syncWithStripe = async (req, res, next) => {
         validUntil,
         maxPerUser,
         validDays,
-      })
+      }),
     });
 
     if (!response.ok) {
@@ -421,24 +438,21 @@ const syncWithStripe = async (req, res, next) => {
     }
 
     const result = await response.json();
-
     const stripeCouponId = result.new_coupon_id || result.coupon?.id || result.data?.new_coupon_id || result.data?.coupon?.id || null;
-    const stripeProductId = productId ?? null;
 
     await prisma.couponTemplate.update({
       where: { couponType },
       data: {
         stripe_coupon_id: stripeCouponId,
-        stripe_product_id: stripeProductId,
+        stripe_product_id: normalizedProductIds,
       },
     });
 
     return res.status(200).json({
       success: true,
-      data: result
+      data: result,
     });
-  }
-  catch (error) {
+  } catch (error) {
     console.error("Error syncing coupons with Stripe:", error);
     next(error);
   }

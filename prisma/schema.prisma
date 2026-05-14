@@ -963,7 +963,7 @@ model CouponTemplate {
   validDays       String[]   @default([]) @map("valid_days") // ["monday", "tuesday", etc.]
   active           Boolean    @default(true)
   priority         Int        @default(0)
-  stripe_product_id           String?    @map("stripe_product_id")
+  stripe_product_id           String[]   @default([]) @map("stripe_product_id")
   stripe_coupon_id            String?    @map("stripe_coupon_id")
   createdAt        DateTime   @default(now()) @map("created_at")
   updatedAt        DateTime   @updatedAt @map("updated_at")
