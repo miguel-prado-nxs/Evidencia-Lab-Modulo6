@@ -6,6 +6,8 @@ const { uploadSingle } = require("../middleware/upload");
 const { validate } = require("../middleware/validation");
 const { z } = require("zod");
 
+const stripeProductIdsSchema = z.union([z.array(z.string()), z.string()]).optional();
+
 const createTemplateSchema = z.object({
   body: z.object({
     couponType: z.string().min(1, "couponType es requerido"),
@@ -24,7 +26,8 @@ const createTemplateSchema = z.object({
     validDays: z.array(z.string()).optional(),
     validFor: z.array(z.string()).optional(),
     priority: z.number().int().optional(),
-    stripe_product_id: z.string().optional()
+    stripeProductIds: stripeProductIdsSchema,
+    stripe_product_id: stripeProductIdsSchema
 
   }),
 });
@@ -47,7 +50,8 @@ const updateTemplateSchema = z.object({
     validFor: z.array(z.string()).optional(),
     active: z.boolean().optional(),
     priority: z.number().int().optional(),
-    stripe_product_id: z.string().optional()
+    stripeProductIds: stripeProductIdsSchema,
+    stripe_product_id: stripeProductIdsSchema
   }),
 });
 
