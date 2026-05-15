@@ -944,8 +944,50 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                 });
             }
 
-            // Si el conversationId NO coincide pero ya tiene webhookReceivedAt,
-            // podría ser un caso de contacto reutilizado en el mismo batch
+            // Si el contacto no tiene conversationId guardado, el primer webhook que lo
+            // procesó no lo incluyó (ej. call_initiation). Permitir actualizar callDuration
+            // y conversationId desde este webhook más completo (post_call_transcription).
+            if (!contact.conversationId && webhookData.conversationId) {
+                const lateUpdates = {};
+
+                if (webhookData.conversationId) {
+                    lateUpdates.conversationId = webhookData.conversationId;
+                }
+
+                if (webhookData.callDuration != null && (contact.callDuration == null || contact.callDuration === 0)) {
+                    lateUpdates.callDuration = webhookData.callDuration;
+                }
+
+                if (Object.keys(lateUpdates).length > 0) {
+                    await prisma.campaignContact.update({
+                        where: { id: contact.id },
+                        data: lateUpdates,
+                    });
+
+                    setImmediate(() => {
+                        recalculateCampaignMetrics(contact.campaignId).catch((error) => {
+                            logger.error("[CampaignWebhook] Failed to recalculate metrics after late conversationId update", {
+                                campaignId: contact.campaignId,
+                                error: error.message,
+                            });
+                        });
+                    });
+
+                    logger.info("[CampaignWebhook] Late update applied (contact had no conversationId)", {
+                        campaignId: contact.campaignId,
+                        contactId: contact.id,
+                        updatesApplied: Object.keys(lateUpdates),
+                        callDuration: lateUpdates.callDuration,
+                    });
+                }
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Webhook late update applied",
+                });
+            }
+
+            // conversationId real distinto: otro contacto reutilizado en el mismo batch
             logger.warn("[CampaignWebhook] Webhook received for contact with previous webhook but different conversationId", {
                 campaignId: contact.campaignId,
                 contactId: contact.id,
@@ -954,7 +996,6 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                 alreadyReceivedAt: contact.webhookReceivedAt,
             });
 
-            // No procesamos este webhook para evitar sobrescribir datos válidos
             return res.status(200).json({
                 success: true,
                 message: "Webhook for contact with different conversationId",
