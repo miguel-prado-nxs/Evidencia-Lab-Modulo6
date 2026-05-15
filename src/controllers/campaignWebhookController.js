@@ -125,13 +125,14 @@ const firstNonEmpty = (...values) => {
 const parseDuration = (...values) => {
     for (const value of values) {
         if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
-            return value;
+            // CampaignContact.callDuration is Int — round to avoid Prisma validation error on floats
+            return Math.round(value);
         }
 
         if (typeof value === "string") {
-            const parsed = Number.parseInt(value, 10);
+            const parsed = parseFloat(value);
             if (Number.isFinite(parsed) && parsed >= 0) {
-                return parsed;
+                return Math.round(parsed);
             }
         }
     }
@@ -445,13 +446,32 @@ const extractWebhookData = (payload = {}) => {
                 metadata.reason,
             ),
         callDuration: parseDuration(
+            // Nivel data (más común en ElevenLabs post_call_transcription)
+            data.call_duration_secs,
+            data.call_duration_seconds,
+            data.call_duration,
+            data.duration_secs,
+            data.duration,
+            // Nivel metadata (ElevenLabs puede añadir aquí sus propios campos)
             data.metadata?.call_duration_secs,
             data.metadata?.call_duration_seconds,
             data.metadata?.call_duration,
-            data.call_duration_secs,
-            data.call_duration,
+            data.metadata?.duration,
+            // Nivel analysis
+            data.analysis?.call_duration_secs,
+            data.analysis?.call_duration,
+            // Nivel raíz del payload (por si no viene envuelto en data)
+            payload.call_duration_secs,
+            payload.call_duration_seconds,
+            payload.call_duration,
+            payload.duration_secs,
+            payload.duration,
+            // Fallback: metadata como objeto separado (ya extraído)
             metadata.call_duration_secs,
+            metadata.call_duration_seconds,
             metadata.call_duration,
+            metadata.duration_secs,
+            metadata.duration,
         ),
         couponGenerated,
     };
@@ -612,6 +632,36 @@ const handleElevenLabsWebhook = async (req, res, next) => {
 
         const webhookData = extractWebhookData(req.body);
 
+        // Log diagnóstico de duración — muestra todos los paths posibles para identificar
+        // qué campo usa ElevenLabs. Remover una vez confirmado el campo correcto.
+        const _body = req.body || {};
+        const _data = _body.data || {};
+        const _meta = _data.metadata || {};
+        const _analysis = _data.analysis || {};
+        logger.info("[CampaignWebhook] Duration field scan..........................................................................................................................................................................................................................................................", {
+            eventType: webhookData.eventType,
+            "body.call_duration_secs": _body.call_duration_secs,
+            "body.call_duration": _body.call_duration,
+            "body.duration": _body.duration,
+            "data.call_duration_secs": _data.call_duration_secs,
+            "data.call_duration_seconds": _data.call_duration_seconds,
+            "data.call_duration": _data.call_duration,
+            "data.duration_secs": _data.duration_secs,
+            "data.duration": _data.duration,
+            "data.metadata.call_duration_secs": _meta.call_duration_secs,
+            "data.metadata.call_duration_seconds": _meta.call_duration_seconds,
+            "data.metadata.call_duration": _meta.call_duration,
+            "data.metadata.duration": _meta.duration,
+            "data.analysis.call_duration_secs": _analysis.call_duration_secs,
+            "data.analysis.call_duration": _analysis.call_duration,
+            "parsedCallDuration": webhookData.callDuration,
+            // Claves del body/data para detectar campos con "duration" que no conocemos
+            "bodyKeys": Object.keys(_body).filter(k => k.toLowerCase().includes("dur")),
+            "dataKeys": Object.keys(_data).filter(k => k.toLowerCase().includes("dur")),
+            "metadataKeys": Object.keys(_meta).filter(k => k.toLowerCase().includes("dur")),
+            "analysisKeys": Object.keys(_analysis).filter(k => k.toLowerCase().includes("dur")),
+        });
+
         logger.info("[CampaignWebhook] Extracted webhook data", {
             eventType: webhookData.eventType,
             campaignContactId: webhookData.campaignContactId,
@@ -621,7 +671,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
             phoneNumber: webhookData.phoneNumber,
             callSuccessful: webhookData.callSuccessful,
             failureReason: webhookData.failureReason,
-            payload: JSON.stringify(req.body).substring(0, 200),
+            callDuration: webhookData.callDuration,
+            payload: JSON.stringify(req.body).substring(0, 500),
         });
 
         if (!isSupportedCampaignWebhookEvent(webhookData.eventType)) {
@@ -827,32 +878,50 @@ const handleElevenLabsWebhook = async (req, res, next) => {
         // Puede suceder si:
         // 1. ElevenLabs reintenta el webhook
         // 2. El contacto ya tiene webhookReceivedAt establecido
+        // NOTA: ElevenLabs envía dos webhooks por llamada:
+        //   - Primero: call_ended (sin duración o duración=0)
+        //   - Segundo: post_call_transcription (con duración real)
+        // Permitimos actualizar callDuration del segundo aunque el primero ya fue procesado.
         if (contact.webhookReceivedAt) {
             // Si el conversationId coincide, es claramente un webhook duplicado
             if (contact.conversationId === webhookData.conversationId) {
-                // Solo hacer heal si el contacto sigue en un estado "stuck"
-                if (["CALLING", "PAUSED"].includes(contact.status)) {
-                    const healedStatus = resolveClosedStatusFromContact(contact);
+                const idempotentUpdates = {};
 
-                    await prisma.campaignContact.update({
-                        where: { id: contact.id },
-                        data: {
-                            status: healedStatus,
-                        },
+                // Actualizar callDuration si el webhook entrante lo tiene y el contacto no
+                // (el primer webhook call_ended suele llegar sin duración; el segundo la trae)
+                if (webhookData.callDuration != null && (contact.callDuration == null || contact.callDuration === 0)) {
+                    idempotentUpdates.callDuration = webhookData.callDuration;
+                    logger.info("[CampaignWebhook] Updating callDuration from post_call webhook (idempotent path)", {
+                        campaignId: contact.campaignId,
+                        contactId: contact.id,
+                        conversationId: webhookData.conversationId,
+                        previousDuration: contact.callDuration,
+                        newDuration: webhookData.callDuration,
                     });
+                }
 
+                // Heal de estado stuck
+                if (["CALLING", "PAUSED"].includes(contact.status)) {
+                    idempotentUpdates.status = resolveClosedStatusFromContact(contact);
                     logger.warn("[CampaignWebhook] Healed inconsistent contact state on idempotent webhook", {
                         campaignId: contact.campaignId,
                         contactId: contact.id,
                         conversationId: webhookData.conversationId,
                         previousStatus: contact.status,
-                        newStatus: healedStatus,
+                        newStatus: idempotentUpdates.status,
                         webhookReceivedAt: contact.webhookReceivedAt,
+                    });
+                }
+
+                if (Object.keys(idempotentUpdates).length > 0) {
+                    await prisma.campaignContact.update({
+                        where: { id: contact.id },
+                        data: idempotentUpdates,
                     });
 
                     setImmediate(() => {
                         recalculateCampaignMetrics(contact.campaignId).catch((error) => {
-                            logger.error("[CampaignWebhook] Failed to recalculate campaign metrics after idempotent heal", {
+                            logger.error("[CampaignWebhook] Failed to recalculate campaign metrics after idempotent update", {
                                 campaignId: contact.campaignId,
                                 contactId: contact.id,
                                 error: error.message,
@@ -866,6 +935,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
                     contactId: contact.id,
                     conversationId: webhookData.conversationId,
                     alreadyReceivedAt: contact.webhookReceivedAt,
+                    updatesApplied: Object.keys(idempotentUpdates),
                 });
 
                 return res.status(200).json({
