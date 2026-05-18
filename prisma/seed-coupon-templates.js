@@ -19,7 +19,7 @@ Como te comenté, te comparto un cupón especial de bienvenida:
 Usa el código:
 {{codigo}}
 
-👉 Actívalo aquí: https://easyorder.mx/activate?code={{codigo}}
+👉 Actívalo aquí: {{couponLink}}
 
 Con esto puedes:
 ✅ Recibir pedidos por QR
@@ -51,7 +51,7 @@ Por eso te damos este cupón 👇
 Código:
 {{codigo}}
 
-Actívalo aquí: https://easyorder.mx/activate?code={{codigo}}
+Actívalo aquí: {{couponLink}}
 
 ⏰ Válido por 48 horas`,
     maxPerUser: 1,
@@ -75,7 +75,7 @@ Para que sigas usando EasyOrder te dejamos:
 Código:
 {{codigo}}
 
-Actívalo aquí: https://easyorder.mx/activate?code={{codigo}}
+Actívalo aquí: {{couponLink}}
 
 ⏰ Válido por 48 horas`,
     maxPerUser: 1,
@@ -100,7 +100,7 @@ Para probar te damos:
 Código:
 {{codigo}}
 
-Actívalo aquí: https://easyorder.mx/activate?code={{codigo}}
+Actívalo aquí: {{couponLink}}
 
 Con el Plan Pro tienes:
 ✅ Múltiples sucursales
@@ -129,7 +129,7 @@ Como recompensa te damos:
 Código:
 {{codigo}}
 
-Actívalo aquí: https://easyorder.mx/activate?code={{codigo}}
+Actívalo aquí: {{couponLink}}
 
 ⏰ Válido por 48 horas`,
     maxPerUser: 3,
@@ -154,7 +154,7 @@ Si lo activas hoy te damos:
 Código:
 {{codigo}}
 
-Actívalo aquí: https://easyorder.mx/activate?code={{codigo}}
+Actívalo aquí: {{couponLink}}
 
 ⏰ Válido por 48 horas`,
     maxPerUser: 1,

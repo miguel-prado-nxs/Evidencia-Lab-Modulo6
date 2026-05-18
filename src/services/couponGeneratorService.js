@@ -1,6 +1,7 @@
 const prisma = require("../config/database");
 const logger = require("../config/logger");
 const crypto = require("crypto");
+const config = require("../config/env");
 
 const URL_MICROSTRIPE = process.env.MICROSTRIPE || "http://localhost:3002/api/stripe";
 
@@ -57,6 +58,32 @@ const postJson = (urlString, data, timeoutMs = 10000) => {
       reject(err);
     }
   });
+};
+
+/**
+ * Resuelve el plan slug desde stripe_product_id[0] usando el mapa configurado
+ * @param {string[]} stripeProductIds - Array de IDs de productos Stripe
+ * @returns {string} Plan slug (ej: "plus", "pro", "enterprise") o "plus" por defecto
+ */
+const resolvePlanSlug = (stripeProductIds = []) => {
+  if (!Array.isArray(stripeProductIds) || stripeProductIds.length === 0) {
+    return "plus";
+  }
+  const firstId = stripeProductIds[0];
+  const slug = config.coupons.productToPlanSlug[firstId];
+  return slug || "plus";
+};
+
+/**
+ * Construye el URL de activación del cupón
+ * @param {string} couponCode - Código del cupón (ej: "EASY-PLUS30-A3F2")
+ * @param {string} planSlug - Plan slug (ej: "plus", "pro", "enterprise")
+ * @returns {string} URL completo de activación
+ */
+const buildCouponActivationUrl = (couponCode, planSlug) => {
+  const base = config.coupons.activationBaseUrl || "https://admin.easyorder.mx";
+  const path = config.coupons.activationPath || "/active-code";
+  return `${base}${path}?coupon=${couponCode}&plan=${planSlug}`;
 };
 
 /**
@@ -271,11 +298,16 @@ const generateCouponForCall = async ({
   // 6. Personalizar mensaje con datos del prospecto
   // codigo = couponType limpio (ej: PLUS30) — lo que ve el cliente
   // couponId = UUID interno — para enlaces de rastreo individual
+  // couponLink = URL completo de activación construido dinámicamente
+  const planSlug = resolvePlanSlug(template.stripe_product_id);
+  const couponLink = buildCouponActivationUrl(code, planSlug);
+
   const message = renderTemplate(template.messageTemplate, {
     nombre: prospectName,
     negocio: businessName,
     codigo: code,
     couponId: coupon.id,
+    couponLink,
     beneficio: template.description || template.name
   });
 

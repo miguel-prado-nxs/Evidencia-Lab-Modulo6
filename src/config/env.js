@@ -66,6 +66,15 @@ const config = {
     // Variante por defecto a retornar en los uploads (configurable en Cloudflare Images)
     defaultVariant: process.env.CLOUDFLARE_IMAGES_VARIANT || "public",
   },
+  // Coupons: URL y mapeo de productos Stripe a planes
+  coupons: {
+    activationBaseUrl: process.env.COUPON_ACTIVATION_BASE_URL || "https://admin.easyorder.mx",
+    activationPath: process.env.COUPON_ACTIVATION_PATH || "/active-code",
+    productToPlanSlug: {
+      [process.env.STRIPE_PRODUCT_ID_PLUS]: "plus",
+      [process.env.STRIPE_PRODUCT_ID_PRO]: "pro",
+    },
+  },
 };
 
 // Validación de variables críticas al arrancar — falla rápido si faltan.
