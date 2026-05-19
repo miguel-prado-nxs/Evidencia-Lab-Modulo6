@@ -916,6 +916,25 @@ async function sendCouponWhatsapp({
     }
   }
 
+  // Validar que el couponType resuelto existe como template activo
+  // Si no existe, resetear a null para usar el scenario
+  if (resolvedCouponType) {
+    const templateExists = await prisma.couponTemplate.findFirst({
+      where: {
+        couponType: resolvedCouponType,
+        active: true
+      }
+    });
+    if (!templateExists) {
+      logger.warn("[sendCouponWhatsapp] Invalid couponType, falling back to scenario", {
+        invalidCouponType: resolvedCouponType,
+        scenario,
+        establishmentId
+      });
+      resolvedCouponType = null;
+    }
+  }
+
   if (!resolvedCouponType && !scenario) {
     resolvedCouponType = "PLUS30"; // Tipo por defecto si no se puede resolver de ninguna fuente
   }
