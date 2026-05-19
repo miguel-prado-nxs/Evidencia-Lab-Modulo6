@@ -29,7 +29,7 @@ Con esto puedes:
 
 ⏰ Válido por 48 horas
 
-¿Dudas? Responde este mensaje y te ayudamos 🙌`,
+¿Dudas? Responde este mensaje y te ayudamos`,
     maxPerUser: 1,
     expiresHours: 48,
     validFor: ["new_users"],
