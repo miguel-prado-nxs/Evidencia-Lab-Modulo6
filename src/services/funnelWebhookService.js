@@ -803,15 +803,21 @@ async function sendCouponWhatsapp({
     const contactByConv = await prisma.campaignContact.findFirst({
       where: { conversationId },
       include: {
-        campaign: { select: { id: true, couponPrefix: true } },
+        campaign: {
+          select: {
+            id: true,
+            couponPrefix: true,
+            couponTemplate: { select: { couponType: true } }
+          }
+        },
       },
     });
 
     if (contactByConv) {
       if (!resolvedCampaignId) resolvedCampaignId = contactByConv.campaignId;
       if (!resolvedContactId) resolvedContactId = contactByConv.id;
-      if (!resolvedCouponType && contactByConv.campaign?.couponPrefix) {
-        resolvedCouponType = contactByConv.campaign.couponPrefix;
+      if (!resolvedCouponType && contactByConv.campaign?.couponTemplate?.couponType) {
+        resolvedCouponType = contactByConv.campaign.couponTemplate.couponType;
       }
       if (!resolvedPhone) {
         resolvedPhone = contactByConv.establishmentPhone || contactByConv.establishmentData?.phone || contactByConv.establishmentData?.whatsapp || null;
@@ -829,7 +835,12 @@ async function sendCouponWhatsapp({
       },
       include: {
         campaign: {
-          select: { id: true, couponPrefix: true, couponTemplateIds: true },
+          select: {
+            id: true,
+            couponPrefix: true,
+            couponTemplateIds: true,
+            couponTemplate: { select: { couponType: true } }
+          },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -838,8 +849,8 @@ async function sendCouponWhatsapp({
     if (activeContact) {
       resolvedCampaignId = activeContact.campaignId;
       resolvedContactId = activeContact.id;
-      if (!resolvedCouponType && activeContact.campaign?.couponPrefix) {
-        resolvedCouponType = activeContact.campaign.couponPrefix;
+      if (!resolvedCouponType && activeContact.campaign?.couponTemplate?.couponType) {
+        resolvedCouponType = activeContact.campaign.couponTemplate.couponType;
       }
 
       // Obtener el teléfono de la BD si el agente no lo envió
@@ -882,17 +893,19 @@ async function sendCouponWhatsapp({
   if (!resolvedCouponType && resolvedCampaignId) {
     const campaignData = await prisma.campaign.findUnique({
       where: { id: resolvedCampaignId },
-      select: { couponPrefix: true, couponTemplateIds: true },
+      select: {
+        couponPrefix: true,
+        couponTemplateIds: true,
+        couponTemplate: { select: { couponType: true } }
+      },
     });
 
-    if (campaignData?.couponPrefix) {
-      const tpl = await prisma.couponTemplate.findFirst({
-        where: { OR: [{ id: campaignData.couponPrefix }, { couponType: campaignData.couponPrefix }] },
-        select: { couponType: true },
-      });
-      if (tpl) resolvedCouponType = tpl.couponType;
+    // Intentar desde couponPrefix (que es FK a template.id)
+    if (!resolvedCouponType && campaignData?.couponTemplate?.couponType) {
+      resolvedCouponType = campaignData.couponTemplate.couponType;
     }
 
+    // Fallback a couponTemplateIds si couponPrefix no resolvió
     if (!resolvedCouponType && campaignData?.couponTemplateIds?.length > 0) {
       const tpl = await prisma.couponTemplate.findFirst({
         where: { id: { in: campaignData.couponTemplateIds } },
