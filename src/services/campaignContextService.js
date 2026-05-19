@@ -60,19 +60,25 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
 
     if (primaryTemplate) {
       resolvedPrimaryType = primaryTemplate.couponType;
-    } else if (templates.length > 0) {
-      resolvedPrimaryType = templates[0].couponType;
+    } else if (campaign.couponPrefix && /^[0-9a-f]{8}-/i.test(campaign.couponPrefix)) {
+      // couponPrefix es UUID no incluido en couponTemplateIds — buscarlo directamente en BD
+      // IMPORTANTE: este lookup debe ocurrir ANTES del fallback a templates[0] para no mandar
+      // el cupón equivocado cuando la campaña tiene múltiples templates asignados.
+      const dbTemplate = await prisma.couponTemplate.findFirst({ where: { id: campaign.couponPrefix } });
+      if (dbTemplate) {
+        resolvedPrimaryType = dbTemplate.couponType;
+        templates.unshift(dbTemplate);
+      } else if (templates.length > 0) {
+        logger.warn("[CampaignContext] couponPrefix UUID no encontrado en BD, usando primer template disponible", {
+          couponPrefix: campaign.couponPrefix,
+          fallback: templates[0].couponType,
+        });
+        resolvedPrimaryType = templates[0].couponType;
+      }
     } else if (campaign.couponPrefix && !/^[0-9a-f]{8}-/i.test(campaign.couponPrefix)) {
       resolvedPrimaryType = campaign.couponPrefix;
-    } else {
-      // Si era un UUID y no lo encontró en ids asociados, busquémoslo explícitamente en la BD
-      if (campaign.couponPrefix && /^[0-9a-f]{8}-/i.test(campaign.couponPrefix)) {
-        const dbTemplate = await prisma.couponTemplate.findFirst({ where: { id: campaign.couponPrefix } });
-        if (dbTemplate) {
-          resolvedPrimaryType = dbTemplate.couponType;
-          templates.push(dbTemplate);
-        }
-      }
+    } else if (templates.length > 0) {
+      resolvedPrimaryType = templates[0].couponType;
     }
 
     if (!resolvedPrimaryType) resolvedPrimaryType = 'PRINCIPAL';
