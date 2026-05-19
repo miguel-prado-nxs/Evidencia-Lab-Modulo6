@@ -916,22 +916,44 @@ async function sendCouponWhatsapp({
     }
   }
 
-  // Validar que el couponType resuelto existe como template activo
-  // Si no existe, resetear a null para usar el scenario
+  // Validar que el couponType resuelto existe como template activo.
+  // Si no existe (agente inventó un valor como "descuento"), invalidar para que
+  // el fallback de campaña pueda resolverlo correctamente en el siguiente bloque.
   if (resolvedCouponType) {
     const templateExists = await prisma.couponTemplate.findFirst({
-      where: {
-        couponType: resolvedCouponType,
-        active: true
-      }
+      where: { couponType: resolvedCouponType, active: true }
     });
     if (!templateExists) {
-      logger.warn("[sendCouponWhatsapp] Invalid couponType, falling back to scenario", {
+      logger.warn("[sendCouponWhatsapp] Invalid couponType from agent, will resolve from campaign", {
         invalidCouponType: resolvedCouponType,
         scenario,
         establishmentId
       });
       resolvedCouponType = null;
+    }
+  }
+
+  // Fallback de couponType: si el agente no mandó un valor válido, resolverlo desde la campaña.
+  // Este bloque corre DESPUÉS de la validación para cubrir el caso donde el agente inventó un valor.
+  if (!resolvedCouponType && resolvedCampaignId) {
+    const campaignData = await prisma.campaign.findUnique({
+      where: { id: resolvedCampaignId },
+      select: {
+        couponPrefix: true,
+        couponTemplateIds: true,
+        couponTemplate: { select: { couponType: true } }
+      },
+    });
+
+    if (campaignData?.couponTemplate?.couponType) {
+      resolvedCouponType = campaignData.couponTemplate.couponType;
+    } else if (campaignData?.couponTemplateIds?.length > 0) {
+      const tpl = await prisma.couponTemplate.findFirst({
+        where: { id: { in: campaignData.couponTemplateIds } },
+        orderBy: { priority: "desc" },
+        select: { couponType: true },
+      });
+      if (tpl) resolvedCouponType = tpl.couponType;
     }
   }
 
