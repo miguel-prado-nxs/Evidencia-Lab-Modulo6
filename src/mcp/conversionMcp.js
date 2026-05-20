@@ -244,7 +244,7 @@ function createConversionServer() {
       establishment_id: z.string(),
       outcome: z.enum(["CLOSED_WON", "FOLLOW_UP_LATER", "NEEDS_VALIDATION", "NOT_INTERESTED", "LOST", "NO_ANSWER", "VOICEMAIL"]),
       plan_closed: z.string().optional().describe("Plan cerrado (si CLOSED_WON)"),
-      monthly_revenue: z.number().nullish().describe("Ingreso mensual acordado en MXN"),
+      monthly_revenue: z.coerce.number().nullish().describe("Ingreso mensual acordado en MXN"),
       call_summary: z.string().describe("Resumen del cierre"),
       decision_timeline: z.string().optional().describe("Timeline de la decisión (ej: 'dentro de 1 semana', 'después de revisar presupuesto')"),
       next_steps: z.string().optional().describe("Próximos pasos acordados"),

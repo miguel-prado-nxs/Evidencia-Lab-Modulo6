@@ -93,7 +93,7 @@ function createActivationServer() {
     "get_calendly_availability",
     "Consulta los próximos slots disponibles en Calendly para agendar la demo.",
     {
-      days_ahead: z.number().int().optional().default(7).describe("Días hacia adelante a consultar"),
+      days_ahead: z.coerce.number().int().optional().default(7).describe("Días hacia adelante a consultar"),
     },
     async ({ days_ahead }) => {
       try {

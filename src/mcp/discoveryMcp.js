@@ -82,7 +82,7 @@ function createDiscoveryServer() {
       notes: z.string().optional().describe("Notas adicionales"),
       restaurant_name: z.string().optional().describe("Nombre del restaurante"),
       restaurant_age: z.string().optional().describe("Antigüedad del restaurante"),
-      branch_count: z.number().optional().describe("Cantidad de sucursales"),
+      branch_count: z.coerce.number().optional().describe("Cantidad de sucursales"),
       sales_channel: z.array(z.string()).optional().describe("Canal de ventas (mostrador, whatsapp, apps, llamadas)"),
       order_method: z.string().optional().describe("Método de pedido (mesa, takeout, delivery)"),
       closing_method: z.string().optional().describe("Método de cierre (mesa, takeout, delivery)"),
