@@ -85,7 +85,7 @@ function createQualificationServer() {
       time_impact: z.string().optional().describe("Impacto en tiempo"),
       money_impact: z.string().optional().describe("Impacto en dinero"),
       control_impact: z.string().optional().describe("Impacto en control"),
-      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Prioridad del problema"),
+      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW", "NONE"]).optional().describe("Prioridad del problema"),
       resolution_intent: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Intención de resolver"),
       decision_maker: z.string().optional().describe("Quién toma la decisión"),
       decision_process: z.string().optional().describe("Proceso de decisión (solo o con alguien más)"),

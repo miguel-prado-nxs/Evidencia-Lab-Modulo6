@@ -92,7 +92,7 @@ function createDiscoveryServer() {
       closing_clarity: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Claridad en el cierre"),
       previous_systems: z.string().optional().describe("Sistemas previos utilizados"),
       improvement_interest: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Interés en mejoras"),
-      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Prioridad del problema"),
+      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW", "NONE"]).optional().describe("Prioridad del problema"),
     },
     async ({ conversation_id, establishment_id, contact_name, contact_email, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
       try {
