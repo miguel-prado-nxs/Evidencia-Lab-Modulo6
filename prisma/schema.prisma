@@ -899,6 +899,11 @@ model Campaign {
   updatedAt         DateTime          @updatedAt @map("updated_at")
   couponTemplateIds String[]          @default([]) @map("coupon_template_ids")
   scheduledAt       DateTime?         @map("scheduled_at")
+  contactSource     String            @default("GEO") @map("contact_source")
+  csvOriginalName   String?           @map("csv_original_name")
+  csvRowsTotal      Int?              @map("csv_rows_total")
+  csvRowsValid      Int?              @map("csv_rows_valid")
+  csvRowsRejected   Int?              @map("csv_rows_rejected")
   contacts          CampaignContact[]
   coupons           CampaignCoupon[]
   couponTemplate    CouponTemplate?   @relation(fields: [couponPrefix], references: [id])
@@ -933,6 +938,7 @@ model CampaignContact {
   callDuration       Int?            @map("call_duration")
   callTranscript     String?         @map("call_transcript")
   webhookReceivedAt  DateTime?       @map("webhook_received_at")
+  sourceType         String          @default("GEO") @map("source_type")
   campaign           Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   coupon             CampaignCoupon? @relation(fields: [couponId], references: [id])
 
