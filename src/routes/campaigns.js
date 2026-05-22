@@ -4,6 +4,7 @@ const campaignsController = require("../controllers/campaignsController");
 const campaignWebhookController = require("../controllers/campaignWebhookController");
 const { authenticateJWT } = require("../middleware/auth");
 const { validate } = require("../middleware/validation");
+const { uploadCsv } = require("../middleware/upload");
 const { z } = require("zod");
 
 const createCampaignSchema = z.object({
@@ -25,6 +26,22 @@ const createCampaignSchema = z.object({
     // Reenganche: lista pre-armada de IDs (omite filtro geo)
     establishmentIds: z.array(z.string()).max(500, "Máximo 500 establecimientos por dispatch").optional(),
     sourceCampaignId: z.string().optional(),
+    // CSV: contactos importados desde archivo (solo Discovery)
+    csvContacts: z.array(z.object({
+      phone: z.string().min(8, "Teléfono requerido"),
+      name: z.string().min(1, "Nombre requerido"),
+      email: z.string().email().optional(),
+      decisionMaker: z.string().optional(),
+      address: z.string().optional(),
+      notes: z.string().optional(),
+    })).max(500, "Máximo 500 contactos por CSV").optional(),
+    contactSource: z.enum(["GEO", "CSV"]).optional(),
+    csvMetadata: z.object({
+      originalName: z.string(),
+      rowsTotal: z.number().int().nonnegative(),
+      rowsValid: z.number().int().nonnegative(),
+      rowsRejected: z.number().int().nonnegative(),
+    }).optional(),
   }),
 });
 
@@ -98,6 +115,9 @@ const continueCampaignSchema = z.object({
 router.post("/elevenlabs-webhook", campaignWebhookController.handleElevenLabsWebhook);
 
 // router.use(authenticateJWT);
+
+// Preview CSV: parsea, valida y devuelve conteo de filas válidas/rechazadas sin crear campaña
+router.post("/csv/preview", uploadCsv, campaignsController.previewCsv);
 
 router.post("/", validate(createCampaignSchema), campaignsController.create);
 router.get("/", campaignsController.list);

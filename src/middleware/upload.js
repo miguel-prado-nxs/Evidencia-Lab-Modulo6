@@ -70,9 +70,26 @@ const handleUpload = (uploadMiddleware) => {
   };
 };
 
+// Multer en memoria para CSV — no escribe en disco, Buffer disponible en req.file.buffer
+const csvMemoryStorage = multer.memoryStorage();
+const csvUpload = multer({
+  storage: csvMemoryStorage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ["text/csv", "application/vnd.ms-excel", "text/plain", "application/octet-stream"];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (allowed.includes(file.mimetype) || ext === ".csv") {
+      cb(null, true);
+    } else {
+      cb(new Error("Solo se permiten archivos CSV (.csv)"), false);
+    }
+  },
+});
+
 module.exports = {
   uploadSingle: handleUpload(uploadSingle),
   uploadMultiple: handleUpload(uploadMultiple),
   upload,
+  uploadCsv: handleUpload(csvUpload.single("file")),
 };
 

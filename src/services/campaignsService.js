@@ -1,3 +1,4 @@
+const { randomUUID } = require("crypto");
 const prisma = require("../config/database");
 const prismaGeo = require("../config/database-geo");
 const logger = require("../config/logger");
@@ -399,6 +400,10 @@ const createCampaign = async (data) => {
     // Reenganche: lista pre-armada de IDs, omite filtro geo
     establishmentIds,
     sourceCampaignId,
+    // CSV: contactos importados desde archivo
+    csvContacts,
+    contactSource,
+    csvMetadata,
   } = data;
 
   if (!name) {
@@ -437,12 +442,21 @@ const createCampaign = async (data) => {
   }
 
   const isReengagement = Array.isArray(establishmentIds) && establishmentIds.length > 0;
+  const isCsvUpload = Array.isArray(csvContacts) && csvContacts.length > 0;
+
+  if (isCsvUpload && campaignType !== "DISCOVERY") {
+    throw new Error("CSV upload solo está permitido para campañas de tipo Discovery");
+  }
+
+  if (isCsvUpload && csvContacts.length > 500) {
+    throw new Error("El máximo de contactos por CSV es 500");
+  }
 
   if (isReengagement && establishmentIds.length > 500) {
     throw new Error("El máximo de establecimientos para una campaña de reenganche es 500");
   }
 
-  if (!isReengagement) {
+  if (!isReengagement && !isCsvUpload) {
     if (centerLat && centerLng && !radiusMeters) {
       throw new Error("radiusMeters is required when centerLat and centerLng are provided");
     }
@@ -451,10 +465,24 @@ const createCampaign = async (data) => {
     }
   }
 
-  // Guardar metadata de reenganche en el campo filters para trazabilidad
-  const campaignFilters = isReengagement
-    ? { ...filters, _reengagement: { sourceCampaignId: sourceCampaignId || null, totalPreloaded: establishmentIds.length } }
-    : filters;
+  // Guardar metadata en filters para trazabilidad
+  let campaignFilters = filters;
+  if (isReengagement) {
+    campaignFilters = {
+      ...filters,
+      _reengagement: { sourceCampaignId: sourceCampaignId || null, totalPreloaded: establishmentIds.length },
+    };
+  } else if (isCsvUpload) {
+    campaignFilters = {
+      ...filters,
+      _csv: {
+        originalName: csvMetadata?.originalName || null,
+        rowsTotal: csvMetadata?.rowsTotal || csvContacts.length,
+        rowsValid: csvMetadata?.rowsValid || csvContacts.length,
+        rowsRejected: csvMetadata?.rowsRejected || 0,
+      },
+    };
+  }
 
   const campaign = await prisma.campaign.create({
     data: {
@@ -462,11 +490,12 @@ const createCampaign = async (data) => {
       description,
       type: campaignType,
       status: "DRAFT",
-      centerLat: isReengagement ? null : centerLat,
-      centerLng: isReengagement ? null : centerLng,
-      radiusMeters: isReengagement ? null : radiusMeters,
-      activityCodes: activityCodes || [],
-      employeeRanges: employeeRanges || [],
+      // CSV y reenganche no usan coordenadas geográficas
+      centerLat: isReengagement || isCsvUpload ? null : centerLat,
+      centerLng: isReengagement || isCsvUpload ? null : centerLng,
+      radiusMeters: isReengagement || isCsvUpload ? null : radiusMeters,
+      activityCodes: isCsvUpload ? [] : (activityCodes || []),
+      employeeRanges: isCsvUpload ? [] : (employeeRanges || []),
       filters: campaignFilters,
       agentConfigId,
       agentConfigName,
@@ -475,10 +504,22 @@ const createCampaign = async (data) => {
       couponPrefix: couponPrefix || null,
       couponTemplateIds: couponTemplateIds || [],
       createdBy,
+      contactSource: isCsvUpload ? "CSV" : (contactSource || "GEO"),
+      csvOriginalName: isCsvUpload ? (csvMetadata?.originalName || null) : null,
+      csvRowsTotal: isCsvUpload ? (csvMetadata?.rowsTotal || csvContacts.length) : null,
+      csvRowsValid: isCsvUpload ? (csvMetadata?.rowsValid || csvContacts.length) : null,
+      csvRowsRejected: isCsvUpload ? (csvMetadata?.rowsRejected || 0) : null,
     },
   });
 
-  if (isReengagement) {
+  if (isCsvUpload) {
+    await assignCsvContactsToCampaign(campaign.id, csvContacts);
+    logger.info("[campaignsService:createCampaign] CSV campaign created", {
+      campaignId: campaign.id,
+      csvRows: csvContacts.length,
+      originalName: csvMetadata?.originalName || null,
+    });
+  } else if (isReengagement) {
     await assignContactsToCampaign(campaign.id, establishmentIds);
     logger.info('[campaignsService:createCampaign] Reengancement campaign created with preloaded contacts', {
       campaignId: campaign.id,
@@ -756,6 +797,56 @@ const deleteCampaign = async (id) => {
   return { success: true };
 };
 
+/**
+ * Asigna contactos importados desde un CSV a una campaña.
+ * Genera un establishmentId sintético csv_<uuid> por fila para mantener
+ * compatibilidad con MCPs y webhooks sin requerir un Establishment en BD geo.
+ */
+const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
+  if (!Array.isArray(csvRows) || csvRows.length === 0) {
+    throw new Error("csvRows debe ser un array no vacío");
+  }
+
+  const contactsToCreate = csvRows.map((row) => ({
+    campaignId,
+    establishmentId: `csv_${randomUUID()}`,
+    establishmentName: row.name || null,
+    establishmentPhone: row.phone || null,
+    establishmentData: {
+      source: "CSV",
+      name: row.name || null,
+      phone: row.phone || null,
+      email: row.email || null,
+      decisionMaker: row.decisionMaker || null,
+      address: row.address || null,
+      notes: row.notes || null,
+    },
+    status: "PENDING",
+    sourceType: "CSV",
+  }));
+
+  const result = await prisma.campaignContact.createMany({
+    data: contactsToCreate,
+    skipDuplicates: true,
+  });
+
+  const totalContacts = await prisma.campaignContact.count({ where: { campaignId } });
+
+  await prisma.campaign.update({
+    where: { id: campaignId },
+    data: { totalContacts },
+  });
+
+  logger.info("[campaignsService:assignCsvContactsToCampaign] CSV contacts assigned", {
+    campaignId,
+    requested: csvRows.length,
+    created: result.count,
+    totalContacts,
+  });
+
+  return result;
+};
+
 const assignContactsToCampaign = async (campaignId, establishmentIds) => {
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
@@ -965,6 +1056,7 @@ const startCampaign = async (campaignId, options = {}) => {
       radiusMeters: true,
       filters: true,
       activityCodes: true,
+      contactSource: true,
     },
   });
 
@@ -1059,33 +1151,36 @@ const startCampaign = async (campaignId, options = {}) => {
   });
 
   if (contacts.length === 0) {
-    await assignContactsWithGeoFilter(campaignId, campaign.filters || {});
+    // Solo reintentar asignación geo si la campaña tiene coordenadas (no CSV)
+    if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
+      await assignContactsWithGeoFilter(campaignId, campaign.filters || {});
 
-    contacts = await prisma.campaignContact.findMany({
-      where: {
-        campaignId,
-        status: "PENDING",
-      },
-      select: {
-        id: true,
-        campaignId: true,
-        establishmentId: true,
-        establishmentName: true,
-        establishmentPhone: true,
-        establishmentData: true,
-      },
-    });
+      contacts = await prisma.campaignContact.findMany({
+        where: {
+          campaignId,
+          status: "PENDING",
+        },
+        select: {
+          id: true,
+          campaignId: true,
+          establishmentId: true,
+          establishmentName: true,
+          establishmentPhone: true,
+          establishmentData: true,
+        },
+      });
+    }
   }
 
   if (contacts.length === 0) {
-    return {
-      success: true,
-      message: "No hay contactos pendientes de procesar en esta campaña (todos ya están en proceso o completados)",
-      dispatchedCount: 0
-    };
+    const error = new Error("No hay contactos en estado PENDING para esta campaña. Todos pueden estar ya en proceso, completados o la asignación de contactos falló.");
+    error.statusCode = 409;
+    throw error;
   }
 
-  const establishmentIds = [...new Set(contacts.map((contact) => contact.establishmentId).filter(Boolean))];
+  const allEstablishmentIds = [...new Set(contacts.map((contact) => contact.establishmentId).filter(Boolean))];
+  // IDs sintéticos csv_* no existen en BD geo — excluirlos del lookup para no generar query inútil
+  const establishmentIds = allEstablishmentIds.filter((id) => !id.startsWith("csv_"));
   let establishments = [];
 
   if (establishmentIds.length > 0) {
@@ -2330,6 +2425,8 @@ const previewContinuation = async (sourceCampaignId) => {
       employeeRanges: true,
       filters: true,
       description: true,
+      contactSource: true,
+      csvOriginalName: true,
     },
   });
 
@@ -2389,6 +2486,8 @@ const previewContinuation = async (sourceCampaignId) => {
       employeeRanges: source.employeeRanges,
       filters: source.filters,
       description: source.description,
+      contactSource: source.contactSource,
+      csvOriginalName: source.csvOriginalName,
     },
   };
 };
@@ -2414,6 +2513,8 @@ const continueCampaign = async (sourceCampaignId, opts = {}) => {
 
   const { sourceFilters } = preview;
 
+  const isCsvSourceCampaign = sourceFilters.contactSource === 'CSV';
+
   let campaign = await createCampaign({
     name: name || preview.suggestedName,
     description: sourceFilters.description,
@@ -2431,11 +2532,14 @@ const continueCampaign = async (sourceCampaignId, opts = {}) => {
     createdBy,
     establishmentIds: preview.eligibleIds,
     sourceCampaignId,
+    // Propagar source CSV para que CampaignDetails muestre el panel correcto
+    contactSource: isCsvSourceCampaign ? 'CSV' : undefined,
   });
 
   // createCampaign nula las coordenadas cuando recibe establishmentIds (lógica de reenganche).
   // Para continuación las restauramos para que el mapa y los detalles muestren el área original.
-  if (sourceFilters.centerLat && sourceFilters.centerLng && sourceFilters.radiusMeters) {
+  // Las campañas CSV no tienen coordenadas — no restaurar en ese caso.
+  if (!isCsvSourceCampaign && sourceFilters.centerLat && sourceFilters.centerLng && sourceFilters.radiusMeters) {
     campaign = await prisma.campaign.update({
       where: { id: campaign.id },
       data: {

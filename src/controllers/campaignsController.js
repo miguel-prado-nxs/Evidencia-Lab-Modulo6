@@ -5,6 +5,7 @@ const {
   PRIOR_STAGE_DISPLAY,
   classifyEstablishmentsByStage,
 } = require("../services/campaignsService");
+const { parseCSV, MAX_ROWS } = require("../services/csvContactsParserService");
 const logger = require("../config/logger");
 const axios = require('axios');
 const geoService = require("../services/geoService");
@@ -135,6 +136,8 @@ const create = async (req, res, next) => {
       offer, couponPrefix, couponTemplateIds,
       // Reenganche
       establishmentIds, sourceCampaignId,
+      // CSV
+      csvContacts, contactSource, csvMetadata,
     } = req.body;
 
     const campaign = await campaignsService.createCampaign({
@@ -155,6 +158,9 @@ const create = async (req, res, next) => {
       createdBy: req.user?.id,
       establishmentIds,
       sourceCampaignId,
+      csvContacts,
+      contactSource,
+      csvMetadata,
     });
 
     res.status(201).json({
@@ -846,6 +852,41 @@ const postContinueCampaign = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /campaigns/csv/preview
+ * Parsea y valida un CSV sin crear campaña. Devuelve conteo de filas válidas/rechazadas
+ * y un preview de los primeros 50 contactos para que el usuario confirme antes de crear.
+ */
+const previewCsv = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "Se requiere un archivo CSV (campo 'file')" });
+    }
+
+    const { originalname, buffer } = req.file;
+
+    const result = parseCSV(buffer, originalname);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        // Solo las primeras 50 filas en el preview para no saturar la respuesta
+        validRowsPreview: result.validRows.slice(0, 50),
+        validRows: result.validRows, // array completo para que el frontend lo guarde en estado
+        rejectedRows: result.rejectedRows,
+        totalRows: result.totalRows,
+        validCount: result.validCount,
+        rejectedCount: result.rejectedCount,
+        limits: { maxRows: MAX_ROWS },
+        originalName: originalname,
+      },
+    });
+  } catch (error) {
+    logger.warn("[campaignsController:previewCsv] CSV parse error", { error: error.message });
+    return res.status(400).json({ success: false, error: error.message });
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -874,4 +915,5 @@ module.exports = {
   retry,
   getContinuationPreview,
   postContinueCampaign,
+  previewCsv,
 };
