@@ -857,6 +857,12 @@ const postContinueCampaign = async (req, res, next) => {
  * Parsea y valida un CSV sin crear campaña. Devuelve conteo de filas válidas/rechazadas
  * y un preview de los primeros 50 contactos para que el usuario confirme antes de crear.
  */
+// Statuses que indican contacto activo — mismo criterio que assignCsvContactsToCampaign
+const ALREADY_CONTACTED_STATUSES = [
+  'SCHEDULED', 'CALLING', 'CALLED', 'PAUSED',
+  'RESPONDED', 'SENT', 'DELIVERED', 'VISITED', 'CONVERTED',
+];
+
 const previewCsv = async (req, res) => {
   try {
     if (!req.file) {
@@ -867,16 +873,35 @@ const previewCsv = async (req, res) => {
 
     const result = parseCSV(buffer, originalname);
 
+    // Verificar cuántos teléfonos válidos ya tienen historial en otras campañas
+    let duplicateCount = 0;
+    let duplicatePhones = [];
+    const validPhones = result.validRows.map(r => r.phone).filter(Boolean);
+
+    if (validPhones.length > 0) {
+      const existing = await prisma.campaignContact.findMany({
+        where: {
+          establishmentPhone: { in: validPhones },
+          status: { in: ALREADY_CONTACTED_STATUSES },
+        },
+        select: { establishmentPhone: true },
+        distinct: ['establishmentPhone'],
+      });
+      duplicatePhones = existing.map(c => c.establishmentPhone).filter(Boolean);
+      duplicateCount = duplicatePhones.length;
+    }
+
     return res.status(200).json({
       success: true,
       data: {
-        // Solo las primeras 50 filas en el preview para no saturar la respuesta
         validRowsPreview: result.validRows.slice(0, 50),
-        validRows: result.validRows, // array completo para que el frontend lo guarde en estado
+        validRows: result.validRows,
         rejectedRows: result.rejectedRows,
         totalRows: result.totalRows,
         validCount: result.validCount,
         rejectedCount: result.rejectedCount,
+        // Cuántos serán excluidos al crear la campaña por teléfono ya contactado
+        duplicateCount,
         limits: { maxRows: MAX_ROWS },
         originalName: originalname,
       },

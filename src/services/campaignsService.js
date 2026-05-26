@@ -753,6 +753,19 @@ const updateCampaign = async (id, data) => {
       ? Math.floor(new Date(originalScheduledAt).getTime() / 1000)
       : undefined;
 
+    // Para campañas sin geo (CSV, reenganche), los contactos quedaron en SCHEDULED tras el primer
+    // dispatch y el bloque de deleteMany/assign de arriba no ejecutó. Resetearlos a PENDING para
+    // que startCampaign los encuentre. Para campañas geo esto no aplica: ya fueron recreados.
+    if (!campaign.centerLat || !campaign.centerLng || !campaign.radiusMeters) {
+      await prisma.campaignContact.updateMany({
+        where: { campaignId: id, status: { in: ["SCHEDULED", "PENDING"] } },
+        data: { status: "PENDING", providerBatchId: null, sentAt: null },
+      });
+      logger.info("[CampaignUpdate] Non-geo campaign contacts reset to PENDING for re-dispatch", {
+        campaignId: id,
+      });
+    }
+
     try {
       const redispatchResult = await startCampaign(id, { scheduledTimeUnix: originalScheduledTimeUnix });
       logger.info("[CampaignUpdate] SCHEDULED campaign re-dispatched after significant update", {
@@ -802,12 +815,56 @@ const deleteCampaign = async (id) => {
  * Genera un establishmentId sintético csv_<uuid> por fila para mantener
  * compatibilidad con MCPs y webhooks sin requerir un Establishment en BD geo.
  */
+// Statuses que indican que un contacto ya fue o está siendo procesado activamente.
+// PENDING y FAILED se permiten repetir (no se llamó, o falló y se puede reintentar).
+const ALREADY_CONTACTED_STATUSES = [
+  'SCHEDULED', 'CALLING', 'CALLED', 'PAUSED',
+  'RESPONDED', 'SENT', 'DELIVERED', 'VISITED', 'CONVERTED',
+];
+
 const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
   if (!Array.isArray(csvRows) || csvRows.length === 0) {
     throw new Error("csvRows debe ser un array no vacío");
   }
 
-  const contactsToCreate = csvRows.map((row) => ({
+  // Deduplicación cross-campaign: excluir teléfonos que ya tienen historial activo
+  const incomingPhones = csvRows.map(r => r.phone).filter(Boolean);
+  let alreadyContactedPhones = new Set();
+
+  if (incomingPhones.length > 0) {
+    const existingContacts = await prisma.campaignContact.findMany({
+      where: {
+        establishmentPhone: { in: incomingPhones },
+        status: { in: ALREADY_CONTACTED_STATUSES },
+      },
+      select: { establishmentPhone: true },
+      distinct: ['establishmentPhone'],
+    });
+    alreadyContactedPhones = new Set(existingContacts.map(c => c.establishmentPhone).filter(Boolean));
+  }
+
+  const deduplicatedRows = csvRows.filter(row => !alreadyContactedPhones.has(row.phone));
+  const skippedCount = csvRows.length - deduplicatedRows.length;
+
+  if (skippedCount > 0) {
+    logger.info("[assignCsvContactsToCampaign] Contactos excluidos por dedup de telefono", {
+      campaignId,
+      skippedCount,
+      totalRequested: csvRows.length,
+      toCreate: deduplicatedRows.length,
+    });
+  }
+
+  if (deduplicatedRows.length === 0) {
+    logger.warn("[assignCsvContactsToCampaign] Todos los contactos ya existen en otras campanas — ningun contacto creado", {
+      campaignId,
+    });
+    const totalContacts = await prisma.campaignContact.count({ where: { campaignId } });
+    await prisma.campaign.update({ where: { id: campaignId }, data: { totalContacts } });
+    return { count: 0, skippedCount };
+  }
+
+  const contactsToCreate = deduplicatedRows.map((row) => ({
     campaignId,
     establishmentId: `csv_${randomUUID()}`,
     establishmentName: row.name || null,
@@ -840,11 +897,12 @@ const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
   logger.info("[campaignsService:assignCsvContactsToCampaign] CSV contacts assigned", {
     campaignId,
     requested: csvRows.length,
+    skipped: skippedCount,
     created: result.count,
     totalContacts,
   });
 
-  return result;
+  return { ...result, skippedCount };
 };
 
 const assignContactsToCampaign = async (campaignId, establishmentIds) => {
@@ -1137,6 +1195,13 @@ const startCampaign = async (campaignId, options = {}) => {
         campaignId,
         scheduledAt,
         now,
+      });
+      // Resetear contactos SCHEDULED a PENDING para que el query de abajo los encuentre.
+      // Solo afecta contactos que ElevenLabs no alcanzó a procesar (siguen en SCHEDULED);
+      // los que ya pasaron a CALLED/RESPONDED no se tocan.
+      await prisma.campaignContact.updateMany({
+        where: { campaignId, status: "SCHEDULED" },
+        data: { status: "PENDING", providerBatchId: null },
       });
       // Clear resolvedScheduledTimeUnix to force ACTIVE status below
       resolvedScheduledTimeUnix = null;
