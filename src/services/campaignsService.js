@@ -878,13 +878,48 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
 
   const uniqueEstablishmentIds = eligibleIds;
 
+  // Separar IDs sintéticos CSV (csv_<uuid>) de IDs geo reales — los CSV no existen en BD geo
+  const csvOnlyIds = uniqueEstablishmentIds.filter(id => id.startsWith('csv_'));
+  const geoOnlyIds = uniqueEstablishmentIds.filter(id => !id.startsWith('csv_'));
+
+  // Para IDs CSV heredados, recuperar phone/name/data del CampaignContact de la campaña anterior
+  let csvContactSnapshotById = new Map();
+  if (csvOnlyIds.length > 0) {
+    try {
+      const previousCsvContacts = await prisma.campaignContact.findMany({
+        where: {
+          establishmentId: { in: csvOnlyIds },
+          NOT: { campaignId },
+        },
+        select: {
+          establishmentId: true,
+          establishmentName: true,
+          establishmentPhone: true,
+          establishmentData: true,
+        },
+        distinct: ['establishmentId'],
+      });
+      csvContactSnapshotById = new Map(previousCsvContacts.map(c => [c.establishmentId, c]));
+      logger.info('[assignContactsToCampaign] CSV contact snapshots loaded from previous campaign', {
+        campaignId,
+        csvIdCount: csvOnlyIds.length,
+        snapshotsFound: previousCsvContacts.length,
+      });
+    } catch (csvLookupError) {
+      logger.warn('[assignContactsToCampaign] Failed to load CSV contact snapshots', {
+        campaignId,
+        error: csvLookupError.message,
+      });
+    }
+  }
+
   let establishments = [];
 
-  if (uniqueEstablishmentIds.length > 0) {
+  if (geoOnlyIds.length > 0) {
     try {
       establishments = await prismaGeo.establishment.findMany({
         where: {
-          id: { in: uniqueEstablishmentIds },
+          id: { in: geoOnlyIds },
         },
         select: {
           id: true,
@@ -906,9 +941,9 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
       });
       console.log(`[assignContactsToCampaign] Establishments found in Geo DB: ${establishments.length}`);
 
-      // Identificar establecimientos que no se encontraron
+      // Identificar establecimientos geo que no se encontraron
       const foundIds = new Set(establishments.map(e => e.id));
-      const notFound = uniqueEstablishmentIds.filter(id => !foundIds.has(id));
+      const notFound = geoOnlyIds.filter(id => !foundIds.has(id));
       if (notFound.length > 0) {
         console.warn(`[assignContactsToCampaign] ${notFound.length} establishments not found in Geo DB`);
       }
@@ -924,6 +959,19 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
 
   // Preparar datos para inserción masiva
   const contactsToCreate = uniqueEstablishmentIds.map((establishmentId) => {
+    // IDs CSV sintéticos: copiar snapshot de la campaña anterior (no existen en BD geo)
+    if (establishmentId.startsWith('csv_')) {
+      const snapshot = csvContactSnapshotById.get(establishmentId);
+      return {
+        campaignId,
+        establishmentId,
+        establishmentName: snapshot?.establishmentName || null,
+        establishmentPhone: snapshot?.establishmentPhone || null,
+        establishmentData: snapshot?.establishmentData || null,
+        status: 'PENDING',
+      };
+    }
+
     const establishment = establishmentById.get(establishmentId);
     const establishmentNameToUse = establishment?.businessName || establishment?.name || null;
 
@@ -2470,7 +2518,8 @@ const previewContinuation = async (sourceCampaignId) => {
     sourceCampaignName: source.name,
     sourceType: source.type,
     nextType,
-    suggestedName: `${source.name} - ${capitalize(nextType)}`,
+    // Quitar sufijo de stage previo para evitar acumulación: "uwu2 - Qualification" → "uwu2 - Activation"
+    suggestedName: `${source.name.replace(/\s*-\s*(Discovery|Qualification|Activation|Conversion)\s*$/i, '')} - ${capitalize(nextType)}`,
     eligibleCount: eligibleIds.length,
     eligibleIds,
     totalSourceContacts,
