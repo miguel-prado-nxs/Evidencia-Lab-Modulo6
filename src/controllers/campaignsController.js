@@ -4,6 +4,9 @@ const {
   STAGE_PREREQUISITES,
   PRIOR_STAGE_DISPLAY,
   classifyEstablishmentsByStage,
+  buildPhoneVariantsForQuery,
+  buildContactedPhonesSet,
+  ALREADY_CONTACTED_STATUSES,
 } = require("../services/campaignsService");
 const { parseCSV, MAX_ROWS } = require("../services/csvContactsParserService");
 const logger = require("../config/logger");
@@ -857,12 +860,6 @@ const postContinueCampaign = async (req, res, next) => {
  * Parsea y valida un CSV sin crear campaña. Devuelve conteo de filas válidas/rechazadas
  * y un preview de los primeros 50 contactos para que el usuario confirme antes de crear.
  */
-// Statuses que indican contacto activo — mismo criterio que assignCsvContactsToCampaign
-const ALREADY_CONTACTED_STATUSES = [
-  'SCHEDULED', 'CALLING', 'CALLED', 'PAUSED',
-  'RESPONDED', 'SENT', 'DELIVERED', 'VISITED', 'CONVERTED',
-];
-
 const previewCsv = async (req, res) => {
   try {
     if (!req.file) {
@@ -873,22 +870,24 @@ const previewCsv = async (req, res) => {
 
     const result = parseCSV(buffer, originalname);
 
-    // Verificar cuántos teléfonos válidos ya tienen historial en otras campañas
+    // Verificar cuántos teléfonos válidos ya tienen historial en otras campañas.
+    // Se generan variantes de formato para detectar coincidencias entre geo (sin +52) y CSV (E.164).
     let duplicateCount = 0;
-    let duplicatePhones = [];
     const validPhones = result.validRows.map(r => r.phone).filter(Boolean);
 
     if (validPhones.length > 0) {
+      const phoneVariants = buildPhoneVariantsForQuery(validPhones);
       const existing = await prisma.campaignContact.findMany({
         where: {
-          establishmentPhone: { in: validPhones },
+          establishmentPhone: { in: phoneVariants },
           status: { in: ALREADY_CONTACTED_STATUSES },
         },
         select: { establishmentPhone: true },
         distinct: ['establishmentPhone'],
       });
-      duplicatePhones = existing.map(c => c.establishmentPhone).filter(Boolean);
-      duplicateCount = duplicatePhones.length;
+      // Expandir a variantes y cruzar contra los phones del CSV para contar correctamente
+      const contactedSet = buildContactedPhonesSet(existing);
+      duplicateCount = validPhones.filter(p => contactedSet.has(p)).length;
     }
 
     return res.status(200).json({

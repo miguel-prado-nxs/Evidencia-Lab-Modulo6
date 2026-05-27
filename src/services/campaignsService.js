@@ -815,32 +815,98 @@ const deleteCampaign = async (id) => {
  * Genera un establishmentId sintético csv_<uuid> por fila para mantener
  * compatibilidad con MCPs y webhooks sin requerir un Establishment en BD geo.
  */
-// Statuses que indican que un contacto ya fue o está siendo procesado activamente.
-// PENDING y FAILED se permiten repetir (no se llamó, o falló y se puede reintentar).
+
+// Statuses que bloquean re-inclusión en nuevas campañas CSV.
+// Criterio alineado con geo: solo bloqueamos cuando hay interacción real o llamada activa/pendiente.
+// CALLED y PAUSED se permiten — "llamado sin respuesta" no es contacto completado,
+// igual que en geo donde un establecimiento sin enrichment puede volver a seleccionarse.
+// PENDING y FAILED siempre permitidos (nunca fue procesado, o falló).
 const ALREADY_CONTACTED_STATUSES = [
-  'SCHEDULED', 'CALLING', 'CALLED', 'PAUSED',
+  'SCHEDULED', 'CALLING',
   'RESPONDED', 'SENT', 'DELIVERED', 'VISITED', 'CONVERTED',
 ];
+
+/**
+ * Genera todas las variantes de formato de un teléfono mexicano.
+ * Los contactos geo se guardan con 10 dígitos (sin +52) desde DENUE,
+ * mientras el parser CSV normaliza a E.164 (+52XXXXXXXXXX).
+ * Para que el dedup funcione en ambas direcciones, comparamos todas las variantes.
+ */
+const getPhoneVariants = (phone) => {
+  if (!phone) return [];
+  const variants = new Set([phone]);
+  const digits = phone.replace(/\D/g, '');
+
+  if (digits.length === 10) {
+    // Número mexicano de 10 dígitos → agregar variantes con código de país
+    variants.add(`+52${digits}`);
+    variants.add(`52${digits}`);
+  } else if (digits.length === 12 && digits.startsWith('52')) {
+    // Con código de país sin + (526673882839) → agregar variantes
+    const local = digits.slice(2);
+    variants.add(`+52${local}`);
+    variants.add(local);
+  } else if (digits.length === 13 && phone.startsWith('+52')) {
+    // E.164 completo (+526673882839) → agregar variantes sin código
+    const local = digits.slice(2);
+    variants.add(local);
+    variants.add(`52${local}`);
+  }
+  return [...variants];
+};
+
+/**
+ * Dado un array de teléfonos (canónicos del CSV, E.164), construye un Set
+ * con todos los formatos posibles para el WHERE IN del dedup.
+ */
+const buildPhoneVariantsForQuery = (phones) => {
+  const all = new Set();
+  for (const phone of phones) {
+    for (const variant of getPhoneVariants(phone)) {
+      all.add(variant);
+    }
+  }
+  return [...all];
+};
+
+/**
+ * Dado un array de contactos encontrados en DB (con su phone tal como fue guardado),
+ * construye un Set con todos los formatos normalizados para comparar contra los CSV phones.
+ */
+const buildContactedPhonesSet = (dbContacts) => {
+  const set = new Set();
+  for (const c of dbContacts) {
+    if (!c.establishmentPhone) continue;
+    for (const variant of getPhoneVariants(c.establishmentPhone)) {
+      set.add(variant);
+    }
+  }
+  return set;
+};
 
 const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
   if (!Array.isArray(csvRows) || csvRows.length === 0) {
     throw new Error("csvRows debe ser un array no vacío");
   }
 
-  // Deduplicación cross-campaign: excluir teléfonos que ya tienen historial activo
+  // Deduplicación cross-campaign: excluir teléfonos que ya tienen historial activo.
+  // Se generan variantes de formato (+52, sin +52, 10 dígitos) para detectar coincidencias
+  // entre contactos geo (guardados sin +52 desde DENUE) y contactos CSV (E.164).
   const incomingPhones = csvRows.map(r => r.phone).filter(Boolean);
   let alreadyContactedPhones = new Set();
 
   if (incomingPhones.length > 0) {
+    const phoneVariantsForQuery = buildPhoneVariantsForQuery(incomingPhones);
     const existingContacts = await prisma.campaignContact.findMany({
       where: {
-        establishmentPhone: { in: incomingPhones },
+        establishmentPhone: { in: phoneVariantsForQuery },
         status: { in: ALREADY_CONTACTED_STATUSES },
       },
       select: { establishmentPhone: true },
       distinct: ['establishmentPhone'],
     });
-    alreadyContactedPhones = new Set(existingContacts.map(c => c.establishmentPhone).filter(Boolean));
+    // Expandir los teléfonos encontrados a todas sus variantes para comparar correctamente
+    alreadyContactedPhones = buildContactedPhonesSet(existingContacts);
   }
 
   const deduplicatedRows = csvRows.filter(row => !alreadyContactedPhones.has(row.phone));
@@ -2715,4 +2781,8 @@ module.exports = {
   CAMPAIGN_RANK,
   STAGE_RANK,
   NEXT_STAGE,
+  // Helpers de dedup por teléfono reutilizados en el controller
+  buildPhoneVariantsForQuery,
+  buildContactedPhonesSet,
+  ALREADY_CONTACTED_STATUSES,
 };
