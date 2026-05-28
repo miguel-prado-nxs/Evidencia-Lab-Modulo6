@@ -4,6 +4,9 @@ const {
   STAGE_PREREQUISITES,
   PRIOR_STAGE_DISPLAY,
   classifyEstablishmentsByStage,
+  buildPhoneVariantsForQuery,
+  buildContactedPhonesSet,
+  ALREADY_CONTACTED_STATUSES,
 } = require("../services/campaignsService");
 const { parseCSV, MAX_ROWS } = require("../services/csvContactsParserService");
 const logger = require("../config/logger");
@@ -867,16 +870,37 @@ const previewCsv = async (req, res) => {
 
     const result = parseCSV(buffer, originalname);
 
+    // Verificar cuántos teléfonos válidos ya tienen historial en otras campañas.
+    // Se generan variantes de formato para detectar coincidencias entre geo (sin +52) y CSV (E.164).
+    let duplicateCount = 0;
+    const validPhones = result.validRows.map(r => r.phone).filter(Boolean);
+
+    if (validPhones.length > 0) {
+      const phoneVariants = buildPhoneVariantsForQuery(validPhones);
+      const existing = await prisma.campaignContact.findMany({
+        where: {
+          establishmentPhone: { in: phoneVariants },
+          status: { in: ALREADY_CONTACTED_STATUSES },
+        },
+        select: { establishmentPhone: true },
+        distinct: ['establishmentPhone'],
+      });
+      // Expandir a variantes y cruzar contra los phones del CSV para contar correctamente
+      const contactedSet = buildContactedPhonesSet(existing);
+      duplicateCount = validPhones.filter(p => contactedSet.has(p)).length;
+    }
+
     return res.status(200).json({
       success: true,
       data: {
-        // Solo las primeras 50 filas en el preview para no saturar la respuesta
         validRowsPreview: result.validRows.slice(0, 50),
-        validRows: result.validRows, // array completo para que el frontend lo guarde en estado
+        validRows: result.validRows,
         rejectedRows: result.rejectedRows,
         totalRows: result.totalRows,
         validCount: result.validCount,
         rejectedCount: result.rejectedCount,
+        // Cuántos serán excluidos al crear la campaña por teléfono ya contactado
+        duplicateCount,
         limits: { maxRows: MAX_ROWS },
         originalName: originalname,
       },

@@ -945,6 +945,7 @@ model CampaignContact {
   @@unique([campaignId, establishmentId])
   @@index([campaignId])
   @@index([establishmentId])
+  @@index([establishmentPhone])
   @@index([status])
   @@index([sentAt])
   @@map("campaign_contacts")
