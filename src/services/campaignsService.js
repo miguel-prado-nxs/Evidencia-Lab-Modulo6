@@ -2065,6 +2065,17 @@ const cancelCampaign = async (id) => {
     });
   }
 
+  // Resetear contactos que nunca fueron alcanzados: PENDING/SCHEDULED/CALLING.
+  // Al marcarlos CANCELLED (no incluido en ALREADY_CONTACTED_STATUSES) quedan
+  // elegibles para futuras campañas, evitando bloqueos por campañas abortadas.
+  await prisma.campaignContact.updateMany({
+    where: {
+      campaignId: id,
+      status: { in: ["PENDING", "SCHEDULED", "CALLING"] },
+    },
+    data: { status: "CANCELLED" },
+  });
+
   return prisma.campaign.update({
     where: { id },
     data: { status: "CANCELLED" },
