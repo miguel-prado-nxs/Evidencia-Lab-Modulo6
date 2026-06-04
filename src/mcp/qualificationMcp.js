@@ -86,8 +86,8 @@ function createQualificationServer() {
     "save_qualification_data",
     "Guarda información de calificación con datos operacionales y de marketing. Llamar después de explorar cada área.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       daily_orders_range: z.string().optional().describe("Rango preciso de pedidos diarios"),
       average_ticket: z.coerce.number().optional().describe("Ticket promedio en pesos"),
       approximate_sales: z.string().optional().describe("Ventas aproximadas mensuales"),
@@ -213,8 +213,8 @@ function createQualificationServer() {
     "end_qualification_call",
     "Guarda el resultado final de la conversación de Qualification y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       outcome: z.enum(["QUALIFIED", "NOT_QUALIFIED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "NO_ANSWER", "VOICEMAIL"]).describe("Outcome: QUALIFIED, NOT_QUALIFIED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
       call_summary: z.string().describe("Resumen breve de la conversación"),
     },
@@ -232,8 +232,8 @@ function createQualificationServer() {
     "hang_up_call",
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
+      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {

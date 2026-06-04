@@ -81,8 +81,8 @@ function createDiscoveryServer() {
     "save_discovery_data",
     "Guarda temporalmente la información de descubrimiento capturada durante la conversación. Llamar cada vez que se obtiene un nuevo dato.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       contact_name: z.string().optional().describe("Nombre del contacto"),
       contact_email: z.string().optional().describe("Email del decision maker (para envios posteriores)"),
       business_type: z.string().optional().describe("Tipo de negocio"),
@@ -139,8 +139,8 @@ function createDiscoveryServer() {
     "end_discovery_call",
     "Guarda el resultado final de la conversación de Discovery y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       outcome: z.enum(["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("RESULTADO DE LA LLAMADA: INTERESTED (mostró interés), FOLLOW_UP_LATER (llamar después), NOT_INTERESTED (no interesado), WRONG_NUMBER (número incorrecto), NO_ANSWER (sin respuesta), VOICEMAIL (buzón de voz)"),
       contact_name: z.string().optional().describe("Nombre del contacto o decision maker"),
       business_type: z.string().optional().describe("Tipo de negocio (ej: restaurante, panadería, cafetería)"),
@@ -242,8 +242,8 @@ function createDiscoveryServer() {
     "send_whatsapp_info",
     "Envía un mensaje informativo básico de EasyOrder por WhatsApp al prospecto. SIEMPRE ejecutar al finalizar la llamada, sin importar el resultado (incluso buzón de voz o sin respuesta).",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       phone: z.string().describe("Teléfono del prospecto"),
       prospect_name: z.string().optional().describe("Nombre del prospecto (si se obtuvo)"),
       business_name: z.string().optional().describe("Nombre del negocio (si se obtuvo)"),
@@ -268,8 +268,8 @@ function createDiscoveryServer() {
     "hang_up_call",
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
+      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {

@@ -85,15 +85,15 @@ function createConversionServer() {
     "send_coupon_whatsapp",
     "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
     {
-      conversation_id: z.string().describe("ID de la conversación. Valor: {{system__conversation_id}}"),
-      establishment_id: z.string().describe("ID del establecimiento. Valor: {{establishment_id}}"),
-      campaign_id: z.string().describe("ID de la campaña. Valor: {{campaignId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
-      campaign_contact_id: z.string().describe("ID del contacto en la campaña. Valor: {{campaignContactId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
-      phone: z.string().optional().describe("Teléfono del prospecto. Valor: {{phoneNumber}}"),
-      coupon_type: z.string().optional().describe("Tipo de cupón asignado. Valor: {{couponType}}. Usar EXACTAMENTE este valor sin modificarlo."),
+      conversation_id: z.string().describe("ID de la conversación. Valor: conversation_id de la sección DATOS de tu prompt"),
+      establishment_id: z.string().describe("ID del establecimiento. Valor: establishment_id de la sección DATOS de tu prompt"),
+      campaign_id: z.string().describe("ID de la campaña. Valor: campaignId de la sección DATOS de tu prompt."),
+      campaign_contact_id: z.string().describe("ID del contacto en la campaña. Valor: campaignContactId de la sección DATOS de tu prompt."),
+      phone: z.string().optional().describe("Teléfono del prospecto. Valor: phoneNumber de la sección DATOS de tu prompt"),
+      coupon_type: z.string().optional().describe("Tipo de cupón asignado. Valor: couponType de la sección DATOS de tu prompt. Usar EXACTAMENTE este valor sin modificarlo."),
       scenario: z.string().optional().describe("Escenario detectado: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead."),
-      prospect_name: z.string().optional().describe("Nombre del prospecto. Valor: {{previousContactName}}"),
-      business_name: z.string().optional().describe("Nombre del negocio. Valor: {{businessName}}"),
+      prospect_name: z.string().optional().describe("Nombre del prospecto. Valor: previousContactName de la sección DATOS de tu prompt"),
+      business_name: z.string().optional().describe("Nombre del negocio. Valor: businessName de la sección DATOS de tu prompt"),
     },
     async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
@@ -120,8 +120,8 @@ function createConversionServer() {
     "save_objection_data",
     "Guarda los datos de objeciones encontradas durante la conversación de Activation. Llamar cuando se identifique una objeción.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       objection_type: z.enum(["PRICE", "RISK", "COMPLEXITY", "TIME", "PRIORITY", "OTHER"]).describe("Tipo de objeción identificada"),
       objection_detail: z.string().describe("Descripción detallada de la objeción"),
       objection_resolved: z.boolean().describe("¿Se resolvió la objeción?"),
@@ -148,8 +148,8 @@ function createConversionServer() {
     "save_conversation_outcome",
     "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       decision_status: z.enum(["READY", "NEEDS_TIME", "NEEDS_VALIDATION", "NOT_NOW"]).describe("Estado final de la conversación"),
       decision_timeline: z.string().describe("Timeline de la decisión (ej: 'dentro de 1 semana', 'después de revisar presupuesto')"),
       depends_on_others: z.boolean().describe("¿Depende de otras personas?"),
@@ -281,8 +281,8 @@ function createConversionServer() {
     "hang_up_call",
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
+      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {

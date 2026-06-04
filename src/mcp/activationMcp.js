@@ -61,8 +61,8 @@ function createActivationServer() {
     "save_activation_data",
     "Guarda datos de activación capturados durante la conversación.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       pain_points_confirmed: z.array(z.string()).optional().describe("Pain points confirmados"),
       features_of_interest: z.array(z.string()).optional().describe("Funcionalidades que más interesan"),
       urgency_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Urgencia de implementación"),
@@ -124,8 +124,8 @@ function createActivationServer() {
     "confirm_or_update_email",
     "Confirma o actualiza el email del contacto para enviar la invitación de Calendly.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       email: z.string().describe("Email confirmado del contacto"),
     },
     async ({ conversation_id, establishment_id, email }) => {
@@ -146,8 +146,8 @@ function createActivationServer() {
     "schedule_demo",
     "Agenda la demo en Calendly y envía confirmación al prospecto.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       contact_name: z.string().describe("Nombre del contacto"),
       email: z.string().describe("Email para la invitación"),
       start_time: z.string().describe("Fecha y hora en ISO 8601, ej: 2026-04-05T10:00:00-06:00"),
@@ -175,14 +175,14 @@ function createActivationServer() {
     "send_coupon_whatsapp",
     "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
-      campaign_id: z.string().optional().describe("ID de la campaña. DEBES extraer obligatoriamente el valor de tu variable dinámica {{campaignId}} y enviarlo aquí."), campaign_contact_id: z.string().optional().describe("ID contacto campaña ({{campaignContactId}})"),
-      phone: z.string().optional().describe("Teléfono del prospecto ({{phoneNumber}}). Opcional, si no lo tienes omítelo y el sistema lo buscará."),
-      coupon_type: z.string().optional().describe("Tipo de cupón elegido según árbol de decisión ({{couponType}}). Si no se especifica, se usa el cupón principal."),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      campaign_id: z.string().optional().describe("ID de la campaña. DEBES extraer obligatoriamente el valor campaignId de la sección DATOS de tu prompt y enviarlo aquí."), campaign_contact_id: z.string().optional().describe("ID contacto campaña (valor campaignContactId de la sección DATOS de tu prompt)"),
+      phone: z.string().optional().describe("Teléfono del prospecto (valor phoneNumber de la sección DATOS de tu prompt). Opcional, si no lo tienes omítelo y el sistema lo buscará."),
+      coupon_type: z.string().optional().describe("Tipo de cupón elegido según árbol de decisión (valor couponType de la sección DATOS de tu prompt). Si no se especifica, se usa el cupón principal."),
       scenario: z.string().optional().describe("Escenario detectado en la conversación (ej: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead). Se usa para analíticas y para seleccionar template si no se especificó coupon_type."),
-      prospect_name: z.string().optional().describe("Nombre del prospecto para personalizar el mensaje ({{prospectName}})"),
-      business_name: z.string().optional().describe("Nombre del negocio ({{businessName}})"),
+      prospect_name: z.string().optional().describe("Nombre del prospecto para personalizar el mensaje (valor prospectName de la sección DATOS de tu prompt)"),
+      business_name: z.string().optional().describe("Nombre del negocio (valor businessName de la sección DATOS de tu prompt)"),
     },
     async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
@@ -275,8 +275,8 @@ function createActivationServer() {
     "end_activation_call",
     "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       outcome: z.enum([
         "ACTIVATED",
         "DEMO_SCHEDULED",
@@ -308,8 +308,8 @@ function createActivationServer() {
     "hang_up_call",
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
+      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {
