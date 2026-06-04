@@ -571,7 +571,13 @@ const listCampaigns = async (filters = {}) => {
   const where = {};
   if (status) where.status = status;
   if (createdBy) where.createdBy = createdBy;
-  if (!includeQuickActions) where.contactSource = { not: 'QUICK_ACTION' };
+  // includeQuickActions=true → mostrar SOLO quick actions (tab "Mis Negocios")
+  // includeQuickActions=false (default) → excluir quick actions (tabs normales de Campanas)
+  if (includeQuickActions) {
+    where.contactSource = 'QUICK_ACTION';
+  } else {
+    where.contactSource = { not: 'QUICK_ACTION' };
+  }
 
   const [campaigns, total] = await Promise.all([
     prisma.campaign.findMany({
