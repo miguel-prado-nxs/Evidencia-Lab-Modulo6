@@ -5,9 +5,18 @@ const logger = require("../config/logger");
 const config = require("../config/env");
 
 // Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
-const sanitizeVar = (value) => {
-  if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
-  return value || null;
+// o si el valor es igual al nombre del parámetro (indicador de error del agente)
+const sanitizeVar = (value, paramName) => {
+  if (typeof value !== "string") return value || null;
+  const v = value.trim();
+
+  // Descarta placeholders sin resolver
+  if (v.includes("{{") || v.includes("}}")) return null;
+
+  // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
+  if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
+
+  return v || null;
 };
 
 // Normaliza enums: acepta valores en español y los mapea a inglés
@@ -97,8 +106,8 @@ function createDiscoveryServer() {
     async ({ conversation_id, establishment_id, contact_name, contact_email, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
       try {
         const result = await svc.saveDiscoveryData({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           contactName: contact_name,
           contactEmail: contact_email,
           businessType: business_type,
@@ -145,8 +154,8 @@ function createDiscoveryServer() {
         const mappedOutcome = outcome === "INTERESTED" ? "ADVANCE_TO_ACTIVATION" : outcome;
 
         const result = await svc.endDiscoveryCall({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           outcome: mappedOutcome,
           originalOutcome: outcome,
           contactName: contact_name,
@@ -175,8 +184,8 @@ function createDiscoveryServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -242,11 +251,11 @@ function createDiscoveryServer() {
     async ({ conversation_id, establishment_id, phone, prospect_name, business_name }) => {
       try {
         const result = await svc.sendWhatsappInfo({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
-          phone: sanitizeVar(phone),
-          prospectName: sanitizeVar(prospect_name),
-          businessName: sanitizeVar(business_name),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          phone: sanitizeVar(phone, "phone"),
+          prospectName: sanitizeVar(prospect_name, "prospect_name"),
+          businessName: sanitizeVar(business_name, "business_name"),
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {

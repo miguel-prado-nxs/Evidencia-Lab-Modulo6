@@ -4,6 +4,21 @@ const svc = require("../services/funnelWebhookService");
 const logger = require("../config/logger");
 const config = require("../config/env");
 
+// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
+// o si el valor es igual al nombre del parámetro (indicador de error del agente)
+const sanitizeVar = (value, paramName) => {
+  if (typeof value !== "string") return value || null;
+  const v = value.trim();
+
+  // Descarta placeholders sin resolver
+  if (v.includes("{{") || v.includes("}}")) return null;
+
+  // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
+  if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
+
+  return v || null;
+};
+
 // Normaliza enums: acepta valores en español y los mapea a inglés
 const normalizeEnum = (value, options = {}) => {
   if (!value || typeof value !== "string") return value;
@@ -98,8 +113,8 @@ function createQualificationServer() {
       try {
         // Normalizar enums: mapear valores españoles a inglés
         const result = await svc.saveQualificationResult({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           dailyOrdersRange: daily_orders_range,
           averageTicket: average_ticket,
           approximateSales: approximate_sales,
@@ -141,8 +156,8 @@ function createQualificationServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -205,7 +220,7 @@ function createQualificationServer() {
     },
     async ({ conversation_id, establishment_id, outcome, call_summary }) => {
       try {
-        const result = await svc.endQualificationCall({ conversationId: conversation_id, establishmentId: establishment_id, outcome, callSummary: call_summary });
+        const result = await svc.endQualificationCall({ conversationId: sanitizeVar(conversation_id, "conversation_id"), establishmentId: sanitizeVar(establishment_id, "establishment_id"), outcome, callSummary: call_summary });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };

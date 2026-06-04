@@ -5,9 +5,18 @@ const logger = require("../config/logger");
 const config = require("../config/env");
 
 // Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
-const sanitizeVar = (value) => {
-  if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
-  return value || null;
+// o si el valor es igual al nombre del parámetro (indicador de error del agente)
+const sanitizeVar = (value, paramName) => {
+  if (typeof value !== "string") return value || null;
+  const v = value.trim();
+
+  // Descarta placeholders sin resolver
+  if (v.includes("{{") || v.includes("}}")) return null;
+
+  // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
+  if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
+
+  return v || null;
 };
 
 // Normaliza enums: acepta valores en español y los mapea a inglés
@@ -89,16 +98,16 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
         const result = await svc.sendCouponWhatsapp({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
-          campaignId: sanitizeVar(campaign_id),
-          campaignContactId: sanitizeVar(campaign_contact_id),
-          phone: sanitizeVar(phone),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          campaignId: sanitizeVar(campaign_id, "campaign_id"),
+          campaignContactId: sanitizeVar(campaign_contact_id, "campaign_contact_id"),
+          phone: sanitizeVar(phone, "phone"),
           coupon: {},
-          couponType: sanitizeVar(coupon_type),
+          couponType: sanitizeVar(coupon_type, "coupon_type"),
           scenario,
-          prospectName: sanitizeVar(prospect_name),
-          businessName: sanitizeVar(business_name),
+          prospectName: sanitizeVar(prospect_name, "prospect_name"),
+          businessName: sanitizeVar(business_name, "business_name"),
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
@@ -121,8 +130,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, objection_type, objection_detail, objection_resolved, resolution_method }) => {
       try {
         const result = await svc.saveObjectionData({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           objectionType: normalizeEnum(objection_type, "objectionType"),
           objectionDetail: objection_detail,
           objectionResolved: objection_resolved,
@@ -152,8 +161,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, decision_status, decision_timeline, depends_on_others, conditions_to_advance, perceived_value, coupon_offered, coupon_type_offered }) => {
       try {
         const result = await svc.saveConversationOutcome({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           decisionStatus: normalizeEnum(decision_status, "decisionStatus"),
           decisionTimeline: decision_timeline,
           dependsOnOthers: depends_on_others,
@@ -182,8 +191,8 @@ function createConversionServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -252,8 +261,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, outcome, plan_closed, monthly_revenue, call_summary, decision_timeline, next_steps }) => {
       try {
         const result = await svc.endConversionCall({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           outcome: outcome,
           planClosed: plan_closed,
           monthlyRevenue: monthly_revenue,

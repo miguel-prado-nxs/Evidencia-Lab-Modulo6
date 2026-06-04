@@ -4,6 +4,21 @@ const svc = require("../services/funnelWebhookService");
 const logger = require("../config/logger");
 const config = require("../config/env");
 
+// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
+// o si el valor es igual al nombre del parámetro (indicador de error del agente)
+const sanitizeVar = (value, paramName) => {
+  if (typeof value !== "string") return value || null;
+  const v = value.trim();
+
+  // Descarta placeholders sin resolver
+  if (v.includes("{{") || v.includes("}}")) return null;
+
+  // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
+  if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
+
+  return v || null;
+};
+
 // Normaliza enums: acepta valores en español y los mapea a inglés
 const normalizeEnum = (value) => {
   if (!value || typeof value !== "string") return value;
@@ -65,8 +80,8 @@ function createActivationServer() {
     async ({ conversation_id, establishment_id, pain_points_confirmed, features_of_interest, urgency_level, notes, account_created, business_registered, menu_loaded, first_order_registered, confusion_areas, resolve_first, implementation_time, solo_or_team, perceived_complexity }) => {
       try {
         const result = await svc.saveActivationData({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           painPointsConfirmed: pain_points_confirmed,
           featuresOfInterest: features_of_interest,
           urgencyLevel: normalizeEnum(urgency_level),
@@ -172,11 +187,11 @@ function createActivationServer() {
     async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
         const result = await svc.sendCouponWhatsapp({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
-          campaignId: campaign_id,
-          campaignContactId: campaign_contact_id,
-          phone,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          campaignId: sanitizeVar(campaign_id, "campaign_id"),
+          campaignContactId: sanitizeVar(campaign_contact_id, "campaign_contact_id"),
+          phone: sanitizeVar(phone, "phone"),
           coupon: {},
           couponType: coupon_type,
           scenario,
@@ -203,8 +218,8 @@ function createActivationServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -276,8 +291,8 @@ function createActivationServer() {
     async ({ conversation_id, establishment_id, outcome, demo_date, call_summary }) => {
       try {
         const result = await svc.endActivationCall({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           outcome,
           demoDate: demo_date,
           callSummary: call_summary,
