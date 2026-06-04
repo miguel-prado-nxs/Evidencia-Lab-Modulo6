@@ -1376,7 +1376,7 @@ const startCampaign = async (campaignId, options = {}) => {
           email: true,
           employeeRange: true,
           streetName: true,
-          exteriorNumber: true,
+          exteriorNum: true,
           neighborhood: true,
           municipalityName: true,
           stateName: true,
