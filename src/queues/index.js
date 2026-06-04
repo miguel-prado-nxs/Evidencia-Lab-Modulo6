@@ -6,16 +6,6 @@
  */
 
 const {
-  sdrCallQueue,
-  enqueueSDRCall,
-  getSDRQueueStats,
-} = require("./sdrCallQueue");
-const {
-  qualificationCallQueue,
-  enqueueQualificationCall,
-  getQualificationQueueStats,
-} = require("./qualificationCallQueue");
-const {
   createRedisClient,
   getBullOptions,
   getHealthClient,
@@ -23,18 +13,6 @@ const {
 const { setupBullBoard } = require("./dashboard");
 
 module.exports = {
-  // Colas
-  sdrCallQueue,
-  qualificationCallQueue,
-
-  // Funciones de encolamiento
-  enqueueSDRCall,
-  enqueueQualificationCall,
-
-  // Estadísticas
-  getSDRQueueStats,
-  getQualificationQueueStats,
-
   // Configuración Redis
   createRedisClient,
   getBullOptions,

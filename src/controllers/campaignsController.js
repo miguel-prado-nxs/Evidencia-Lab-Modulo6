@@ -6,6 +6,7 @@ const {
   classifyEstablishmentsByStage,
   buildPhoneVariantsForQuery,
   buildContactedPhonesSet,
+  findPhonesInProcess,
   ALREADY_CONTACTED_STATUSES,
 } = require("../services/campaignsService");
 const { parseCSV, MAX_ROWS } = require("../services/csvContactsParserService");
@@ -177,7 +178,7 @@ const create = async (req, res, next) => {
 
 const list = async (req, res, next) => {
   try {
-    const { status, page, limit } = req.query;
+    const { status, page, limit, includeQuickActions } = req.query;
 
     const createdBy = req.user?.role === "ADMIN" ? undefined : req.user?.id;
 
@@ -186,6 +187,7 @@ const list = async (req, res, next) => {
       createdBy,
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 20,
+      includeQuickActions: includeQuickActions === 'true',
     });
 
     res.json({
@@ -911,6 +913,173 @@ const previewCsv = async (req, res) => {
   }
 };
 
+// Rate-limit store en memoria: { userId -> [timestamps] }
+const quickActionRateLimitStore = new Map();
+const QUICK_ACTION_LIMIT = 10;
+const QUICK_ACTION_WINDOW_MS = 60 * 60 * 1000; // 1 hora
+
+function checkQuickActionRateLimit(userId) {
+  const now = Date.now();
+  const windowStart = now - QUICK_ACTION_WINDOW_MS;
+  const timestamps = (quickActionRateLimitStore.get(userId) || []).filter(ts => ts > windowStart);
+  if (timestamps.length >= QUICK_ACTION_LIMIT) {
+    return false;
+  }
+  timestamps.push(now);
+  quickActionRateLimitStore.set(userId, timestamps);
+  return true;
+}
+
+// Derived from service's CAMPAIGN_TYPE_TO_AGENT map (avoids hardcoding)
+const { CAMPAIGN_TYPE_TO_AGENT: CAMPAIGN_TYPE_TO_AGENT_ID } = require("../services/campaignsService");
+
+const quickAction = async (req, res, next) => {
+  try {
+    const { establishmentId, campaignType } = req.body;
+
+    if (!establishmentId || !campaignType) {
+      return res.status(400).json({ success: false, error: 'establishmentId y campaignType son requeridos' });
+    }
+
+    const validTypes = ['DISCOVERY', 'QUALIFICATION', 'ACTIVATION', 'CONVERSION'];
+    if (!validTypes.includes(campaignType)) {
+      return res.status(400).json({ success: false, error: `campaignType debe ser uno de: ${validTypes.join(', ')}` });
+    }
+
+    const agentConfigId = CAMPAIGN_TYPE_TO_AGENT_ID[campaignType];
+    if (!agentConfigId) {
+      return res.status(400).json({ success: false, error: 'No hay agente configurado para este tipo de campaña' });
+    }
+
+    // Rate-limit por usuario (usando X-Sales-User-Id o user.id)
+    const userId = req.headers['x-sales-user-id'] || req.user?.id || 'anonymous';
+    if (!checkQuickActionRateLimit(userId)) {
+      return res.status(429).json({
+        success: false,
+        error: `Límite alcanzado: máximo ${QUICK_ACTION_LIMIT} acciones automáticas por hora por usuario`,
+      });
+    }
+
+    // Verificar elegibilidad del establecimiento para este tipo de campaña
+    const { eligibleIds } = await classifyEstablishmentsByStage([establishmentId], campaignType);
+    if (eligibleIds.length === 0) {
+      const prerequisite = STAGE_PREREQUISITES[campaignType];
+      const msg = prerequisite
+        ? `Este contacto no cumple el prerequisito para ${campaignType} (requiere ${prerequisite}), o ya completó esta etapa`
+        : `Este contacto ya completó la etapa ${campaignType}`;
+      return res.status(409).json({ success: false, error: msg });
+    }
+
+    // Obtener nombre y telefono del establecimiento (telefono usado para dedup cross-campana)
+    let establishmentName = establishmentId;
+    let establishmentPhone = null;
+    try {
+      const prismaGeo = require('../config/database-geo');
+      const est = await prismaGeo.establishment.findUnique({
+        where: { id: establishmentId },
+        select: { name: true, phone: true },
+      });
+      if (est?.name) establishmentName = est.name;
+      if (est?.phone) establishmentPhone = est.phone;
+    } catch (_) { }
+
+    // Fallback: tomar el telefono del enrichment si geo no lo tiene (ej. contactos CSV/manuales)
+    if (!establishmentPhone) {
+      try {
+        const enr = await prisma.establishmentEnrichment.findUnique({
+          where: { establishmentId },
+          select: { decisionMakerPhone: true, decisionMakerWhatsApp: true },
+        });
+        establishmentPhone = enr?.decisionMakerPhone || enr?.decisionMakerWhatsApp || null;
+      } catch (_) { }
+    }
+
+    // Dedup por telefono: misma logica que campanas. Evita doble marcado del mismo numero
+    // ya en una llamada en curso o contactado desde otra identidad (otro establishmentId).
+    if (establishmentPhone) {
+      const blocked = await findPhonesInProcess([{ establishmentId, phone: establishmentPhone }]);
+      const reason = blocked.get(establishmentId);
+      if (reason) {
+        const msg = reason === 'in_flight'
+          ? 'Este numero ya tiene una llamada en curso'
+          : 'Este numero ya esta en otra campana o proceso activo';
+        return res.status(409).json({ success: false, error: msg, reason });
+      }
+    }
+
+    // Para ACTIVATION y CONVERSION auto-resolver el template de cupón de mayor prioridad activo.
+    // Esto replica lo que haría el usuario al crear una campaña normal con cupón seleccionado.
+    // DISCOVERY y QUALIFICATION no usan cupones (validado en createCampaign).
+    const COUPON_TYPES = ['ACTIVATION', 'CONVERSION'];
+    let resolvedCouponTemplateIds = [];
+    if (COUPON_TYPES.includes(campaignType)) {
+      try {
+        const defaultTemplate = await prisma.couponTemplate.findFirst({
+          where: { active: true },
+          orderBy: { priority: 'desc' },
+          select: { id: true },
+        });
+        if (defaultTemplate) resolvedCouponTemplateIds = [defaultTemplate.id];
+      } catch (_) { }
+    }
+
+    // Crear micro-campaña con contactSource QUICK_ACTION
+    const campaign = await campaignsService.createCampaign({
+      name: `Quick ${campaignType} - ${establishmentName}`,
+      description: `Acción rápida automática para ${establishmentName}`,
+      type: campaignType,
+      agentConfigId,
+      contactSource: 'QUICK_ACTION',
+      establishmentIds: [establishmentId],
+      createdBy: userId,
+      ...(resolvedCouponTemplateIds.length > 0 && { couponTemplateIds: resolvedCouponTemplateIds }),
+    });
+
+    // Iniciar campaña inmediatamente
+    const result = await campaignsService.startCampaign(campaign.id);
+
+    logger.info('[quickAction] Quick campaign dispatched', {
+      campaignId: campaign.id,
+      establishmentId,
+      campaignType,
+      userId,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { campaignId: campaign.id, status: result.status || 'dispatched' },
+      message: `Llamada de ${campaignType} iniciada exitosamente`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/v1/campaigns/phone-check?phone=XXX&establishmentId=YYY
+ * Verifica si un telefono ya esta en proceso en alguna campana.
+ * Usado por el mapa antes de agregar un restaurante a contactos, para advertir al usuario.
+ */
+const phoneCheck = async (req, res, next) => {
+  try {
+    const { phone, establishmentId } = req.query;
+    if (!phone) {
+      return res.status(400).json({ success: false, error: 'phone es requerido' });
+    }
+    const blocked = await findPhonesInProcess([{
+      establishmentId: establishmentId || '__map_check__',
+      phone,
+    }]);
+    const reason = blocked.get(establishmentId || '__map_check__') || null;
+    return res.json({
+      success: true,
+      data: { inUse: !!reason, reason },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -940,4 +1109,6 @@ module.exports = {
   getContinuationPreview,
   postContinueCampaign,
   previewCsv,
+  quickAction,
+  phoneCheck,
 };

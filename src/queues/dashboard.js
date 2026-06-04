@@ -11,8 +11,6 @@
 const { createBullBoard } = require("@bull-board/api");
 const { BullAdapter } = require("@bull-board/api/bullAdapter");
 const { ExpressAdapter } = require("@bull-board/express");
-const { sdrCallQueue } = require("./sdrCallQueue");
-const { qualificationCallQueue } = require("./qualificationCallQueue");
 const logger = require("../config/logger");
 
 /**
@@ -25,10 +23,7 @@ function setupBullBoard(app) {
   serverAdapter.setBasePath("/admin/queues");
 
   createBullBoard({
-    queues: [
-      new BullAdapter(sdrCallQueue),
-      new BullAdapter(qualificationCallQueue),
-    ],
+    queues: [],
     serverAdapter,
   });
 

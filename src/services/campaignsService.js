@@ -566,11 +566,12 @@ const getCampaignById = async (id) => {
 };
 
 const listCampaigns = async (filters = {}) => {
-  const { status, createdBy, page = 1, limit = 20 } = filters;
+  const { status, createdBy, page = 1, limit = 20, includeQuickActions = false } = filters;
 
   const where = {};
   if (status) where.status = status;
   if (createdBy) where.createdBy = createdBy;
+  if (!includeQuickActions) where.contactSource = { not: 'QUICK_ACTION' };
 
   const [campaigns, total] = await Promise.all([
     prisma.campaign.findMany({
@@ -884,6 +885,73 @@ const buildContactedPhonesSet = (dbContacts) => {
   return set;
 };
 
+// Llamada activa/pendiente: bloquea cualquier nuevo dispatch al mismo numero,
+// incluido el propio establishment (evita doble marcado simultaneo / doble-click).
+const IN_FLIGHT_STATUSES = ['SCHEDULED', 'CALLING'];
+
+// Contacto ya realizado: bloquea el numero SOLO desde otra identidad (otro establishmentId,
+// ej. csv_*). No bloquea al propio establishment para no romper la progresion de fases,
+// cuyo CampaignContact previo (Discovery) queda en RESPONDED.
+const CONTACTED_STATUSES = ['RESPONDED', 'SENT', 'DELIVERED', 'VISITED', 'CONVERTED'];
+
+/**
+ * Determina que establecimientos tienen su telefono "en proceso" usando la misma logica de
+ * dedup que las campanas (variantes de formato + statuses de CampaignContact). Unifica el
+ * criterio entre campanas batch (CSV/GEO) y llamadas individuales (Mis Negocios).
+ *
+ * Hace UNA sola consulta y evalua cada item excluyendo su propio establishmentId del candado
+ * "contactado en otra identidad" (para no romper su progresion de fases). El candado de
+ * llamada en curso (in_flight) aplica siempre, incluido el propio establishment.
+ *
+ * @param {{establishmentId:string, phone:string}[]} items
+ * @returns {Promise<Map<string,'in_flight'|'contacted_elsewhere'>>} establishmentId -> razon de bloqueo.
+ */
+const findPhonesInProcess = async (items) => {
+  const result = new Map();
+  const valid = (items || []).filter(it => it && it.establishmentId && it.phone);
+  if (valid.length === 0) return result;
+
+  const contacts = await prisma.campaignContact.findMany({
+    where: {
+      establishmentPhone: { in: buildPhoneVariantsForQuery(valid.map(it => it.phone)) },
+      status: { in: [...IN_FLIGHT_STATUSES, ...CONTACTED_STATUSES] },
+    },
+    select: { establishmentPhone: true, establishmentId: true, status: true },
+  });
+  if (contacts.length === 0) return result;
+
+  // Indexar variantes de telefono ocupadas: in_flight (global) y contactadas por que establishmentId.
+  const inFlightVariants = new Set();
+  const contactedVariantOwners = new Map(); // variante -> Set<establishmentId>
+  for (const c of contacts) {
+    if (!c.establishmentPhone) continue;
+    const variants = getPhoneVariants(c.establishmentPhone);
+    if (IN_FLIGHT_STATUSES.includes(c.status)) {
+      for (const v of variants) inFlightVariants.add(v);
+    } else {
+      for (const v of variants) {
+        if (!contactedVariantOwners.has(v)) contactedVariantOwners.set(v, new Set());
+        contactedVariantOwners.get(v).add(c.establishmentId);
+      }
+    }
+  }
+
+  for (const it of valid) {
+    const variants = getPhoneVariants(it.phone);
+    if (variants.some(v => inFlightVariants.has(v))) {
+      result.set(it.establishmentId, 'in_flight');
+      continue;
+    }
+    // contactado por OTRO establishmentId (no por si mismo)
+    const elsewhere = variants.some(v => {
+      const owners = contactedVariantOwners.get(v);
+      return owners && [...owners].some(owner => owner !== it.establishmentId);
+    });
+    if (elsewhere) result.set(it.establishmentId, 'contacted_elsewhere');
+  }
+  return result;
+};
+
 const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
   if (!Array.isArray(csvRows) || csvRows.length === 0) {
     throw new Error("csvRows debe ser un array no vacío");
@@ -1131,9 +1199,29 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
     };
   });
 
+  // Defensa en profundidad: no despachar a numeros que ya tienen una llamada activa/pendiente
+  // en otra campana. La clasificacion por etapa no lo detecta (rank sigue en 0 hasta el webhook).
+  let dispatchableContacts = contactsToCreate;
+  const dedupItems = contactsToCreate
+    .filter(c => c.establishmentPhone)
+    .map(c => ({ establishmentId: c.establishmentId, phone: c.establishmentPhone }));
+  if (dedupItems.length > 0) {
+    const blocked = await findPhonesInProcess(dedupItems);
+    const inFlightBlocked = new Set(
+      [...blocked.entries()].filter(([, reason]) => reason === 'in_flight').map(([id]) => id)
+    );
+    if (inFlightBlocked.size > 0) {
+      dispatchableContacts = contactsToCreate.filter(c => !inFlightBlocked.has(c.establishmentId));
+      logger.info('[assignContactsToCampaign] Contactos excluidos por llamada en curso', {
+        campaignId,
+        skipped: contactsToCreate.length - dispatchableContacts.length,
+      });
+    }
+  }
+
   // Insertar todos los contactos en una sola operación
   const contacts = await prisma.campaignContact.createMany({
-    data: contactsToCreate,
+    data: dispatchableContacts,
     skipDuplicates: true,
   });
 
@@ -2795,5 +2883,7 @@ module.exports = {
   // Helpers de dedup por teléfono reutilizados en el controller
   buildPhoneVariantsForQuery,
   buildContactedPhonesSet,
+  findPhonesInProcess,
   ALREADY_CONTACTED_STATUSES,
+  CAMPAIGN_TYPE_TO_AGENT,
 };

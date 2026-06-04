@@ -116,6 +116,10 @@ router.post("/elevenlabs-webhook", campaignWebhookController.handleElevenLabsWeb
 
 // router.use(authenticateJWT);
 
+// Quick Action: lanza micro-campaña individual inmediatamente
+router.post("/quick-action", campaignsController.quickAction);
+router.get("/phone-check", campaignsController.phoneCheck);
+
 // Preview CSV: parsea, valida y devuelve conteo de filas válidas/rechazadas sin crear campaña
 router.post("/csv/preview", uploadCsv, campaignsController.previewCsv);
 
