@@ -435,8 +435,14 @@ async function endDiscoveryCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "DISCOVERY_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "DISCOVERY_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "DISCOVERY_AGENT",
+    },
   });
 
   // 3. Log en campaign_enrichments (non-blocking)
@@ -668,8 +674,14 @@ async function endActivationCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "ACTIVATION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "ACTIVATION_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "ACTIVATION_AGENT",
+    },
   });
 
   // Guardar la snapshot final de activation con outcome y resumen
@@ -1228,8 +1240,14 @@ async function endQualificationCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "QUALIFICATION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "QUALIFICATION_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "QUALIFICATION_AGENT",
+    },
   });
 
   // Guardar la snapshot final de qualification con outcome
@@ -1541,8 +1559,14 @@ async function endConversionCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "CONVERSION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "CONVERSION_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "CONVERSION_AGENT",
+    },
   });
 
   // Guardar la snapshot final de conversion con outcome y datos del cierre
