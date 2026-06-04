@@ -8,6 +8,7 @@ const {
   buildContactedPhonesSet,
   findPhonesInProcess,
   ALREADY_CONTACTED_STATUSES,
+  CAMPAIGN_TYPE_TO_AGENT_NAME,
 } = require("../services/campaignsService");
 const { parseCSV, MAX_ROWS } = require("../services/csvContactsParserService");
 const logger = require("../config/logger");
@@ -1029,6 +1030,7 @@ const quickAction = async (req, res, next) => {
       description: `Acción rápida automática para ${establishmentName}`,
       type: campaignType,
       agentConfigId,
+      agentConfigName: CAMPAIGN_TYPE_TO_AGENT_NAME[campaignType] || null,
       contactSource: 'QUICK_ACTION',
       establishmentIds: [establishmentId],
       createdBy: userId,

@@ -562,6 +562,39 @@ const getCampaignById = async (id) => {
     throw new Error("Campaign not found");
   }
 
+  // Para QUICK_ACTION: enriquecer con datos del establecimiento de la BD geo.
+  // El mapa, filtros de audiencia y agente no se guardan en la campaña porque no hay
+  // seleccion manual de filtros — pero los datos existen en el establecimiento geo.
+  if (campaign.contactSource === 'QUICK_ACTION' && campaign.contacts.length > 0) {
+    const firstContact = campaign.contacts[0];
+    const establishmentId = firstContact.establishmentId;
+    if (establishmentId && !establishmentId.startsWith('csv_')) {
+      try {
+        const geoEstablishment = await prismaGeo.establishment.findUnique({
+          where: { id: establishmentId },
+          select: {
+            id: true,
+            name: true,
+            activityName: true,
+            employeeRange: true,
+            municipalityName: true,
+            stateName: true,
+            latitude: true,
+            longitude: true,
+            phone: true,
+          },
+        });
+        if (geoEstablishment) {
+          campaign.quickActionEstablishment = geoEstablishment;
+        }
+      } catch (geoErr) {
+        logger.warn('[getCampaignById] No se pudo obtener el establecimiento geo para QUICK_ACTION', {
+          campaignId: id, establishmentId, error: geoErr.message,
+        });
+      }
+    }
+  }
+
   return campaign;
 };
 
@@ -2886,6 +2919,7 @@ module.exports = {
   CAMPAIGN_RANK,
   STAGE_RANK,
   NEXT_STAGE,
+  CAMPAIGN_TYPE_TO_AGENT_NAME,
   // Helpers de dedup por teléfono reutilizados en el controller
   buildPhoneVariantsForQuery,
   buildContactedPhonesSet,
