@@ -1590,6 +1590,7 @@ const startCampaign = async (campaignId, options = {}) => {
       ? {
         campaignContactId: recipients[0].campaignContactId,
         phoneNumber: recipients[0].phone_number,
+        establishment_id: recipients[0].dynamic_variables?.establishment_id,
         agent_name: recipients[0].dynamic_variables?.agent_name,
         voice_id: recipients[0].dynamic_variables?.voice_id,
         personality_name: recipients[0].dynamic_variables?.personality_name,
