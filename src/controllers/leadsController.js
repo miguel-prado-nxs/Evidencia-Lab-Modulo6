@@ -2,7 +2,6 @@ const leadService = require("../services/leadService");
 const logger = require("../config/logger");
 const axios = require("axios");
 const config = require("../config/env");
-const elevenLabsService = require("../services/elevenLabsService");
 
 // Listar leads
 const list = async (req, res, next) => {
@@ -519,7 +518,12 @@ const autoEnrich = async (req, res, next) => {
  * - Agendar demo en Calendly si es necesario
  * - Convertir PROSPECT -> LEAD
  */
-const autoQualify = async (req, res, next) => {
+const autoQualify = async (req, res) => {
+  return res.status(410).json({
+    success: false,
+    error: "Deprecated: use campaign batch calling instead",
+  });
+  // eslint-disable-next-line no-unreachable
   try {
     const {
       establishmentId,
@@ -614,10 +618,7 @@ const autoQualify = async (req, res, next) => {
       logger.warn("[AUTO-QUALIFY] No se pudo obtener agent_config, continuando sin él");
     }
 
-    // Obtener voice_id ACTUAL del agente en ElevenLabs (no de la BD)
-    // Si hay agentConfig con ID, lo usamos; si no, usamos el del env
-    const qualificationAgentId = process.env.ELEVENLABS_QUALIFICATION_AGENT_ID || agentConfig?.id;
-    const finalVoiceId = qualificationAgentId ? await elevenLabsService.getAgentVoiceId(qualificationAgentId) : null;
+    const finalVoiceId = null;
     const finalAgentName = agentConfig?.personality_name || agentConfig?.name || null;
 
     // Llamar al agente de Qualification en agentes-crm-sdk

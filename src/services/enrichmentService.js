@@ -777,13 +777,36 @@ async function getEnrichmentsByPartner(partnerId, level = null) {
     }, {});
 
     // Combinar datos - filtrar los que no tienen establishment válido
-    return enrichments
+    const combined = enrichments
       .map((e) => ({
         ...e,
         establishment: establishmentMap[e.establishmentId] || null,
         meeting: meetingMap[e.establishmentId] || null,
       }))
       .filter((e) => e.establishment !== null);
+
+    // Indicador de dedup por telefono: marca contactos cuyo numero ya esta en una llamada en
+    // curso o contactado desde otra campana, para que el frontend pre-bloquee los botones de fase.
+    // Misma logica que campanas (variantes de formato + statuses), en UNA sola consulta batch.
+    try {
+      const { findPhonesInProcess } = require("./campaignsService");
+      const dedupItems = combined
+        .map((e) => ({
+          establishmentId: e.establishmentId,
+          phone: e.establishment?.phone || e.decisionMakerPhone || e.decisionMakerWhatsApp || null,
+        }))
+        .filter((it) => it.phone);
+      const phoneStatus = await findPhonesInProcess(dedupItems);
+      for (const e of combined) {
+        const reason = phoneStatus.get(e.establishmentId) || null;
+        e.phoneInUse = !!reason;
+        e.phoneInUseReason = reason;
+      }
+    } catch (dedupError) {
+      logger.warn("[getEnrichmentsByPartner] No se pudo calcular phoneInUse", { error: dedupError.message });
+    }
+
+    return combined;
   } catch (error) {
     logger.error("Error obteniendo enriquecimientos del partner:", error);
     throw error;
