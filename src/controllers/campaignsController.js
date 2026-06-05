@@ -936,7 +936,7 @@ const { CAMPAIGN_TYPE_TO_AGENT: CAMPAIGN_TYPE_TO_AGENT_ID } = require("../servic
 
 const quickAction = async (req, res, next) => {
   try {
-    const { establishmentId, campaignType } = req.body;
+    const { establishmentId, campaignType, couponTemplateId, couponTemplateIds } = req.body;
 
     if (!establishmentId || !campaignType) {
       return res.status(400).json({ success: false, error: 'establishmentId y campaignType son requeridos' });
@@ -995,6 +995,15 @@ const quickAction = async (req, res, next) => {
       } catch (_) { }
     }
 
+    // Sin teléfono no hay forma de llamar: el dispatch marcaría el recipient como invalido y la
+    // "llamada" no ocurriria silenciosamente. Bloquear aqui para dar feedback claro al usuario.
+    if (!establishmentPhone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Este contacto no tiene un número telefónico para realizar la llamada',
+      });
+    }
+
     // Dedup por telefono: misma logica que campanas. Evita doble marcado del mismo numero
     // ya en una llamada en curso o contactado desde otra identidad (otro establishmentId).
     if (establishmentPhone) {
@@ -1008,20 +1017,29 @@ const quickAction = async (req, res, next) => {
       }
     }
 
-    // Para ACTIVATION y CONVERSION auto-resolver el template de cupón de mayor prioridad activo.
-    // Esto replica lo que haría el usuario al crear una campaña normal con cupón seleccionado.
+    // Cupones (solo ACTIVATION/CONVERSION). Se cablea igual que el wizard de campañas:
+    // couponPrefix = cupón principal, couponTemplateIds = cupones alternativos (sin el principal).
+    // - couponTemplateId (body): principal elegido en el modal. Si falta, auto-resolver el de mayor prioridad.
+    // - couponTemplateIds (body): alternativos elegidos en el modal.
     // DISCOVERY y QUALIFICATION no usan cupones (validado en createCampaign).
     const COUPON_TYPES = ['ACTIVATION', 'CONVERSION'];
-    let resolvedCouponTemplateIds = [];
+    let primaryCouponId = null;
+    let alternativeCouponIds = [];
     if (COUPON_TYPES.includes(campaignType)) {
-      try {
-        const defaultTemplate = await prisma.couponTemplate.findFirst({
-          where: { active: true },
-          orderBy: { priority: 'desc' },
-          select: { id: true },
-        });
-        if (defaultTemplate) resolvedCouponTemplateIds = [defaultTemplate.id];
-      } catch (_) { }
+      primaryCouponId = couponTemplateId || null;
+      if (!primaryCouponId) {
+        try {
+          const defaultTemplate = await prisma.couponTemplate.findFirst({
+            where: { active: true },
+            orderBy: { priority: 'desc' },
+            select: { id: true },
+          });
+          if (defaultTemplate) primaryCouponId = defaultTemplate.id;
+        } catch (_) { }
+      }
+      if (Array.isArray(couponTemplateIds)) {
+        alternativeCouponIds = [...new Set(couponTemplateIds.filter(id => id && id !== primaryCouponId))];
+      }
     }
 
     // Crear micro-campaña con contactSource QUICK_ACTION
@@ -1034,7 +1052,7 @@ const quickAction = async (req, res, next) => {
       contactSource: 'QUICK_ACTION',
       establishmentIds: [establishmentId],
       createdBy: userId,
-      ...(resolvedCouponTemplateIds.length > 0 && { couponTemplateIds: resolvedCouponTemplateIds }),
+      ...(primaryCouponId && { couponPrefix: primaryCouponId, couponTemplateIds: alternativeCouponIds }),
     });
 
     // Iniciar campaña inmediatamente
