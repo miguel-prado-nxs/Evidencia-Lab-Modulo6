@@ -1238,29 +1238,12 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
     };
   });
 
-  // Defensa en profundidad: no despachar a numeros que ya tienen una llamada activa/pendiente
-  // en otra campana. La clasificacion por etapa no lo detecta (rank sigue en 0 hasta el webhook).
-  let dispatchableContacts = contactsToCreate;
-  const dedupItems = contactsToCreate
-    .filter(c => c.establishmentPhone)
-    .map(c => ({ establishmentId: c.establishmentId, phone: c.establishmentPhone }));
-  if (dedupItems.length > 0) {
-    const blocked = await findPhonesInProcess(dedupItems);
-    const inFlightBlocked = new Set(
-      [...blocked.entries()].filter(([, reason]) => reason === 'in_flight').map(([id]) => id)
-    );
-    if (inFlightBlocked.size > 0) {
-      dispatchableContacts = contactsToCreate.filter(c => !inFlightBlocked.has(c.establishmentId));
-      logger.info('[assignContactsToCampaign] Contactos excluidos por llamada en curso', {
-        campaignId,
-        skipped: contactsToCreate.length - dispatchableContacts.length,
-      });
-    }
-  }
-
-  // Insertar todos los contactos en una sola operación
+  // Insertar todos los contactos en una sola operación.
+  // NOTA: el dedup por teléfono en proceso se aplica SOLO en la ruta de llamadas individuales
+  // (quickAction controller via findPhonesInProcess → 409). Aquí no se filtra para no romper
+  // campañas normales ni la continuación de stage (preview y creación deben coincidir).
   const contacts = await prisma.campaignContact.createMany({
-    data: dispatchableContacts,
+    data: contactsToCreate,
     skipDuplicates: true,
   });
 
