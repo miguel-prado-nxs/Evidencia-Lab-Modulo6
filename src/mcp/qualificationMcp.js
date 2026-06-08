@@ -145,7 +145,7 @@ function createQualificationServer() {
 
   server.tool(
     "mark_voicemail_detected",
-    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, debes llamar inmediatamente a la system tool voicemail_detection para terminar la llamada.",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta end_qualification_call con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
@@ -187,7 +187,7 @@ function createQualificationServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "VOICEMAIL DETECTED. CALL end_qualification_call IMMEDIATELY with outcome='VOICEMAIL'. DO NOT SPEAK. DO NOT WAIT.",
+              message: "VOICEMAIL DETECTED. Execute end_qualification_call with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
@@ -200,7 +200,7 @@ function createQualificationServer() {
             text: JSON.stringify({
               success: false,
               error: err.message,
-              fallback: "Call voicemail_detection system tool immediately to end call"
+              fallback: "Call end_call system tool immediately to hang up"
             })
           }],
           isError: true
