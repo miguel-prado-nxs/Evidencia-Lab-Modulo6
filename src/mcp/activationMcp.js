@@ -65,7 +65,7 @@ function createActivationServer() {
       establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       pain_points_confirmed: z.array(z.string()).optional().describe("Pain points confirmados"),
       features_of_interest: z.array(z.string()).optional().describe("Funcionalidades que más interesan"),
-      urgency_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Urgencia de implementación"),
+      urgency_level: z.string().optional().describe("Urgencia de implementación: HIGH (urgente), MEDIUM (moderada), LOW (sin prisa)"),
       notes: z.string().optional(),
       account_created: z.boolean().optional().describe("Si se creó la cuenta en el proceso"),
       business_registered: z.boolean().optional().describe("Si el negocio ya está registrado"),
@@ -75,7 +75,7 @@ function createActivationServer() {
       resolve_first: z.string().optional().describe("Acción prioritaria a resolver"),
       implementation_time: z.string().optional().describe("Tiempo estimado de implementación"),
       solo_or_team: z.string().optional().describe("Si el usuario prefiere implementar solo o con equipo"),
-      perceived_complexity: z.enum(["LOW", "MEDIUM", "HIGH"]).optional().describe("Complejidad percibida por el usuario"),
+      perceived_complexity: z.string().optional().describe("Complejidad percibida por el usuario: LOW (sencillo/fácil), MEDIUM (moderada), HIGH (complejo/difícil)"),
     },
     async ({ conversation_id, establishment_id, pain_points_confirmed, features_of_interest, urgency_level, notes, account_created, business_registered, menu_loaded, first_order_registered, confusion_areas, resolve_first, implementation_time, solo_or_team, perceived_complexity }) => {
       try {

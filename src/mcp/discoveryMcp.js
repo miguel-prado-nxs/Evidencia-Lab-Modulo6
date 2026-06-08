@@ -87,7 +87,7 @@ function createDiscoveryServer() {
       contact_email: z.string().optional().describe("Email del decision maker (para envios posteriores)"),
       business_type: z.string().optional().describe("Tipo de negocio"),
       pain_point: z.string().optional().describe("Principal problema identificado"),
-      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Nivel de interés evaluado"),
+      interest_level: z.string().optional().describe("Nivel de interés evaluado: HIGH (muy interesado), MEDIUM (moderado), LOW (poco interesado)"),
       notes: z.string().optional().describe("Notas adicionales"),
       restaurant_name: z.string().optional().describe("Nombre del restaurante"),
       restaurant_age: z.string().optional().describe("Antigüedad del restaurante"),
@@ -98,10 +98,10 @@ function createDiscoveryServer() {
       main_difficulty: z.string().optional().describe("Dificultad principal identificada"),
       frequent_errors: z.string().optional().describe("Errores frecuentes identificados"),
       time_lost: z.string().optional().describe("Tiempo perdido estimado"),
-      closing_clarity: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Claridad en el cierre"),
+      closing_clarity: z.string().optional().describe("Claridad en el cierre del día: HIGH (claro y rápido), MEDIUM (toma tiempo), LOW (confuso)"),
       previous_systems: z.string().optional().describe("Sistemas previos utilizados"),
-      improvement_interest: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Interés en mejoras"),
-      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW", "NONE"]).optional().describe("Prioridad del problema"),
+      improvement_interest: z.string().optional().describe("Interés en mejorar procesos: HIGH (muy interesado), MEDIUM (moderado), LOW (poco interesado)"),
+      problem_priority: z.string().optional().describe("Prioridad del problema: HIGH (urgente), MEDIUM (importante), LOW (menor), NONE (sin problema)"),
     },
     async ({ conversation_id, establishment_id, contact_name, contact_email, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
       try {
@@ -145,7 +145,7 @@ function createDiscoveryServer() {
       contact_name: z.string().optional().describe("Nombre del contacto o decision maker"),
       business_type: z.string().optional().describe("Tipo de negocio (ej: restaurante, panadería, cafetería)"),
       pain_point: z.string().optional().describe("Problema principal identificado en la conversación"),
-      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("NIVEL DE INTERÉS del prospecto: HIGH (muy interesado), MEDIUM (moderadamente interesado), LOW (poco interesado). NOTA: Esto es DIFERENTE del outcome."),
+      interest_level: z.string().optional().describe("NIVEL DE INTERÉS del prospecto: HIGH (muy interesado), MEDIUM (moderadamente interesado), LOW (poco interesado). NOTA: Esto es DIFERENTE del outcome."),
       call_summary: z.string().describe("Resumen breve de la conversación (2-3 oraciones sobre lo que pasó)"),
     },
     async ({ conversation_id, establishment_id, outcome, contact_name, business_type, pain_point, interest_level, call_summary }) => {

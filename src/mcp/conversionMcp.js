@@ -154,7 +154,7 @@ function createConversionServer() {
       decision_timeline: z.string().describe("Timeline de la decisión (ej: 'dentro de 1 semana', 'después de revisar presupuesto')"),
       depends_on_others: z.boolean().describe("¿Depende de otras personas?"),
       conditions_to_advance: z.string().describe("Condiciones necesarias para avanzar (ej: 'confirmar presupuesto', 'revisar disponibilidad')"),
-      perceived_value: z.enum(["LOW", "MEDIUM", "HIGH"]).describe("Valor percibido del producto/servicio"),
+      perceived_value: z.string().describe("Valor percibido del producto/servicio: HIGH (alto valor), MEDIUM (valor moderado), LOW (bajo valor percibido)"),
       coupon_offered: z.boolean().describe("¿Se ofreció un cupón?"),
       coupon_type_offered: z.string().optional().describe("Tipo de cupón ofrecido (ej: 'descuento', 'bonificación', 'trial')"),
     },
