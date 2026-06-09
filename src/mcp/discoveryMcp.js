@@ -240,7 +240,7 @@ function createDiscoveryServer() {
 
   server.tool(
     "send_whatsapp_info",
-    "Envía un mensaje informativo básico de EasyOrder por WhatsApp al prospecto. SIEMPRE ejecutar al finalizar la llamada, sin importar el resultado (incluso buzón de voz o sin respuesta).",
+    "Envía un mensaje informativo de EasyOrder por WhatsApp al prospecto. Llamar ÚNICAMENTE cuando el outcome sea INTERESTED o FOLLOW_UP_LATER y el contacto es el responsable del negocio. NO llamar en: WRONG_NUMBER, NO_ANSWER, VOICEMAIL, NOT_INTERESTED ni en cierres tempranos (número equivocado, encargado no disponible, no es el encargado).",
     {
       conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
