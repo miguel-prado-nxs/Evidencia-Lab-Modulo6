@@ -82,6 +82,7 @@ const parseCSV = (buffer, originalName = "archivo.csv") => {
       skip_empty_lines: true,
       trim: true,
       relax_column_count: true,
+      bom: true, // strip UTF-8 BOM generado por Excel al guardar CSV
     });
   } catch (err) {
     throw new Error(`El archivo "${originalName}" no es un CSV válido: ${err.message}`);
