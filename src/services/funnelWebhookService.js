@@ -670,13 +670,13 @@ async function endActivationCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan activation_completed
+  // NO_ANSWER y VOICEMAIL NO son conversacionales: sin respuesta humana no debe
+  // marcarse la etapa como completada ni avanzar el funnel (mantener elegible para re-llamada).
   const CONVERSATIONAL_OUTCOMES = [
     "ACTIVATED",
     "DEMO_SCHEDULED",
     "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
-    "NO_ANSWER",
-    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -1244,13 +1244,13 @@ async function endQualificationCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan qualification_completed
+  // NO_ANSWER y VOICEMAIL NO son conversacionales: sin respuesta humana no debe
+  // marcarse la etapa como completada ni avanzar el funnel (mantener elegible para re-llamada).
   const CONVERSATIONAL_OUTCOMES = [
     "QUALIFIED",
     "NOT_QUALIFIED",
     "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
-    "NO_ANSWER",
-    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -1565,14 +1565,14 @@ async function endConversionCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan conversion_completed
+  // NO_ANSWER y VOICEMAIL NO son conversacionales: sin respuesta humana no debe
+  // marcarse la etapa como completada ni avanzar el funnel (mantener elegible para re-llamada).
   const CONVERSATIONAL_OUTCOMES = [
     "CLOSED_WON",
     "FOLLOW_UP_LATER",
     "NEEDS_VALIDATION",
     "NOT_INTERESTED",
     "LOST",
-    "NO_ANSWER",
-    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
