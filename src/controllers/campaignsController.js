@@ -101,6 +101,14 @@ const buildEligibilityMessage = ({
   };
 };
 
+const getReengagementConfig = async (req, res, next) => {
+  try {
+    res.json({ success: true, data: campaignsService.getReengagementConfig() });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getReengagementCandidates = async (req, res, next) => {
   try {
     const {
@@ -325,12 +333,12 @@ const assignContacts = async (req, res, next) => {
       });
     }
 
-    const contacts = await campaignsService.assignContactsToCampaign(id, establishmentIds);
+    const assignmentSummary = await campaignsService.assignContactsToCampaign(id, establishmentIds);
 
     res.json({
       success: true,
-      data: contacts,
-      message: `${contacts.length} contactos asignados exitosamente`,
+      data: assignmentSummary,
+      message: `${assignmentSummary.count} contactos asignados exitosamente`,
     });
   } catch (error) {
     next(error);
@@ -1121,6 +1129,7 @@ module.exports = {
   validateBeforeStart,
   getCouponBreakdown,
   getReengagementCandidates,
+  getReengagementConfig,
   pause,
   cancel,
   reschedule,
