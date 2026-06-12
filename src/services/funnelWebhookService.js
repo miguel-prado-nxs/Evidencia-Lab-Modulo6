@@ -410,12 +410,13 @@ async function endDiscoveryCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // Outcomes conversacionales que marcan discovery_completed.
+  // Outcomes que marcan discovery_completed y avanzan el funnel.
   // Usar originalOutcome (antes del mapeo INTERESTED->ADVANCE_TO_ACTIVATION).
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "INTERESTED",
     "ADVANCE_TO_ACTIVATION",
-    "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
   ];
   const effectiveOutcome = (originalOutcome || outcome || "").toUpperCase();
@@ -670,12 +671,12 @@ async function endActivationCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan activation_completed
-  // NO_ANSWER y VOICEMAIL NO son conversacionales: sin respuesta humana no debe
-  // marcarse la etapa como completada ni avanzar el funnel (mantener elegible para re-llamada).
+  // Solo outcomes terminales (ACTIVATED/DEMO_SCHEDULED) y NOT_INTERESTED avanzan la etapa.
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "ACTIVATED",
     "DEMO_SCHEDULED",
-    "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
@@ -1244,12 +1245,12 @@ async function endQualificationCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan qualification_completed
-  // NO_ANSWER y VOICEMAIL NO son conversacionales: sin respuesta humana no debe
-  // marcarse la etapa como completada ni avanzar el funnel (mantener elegible para re-llamada).
+  // Solo QUALIFIED/NOT_QUALIFIED y NOT_INTERESTED avanzan la etapa.
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "QUALIFIED",
     "NOT_QUALIFIED",
-    "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
@@ -1265,7 +1266,7 @@ async function endQualificationCall({
   // Subir enrichmentStatus a qualification_completed si hubo conversacion
   if (isConversational) {
     updateData.enrichmentStatus = "qualification_completed";
-    const advancesToProspect = ["QUALIFIED", "FOLLOW_UP_LATER"];
+    const advancesToProspect = ["QUALIFIED"];
     if (advancesToProspect.includes(effectiveOutcome)) {
       updateData.level = "PROSPECT";
     }
@@ -1565,11 +1566,11 @@ async function endConversionCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan conversion_completed
-  // NO_ANSWER y VOICEMAIL NO son conversacionales: sin respuesta humana no debe
-  // marcarse la etapa como completada ni avanzar el funnel (mantener elegible para re-llamada).
+  // Solo CLOSED_WON, NEEDS_VALIDATION, NOT_INTERESTED y LOST cierran/avanzan la etapa.
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "CLOSED_WON",
-    "FOLLOW_UP_LATER",
     "NEEDS_VALIDATION",
     "NOT_INTERESTED",
     "LOST",
