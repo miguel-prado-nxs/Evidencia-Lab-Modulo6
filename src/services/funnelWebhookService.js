@@ -442,7 +442,7 @@ async function endDiscoveryCall({
     callDurationSeconds: callDuration || 0,
   };
   // Reforzar decisionMakerName y email aqui tambien por si saveDiscoveryData no los
-  // recibio (ej. agente solo llamo end_discovery_call).
+  // recibio (ej. agente solo llamo save_discovery_outcome).
   if (contactName) updateData.decisionMakerName = contactName;
   if (contactEmail && isValidEmail(contactEmail)) {
     updateData.decisionMakerEmail = contactEmail;
