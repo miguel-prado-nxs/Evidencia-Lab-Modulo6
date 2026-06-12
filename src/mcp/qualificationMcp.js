@@ -145,7 +145,7 @@ function createQualificationServer() {
 
   server.tool(
     "mark_voicemail_detected",
-    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta end_qualification_call con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta save_qualification_outcome con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
@@ -187,7 +187,7 @@ function createQualificationServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "VOICEMAIL DETECTED. Execute end_qualification_call with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
+              message: "VOICEMAIL DETECTED. Execute save_qualification_outcome with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
@@ -210,8 +210,8 @@ function createQualificationServer() {
   );
 
   server.tool(
-    "end_qualification_call",
-    "Guarda el resultado final de la conversación de Qualification y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
+    "save_qualification_outcome",
+    "Guarda y registra el resultado final de la conversación de Qualification en campaign_enrichments. NO cuelga la llamada: después de esta SIEMPRE debes ejecutar el System Tool end_call para colgar.",
     {
       conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
