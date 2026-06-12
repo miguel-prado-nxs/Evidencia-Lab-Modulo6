@@ -331,6 +331,14 @@ const sanitizeRecipient = (recipient = {}, campaignId, agentConfigName) => {
     recipient.establishment_id ||
     null;
 
+  if (!establishmentId) {
+    logger.warn("[BatchDispatcher] Contacto sin establishment_id valido", {
+      campaignContactId,
+      recipientKeys: Object.keys(recipient),
+      dynamicVarKeys: Object.keys(dynamicVariables),
+    });
+  }
+
   const enforcedDynamicVariables = ensureRequiredDynamicVariables(dynamicVariables, {
     campaignContactId,
     campaignId,

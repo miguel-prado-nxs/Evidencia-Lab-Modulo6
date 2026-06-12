@@ -5,9 +5,18 @@ const logger = require("../config/logger");
 const config = require("../config/env");
 
 // Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
-const sanitizeVar = (value) => {
-  if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
-  return value || null;
+// o si el valor es igual al nombre del parámetro (indicador de error del agente)
+const sanitizeVar = (value, paramName) => {
+  if (typeof value !== "string") return value || null;
+  const v = value.trim();
+
+  // Descarta placeholders sin resolver
+  if (v.includes("{{") || v.includes("}}")) return null;
+
+  // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
+  if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
+
+  return v || null;
 };
 
 // Normaliza enums: acepta valores en español y los mapea a inglés
@@ -76,29 +85,29 @@ function createConversionServer() {
     "send_coupon_whatsapp",
     "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
     {
-      conversation_id: z.string().describe("ID de la conversación. Valor: {{system__conversation_id}}"),
-      establishment_id: z.string().describe("ID del establecimiento. Valor: {{establishment_id}}"),
-      campaign_id: z.string().describe("ID de la campaña. Valor: {{campaignId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
-      campaign_contact_id: z.string().describe("ID del contacto en la campaña. Valor: {{campaignContactId}}. Búscalo en la sección DATOS DE LA LLAMADA de tu prompt."),
-      phone: z.string().optional().describe("Teléfono del prospecto. Valor: {{phoneNumber}}"),
-      coupon_type: z.string().optional().describe("Tipo de cupón asignado. Valor: {{couponType}}. Usar EXACTAMENTE este valor sin modificarlo."),
+      conversation_id: z.string().describe("ID de la conversación. Valor: conversation_id de la sección DATOS de tu prompt"),
+      establishment_id: z.string().describe("ID del establecimiento. Valor: establishment_id de la sección DATOS de tu prompt"),
+      campaign_id: z.string().describe("ID de la campaña. Valor: campaignId de la sección DATOS de tu prompt."),
+      campaign_contact_id: z.string().describe("ID del contacto en la campaña. Valor: campaignContactId de la sección DATOS de tu prompt."),
+      phone: z.string().optional().describe("Teléfono del prospecto. Valor: phoneNumber de la sección DATOS de tu prompt"),
+      coupon_type: z.string().optional().describe("Tipo de cupón asignado. Valor: couponType de la sección DATOS de tu prompt. Usar EXACTAMENTE este valor sin modificarlo."),
       scenario: z.string().optional().describe("Escenario detectado: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead."),
-      prospect_name: z.string().optional().describe("Nombre del prospecto. Valor: {{previousContactName}}"),
-      business_name: z.string().optional().describe("Nombre del negocio. Valor: {{businessName}}"),
+      prospect_name: z.string().optional().describe("Nombre del prospecto. Valor: previousContactName de la sección DATOS de tu prompt"),
+      business_name: z.string().optional().describe("Nombre del negocio. Valor: businessName de la sección DATOS de tu prompt"),
     },
     async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
       try {
         const result = await svc.sendCouponWhatsapp({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
-          campaignId: sanitizeVar(campaign_id),
-          campaignContactId: sanitizeVar(campaign_contact_id),
-          phone: sanitizeVar(phone),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          campaignId: sanitizeVar(campaign_id, "campaign_id"),
+          campaignContactId: sanitizeVar(campaign_contact_id, "campaign_contact_id"),
+          phone: sanitizeVar(phone, "phone"),
           coupon: {},
-          couponType: sanitizeVar(coupon_type),
+          couponType: sanitizeVar(coupon_type, "coupon_type"),
           scenario,
-          prospectName: sanitizeVar(prospect_name),
-          businessName: sanitizeVar(business_name),
+          prospectName: sanitizeVar(prospect_name, "prospect_name"),
+          businessName: sanitizeVar(business_name, "business_name"),
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
@@ -111,8 +120,8 @@ function createConversionServer() {
     "save_objection_data",
     "Guarda los datos de objeciones encontradas durante la conversación de Activation. Llamar cuando se identifique una objeción.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       objection_type: z.enum(["PRICE", "RISK", "COMPLEXITY", "TIME", "PRIORITY", "OTHER"]).describe("Tipo de objeción identificada"),
       objection_detail: z.string().describe("Descripción detallada de la objeción"),
       objection_resolved: z.boolean().describe("¿Se resolvió la objeción?"),
@@ -121,8 +130,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, objection_type, objection_detail, objection_resolved, resolution_method }) => {
       try {
         const result = await svc.saveObjectionData({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           objectionType: normalizeEnum(objection_type, "objectionType"),
           objectionDetail: objection_detail,
           objectionResolved: objection_resolved,
@@ -139,21 +148,21 @@ function createConversionServer() {
     "save_conversation_outcome",
     "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       decision_status: z.enum(["READY", "NEEDS_TIME", "NEEDS_VALIDATION", "NOT_NOW"]).describe("Estado final de la conversación"),
       decision_timeline: z.string().describe("Timeline de la decisión (ej: 'dentro de 1 semana', 'después de revisar presupuesto')"),
       depends_on_others: z.boolean().describe("¿Depende de otras personas?"),
       conditions_to_advance: z.string().describe("Condiciones necesarias para avanzar (ej: 'confirmar presupuesto', 'revisar disponibilidad')"),
-      perceived_value: z.enum(["LOW", "MEDIUM", "HIGH"]).describe("Valor percibido del producto/servicio"),
+      perceived_value: z.string().describe("Valor percibido del producto/servicio: HIGH (alto valor), MEDIUM (valor moderado), LOW (bajo valor percibido)"),
       coupon_offered: z.boolean().describe("¿Se ofreció un cupón?"),
       coupon_type_offered: z.string().optional().describe("Tipo de cupón ofrecido (ej: 'descuento', 'bonificación', 'trial')"),
     },
     async ({ conversation_id, establishment_id, decision_status, decision_timeline, depends_on_others, conditions_to_advance, perceived_value, coupon_offered, coupon_type_offered }) => {
       try {
         const result = await svc.saveConversationOutcome({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           decisionStatus: normalizeEnum(decision_status, "decisionStatus"),
           decisionTimeline: decision_timeline,
           dependsOnOthers: depends_on_others,
@@ -171,7 +180,7 @@ function createConversionServer() {
 
   server.tool(
     "mark_voicemail_detected",
-    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, debes llamar inmediatamente a la system tool voicemail_detection para terminar la llamada.",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta end_conversion_call con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
@@ -182,8 +191,8 @@ function createConversionServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -213,7 +222,7 @@ function createConversionServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "VOICEMAIL DETECTED. CALL end_conversion_call IMMEDIATELY with outcome='VOICEMAIL'. DO NOT SPEAK. DO NOT WAIT.",
+              message: "VOICEMAIL DETECTED. Execute end_conversion_call with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
@@ -226,7 +235,7 @@ function createConversionServer() {
             text: JSON.stringify({
               success: false,
               error: err.message,
-              fallback: "Call voicemail_detection system tool immediately to end call"
+              fallback: "Call end_call system tool immediately to hang up"
             })
           }],
           isError: true
@@ -252,8 +261,8 @@ function createConversionServer() {
     async ({ conversation_id, establishment_id, outcome, plan_closed, monthly_revenue, call_summary, decision_timeline, next_steps }) => {
       try {
         const result = await svc.endConversionCall({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           outcome: outcome,
           planClosed: plan_closed,
           monthlyRevenue: monthly_revenue,
@@ -272,8 +281,8 @@ function createConversionServer() {
     "hang_up_call",
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
+      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {

@@ -266,17 +266,21 @@ const REENGAGEMENT_OUTCOMES_BY_STAGE = {
     defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER'],
   },
   QUALIFICATION: {
-    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'FOLLOW_UP', 'NOT_INTERESTED'],
-    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'FOLLOW_UP'],
+    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NOT_INTERESTED'],
+    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER'],
   },
+  // DEMO_DECLINED ya no esta en el enum del agente actual (solo datos historicos):
+  // seleccionable pero no default
   ACTIVATION: {
     outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'DEMO_DECLINED', 'NOT_INTERESTED'],
-    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'DEMO_DECLINED'],
+    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER'],
   },
+  // NEEDS_TIME/NOT_NOW no se incluyen: son decision_status de save_conversation_outcome,
+  // nunca llegan como outcome de end_conversion_call (ver enum en conversionMcp)
   CONVERSION: {
-    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_TIME', 'NOT_NOW',
-               'NEEDS_VALIDATION', 'OBJECTION_UNRESOLVED', 'NOT_INTERESTED', 'LOST'],
-    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_TIME', 'NOT_NOW', 'NEEDS_VALIDATION'],
+    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_VALIDATION',
+               'OBJECTION_UNRESOLVED', 'NOT_INTERESTED', 'LOST'],
+    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_VALIDATION'],
   },
 };
 
@@ -1595,7 +1599,7 @@ const startCampaign = async (campaignId, options = {}) => {
           email: true,
           employeeRange: true,
           streetName: true,
-          exteriorNumber: true,
+          exteriorNum: true,
           neighborhood: true,
           municipalityName: true,
           stateName: true,
@@ -1809,6 +1813,7 @@ const startCampaign = async (campaignId, options = {}) => {
       ? {
         campaignContactId: recipients[0].campaignContactId,
         phoneNumber: recipients[0].phone_number,
+        establishment_id: recipients[0].dynamic_variables?.establishment_id,
         agent_name: recipients[0].dynamic_variables?.agent_name,
         voice_id: recipients[0].dynamic_variables?.voice_id,
         personality_name: recipients[0].dynamic_variables?.personality_name,

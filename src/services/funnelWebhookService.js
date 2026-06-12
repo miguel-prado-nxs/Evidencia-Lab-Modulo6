@@ -63,7 +63,7 @@ function getCallStatus(outcome) {
   return outcome || null;
 }
 
-async function upsertEnrichmentSnapshot(establishmentId, stage, data) {
+async function upsertEnrichmentSnapshot(establishmentId, stage, data, agentTag = null) {
   const existing = await prisma.establishmentEnrichment.findUnique({
     where: { establishmentId },
   });
@@ -76,10 +76,24 @@ async function upsertEnrichmentSnapshot(establishmentId, stage, data) {
       updatedAt: new Date().toISOString(),
     },
   };
+
+  // Solo setear enrichedBy/enrichedAt si el registro no los tiene aún
+  const backfillFields = agentTag && !existing?.enrichedBy
+    ? { enrichedBy: agentTag, enrichedAt: new Date() }
+    : {};
+
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
-    create: { establishmentId, establishmentData: updatedData },
-    update: { establishmentData: updatedData },
+    create: {
+      establishmentId,
+      establishmentData: updatedData,
+      ...(agentTag ? { enrichedBy: agentTag, enrichedAt: new Date(), lastUpdatedBy: agentTag } : {}),
+    },
+    update: {
+      establishmentData: updatedData,
+      ...backfillFields,
+      ...(agentTag ? { lastUpdatedBy: agentTag } : {}),
+    },
   });
 }
 
@@ -326,8 +340,17 @@ async function saveDiscoveryData({
   if (Object.keys(columnUpdate).length > 0) {
     await prisma.establishmentEnrichment.upsert({
       where: { establishmentId },
-      create: { establishmentId, ...columnUpdate },
-      update: columnUpdate,
+      create: {
+        establishmentId,
+        ...columnUpdate,
+        enrichedBy: "DISCOVERY_AGENT",
+        enrichedAt: new Date(),
+        lastUpdatedBy: "DISCOVERY_AGENT",
+      },
+      update: {
+        ...columnUpdate,
+        lastUpdatedBy: "DISCOVERY_AGENT",
+      },
     });
   }
 
@@ -360,7 +383,7 @@ async function saveDiscoveryData({
     Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== "")
   );
   if (Object.keys(cleanSnapshot).length > 0) {
-    await upsertEnrichmentSnapshot(establishmentId, "discovery", cleanSnapshot);
+    await upsertEnrichmentSnapshot(establishmentId, "discovery", cleanSnapshot, "DISCOVERY_AGENT");
   }
 
   logger.info("[FunnelWebhook:Discovery] saveDiscoveryData", {
@@ -387,12 +410,13 @@ async function endDiscoveryCall({
 }) {
   if (!establishmentId) throw new Error("establishment_id requerido");
 
-  // Outcomes conversacionales que marcan discovery_completed.
+  // Outcomes que marcan discovery_completed y avanzan el funnel.
   // Usar originalOutcome (antes del mapeo INTERESTED->ADVANCE_TO_ACTIVATION).
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "INTERESTED",
     "ADVANCE_TO_ACTIVATION",
-    "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
   ];
   const effectiveOutcome = (originalOutcome || outcome || "").toUpperCase();
@@ -435,8 +459,14 @@ async function endDiscoveryCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "DISCOVERY_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "DISCOVERY_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "DISCOVERY_AGENT",
+    },
   });
 
   // 3. Log en campaign_enrichments (non-blocking)
@@ -519,7 +549,7 @@ async function saveActivationData({
     Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== "")
   );
 
-  await upsertEnrichmentSnapshot(establishmentId, "activation", cleanSnapshot);
+  await upsertEnrichmentSnapshot(establishmentId, "activation", cleanSnapshot, "ACTIVATION_AGENT");
 
   logger.info("[FunnelWebhook:Activation] saveActivationData", {
     establishmentId,
@@ -548,8 +578,8 @@ async function confirmOrUpdateEmail({
 
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
-    create: { establishmentId, decisionMakerEmail: email },
-    update: { decisionMakerEmail: email },
+    create: { establishmentId, decisionMakerEmail: email, enrichedBy: "ACTIVATION_AGENT", enrichedAt: new Date(), lastUpdatedBy: "ACTIVATION_AGENT" },
+    update: { decisionMakerEmail: email, lastUpdatedBy: "ACTIVATION_AGENT" },
   });
 
   logger.info("[FunnelWebhook:Activation] confirmOrUpdateEmail", {
@@ -585,10 +615,14 @@ async function scheduleDemo({
       establishmentId,
       decisionMakerEmail: email,
       decisionMakerName: contactName || null,
+      enrichedBy: "ACTIVATION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "ACTIVATION_AGENT",
     },
     update: {
       decisionMakerEmail: email,
       ...(contactName ? { decisionMakerName: contactName } : {}),
+      lastUpdatedBy: "ACTIVATION_AGENT",
     },
   });
 
@@ -606,7 +640,7 @@ async function scheduleDemo({
     demoDate: startTime,
     featuresOfInterest,
     calendlyResult: result.success ? "scheduled" : "failed",
-  });
+  }, "ACTIVATION_AGENT");
 
   logEnrichmentEvent({
     establishmentId,
@@ -637,13 +671,13 @@ async function endActivationCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan activation_completed
+  // Solo outcomes terminales (ACTIVATED/DEMO_SCHEDULED) y NOT_INTERESTED avanzan la etapa.
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "ACTIVATED",
     "DEMO_SCHEDULED",
-    "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
-    "NO_ANSWER",
-    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -668,8 +702,14 @@ async function endActivationCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "ACTIVATION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "ACTIVATION_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "ACTIVATION_AGENT",
+    },
   });
 
   // Guardar la snapshot final de activation con outcome y resumen
@@ -678,7 +718,7 @@ async function endActivationCall({
     outcome,
     demoDate,
     callSummary,
-  });
+  }, "ACTIVATION_AGENT");
 
   logEnrichmentEvent({
     establishmentId,
@@ -749,8 +789,17 @@ async function saveQualificationResult({
 
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
-    create: { establishmentId, ...update },
-    update,
+    create: {
+      establishmentId,
+      ...update,
+      enrichedBy: "QUALIFICATION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "QUALIFICATION_AGENT",
+    },
+    update: {
+      ...update,
+      lastUpdatedBy: "QUALIFICATION_AGENT",
+    },
   });
 
   // Guardar datos de qualification en establishment_data
@@ -766,7 +815,7 @@ async function saveQualificationResult({
       desire,
       intent,
       qualificationNotes,
-    });
+    }, "QUALIFICATION_AGENT");
   }
 
   logger.info("[FunnelWebhook:Qualification] saveQualificationResult", {
@@ -1117,10 +1166,14 @@ async function scheduleCalendlyDemo({
       establishmentId,
       decisionMakerEmail: email,
       decisionMakerName: contactName || null,
+      enrichedBy: "QUALIFICATION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "QUALIFICATION_AGENT",
     },
     update: {
       decisionMakerEmail: email,
       ...(contactName ? { decisionMakerName: contactName } : {}),
+      lastUpdatedBy: "QUALIFICATION_AGENT",
     },
   });
 
@@ -1139,7 +1192,7 @@ async function scheduleCalendlyDemo({
       demoDate: startTime,
       bantScores,
       fpdi,
-    });
+    }, "QUALIFICATION_AGENT");
   }
 
   logEnrichmentEvent({
@@ -1174,7 +1227,7 @@ async function handleNegativeResponse({
     negativeReason: reason,
     followUpDate,
     demoDeclined: true,
-  });
+  }, "QUALIFICATION_AGENT");
 
   logger.info("[FunnelWebhook:Qualification] handleNegativeResponse", {
     establishmentId,
@@ -1192,13 +1245,13 @@ async function endQualificationCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan qualification_completed
+  // Solo QUALIFIED/NOT_QUALIFIED y NOT_INTERESTED avanzan la etapa.
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "QUALIFIED",
     "NOT_QUALIFIED",
-    "FOLLOW_UP_LATER",
     "NOT_INTERESTED",
-    "NO_ANSWER",
-    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -1213,7 +1266,7 @@ async function endQualificationCall({
   // Subir enrichmentStatus a qualification_completed si hubo conversacion
   if (isConversational) {
     updateData.enrichmentStatus = "qualification_completed";
-    const advancesToProspect = ["QUALIFIED", "FOLLOW_UP_LATER"];
+    const advancesToProspect = ["QUALIFIED"];
     if (advancesToProspect.includes(effectiveOutcome)) {
       updateData.level = "PROSPECT";
     }
@@ -1228,8 +1281,14 @@ async function endQualificationCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "QUALIFICATION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "QUALIFICATION_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "QUALIFICATION_AGENT",
+    },
   });
 
   // Guardar la snapshot final de qualification con outcome
@@ -1237,7 +1296,7 @@ async function endQualificationCall({
     conversationId,
     outcome,
     callSummary,
-  });
+  }, "QUALIFICATION_AGENT");
 
   logEnrichmentEvent({
     establishmentId,
@@ -1308,7 +1367,7 @@ async function calculateROI({
     await upsertEnrichmentSnapshot(establishmentId, "conversion", {
       conversationId,
       roiCalculation: roi,
-    }).catch(() => { });
+    }, "CONVERSION_AGENT").catch(() => { });
   }
 
   logger.info("[FunnelWebhook:Conversion] calculateROI", {
@@ -1344,7 +1403,7 @@ async function saveDealTerms({
     savedAt: new Date().toISOString(),
   };
 
-  await upsertEnrichmentSnapshot(establishmentId, "conversion", dealData);
+  await upsertEnrichmentSnapshot(establishmentId, "conversion", dealData, "CONVERSION_AGENT");
 
   // Also store in productPurchased for quick reference
   await prisma.establishmentEnrichment.update({
@@ -1416,7 +1475,7 @@ async function scheduleOnboarding({
     planSelected,
     specialRequirements,
     calendlyResult: calendlyResult.success ? "scheduled" : "pending",
-  });
+  }, "CONVERSION_AGENT");
 
   logEnrichmentEvent({
     establishmentId,
@@ -1453,7 +1512,7 @@ async function saveObjectionData({
     objectionDetail,
     objectionResolved,
     resolutionMethod,
-  });
+  }, "CONVERSION_AGENT");
 
   logger.info("[FunnelWebhook:Conversion] saveObjectionData", {
     establishmentId,
@@ -1486,7 +1545,7 @@ async function saveConversationOutcome({
     perceivedValue,
     couponOffered,
     couponTypeOffered,
-  });
+  }, "CONVERSION_AGENT");
 
   logger.info("[FunnelWebhook:Conversion] saveConversationOutcome", {
     establishmentId,
@@ -1507,14 +1566,14 @@ async function endConversionCall({
   if (!establishmentId) throw new Error("establishment_id requerido");
 
   // Outcomes conversacionales que marcan conversion_completed
+  // Solo CLOSED_WON, NEEDS_VALIDATION, NOT_INTERESTED y LOST cierran/avanzan la etapa.
+  // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
+  // el establishment queda elegible para re-llamada en la misma etapa.
   const CONVERSATIONAL_OUTCOMES = [
     "CLOSED_WON",
-    "FOLLOW_UP_LATER",
     "NEEDS_VALIDATION",
     "NOT_INTERESTED",
     "LOST",
-    "NO_ANSWER",
-    "VOICEMAIL",
   ];
   const effectiveOutcome = (outcome || "").toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
@@ -1541,8 +1600,14 @@ async function endConversionCall({
     create: {
       establishmentId,
       ...updateData,
+      enrichedBy: "CONVERSION_AGENT",
+      enrichedAt: new Date(),
+      lastUpdatedBy: "CONVERSION_AGENT",
     },
-    update: updateData,
+    update: {
+      ...updateData,
+      lastUpdatedBy: "CONVERSION_AGENT",
+    },
   });
 
   // Guardar la snapshot final de conversion con outcome y datos del cierre
@@ -1552,7 +1617,7 @@ async function endConversionCall({
     planClosed,
     monthlyRevenue,
     callSummary,
-  });
+  }, "CONVERSION_AGENT");
 
   logEnrichmentEvent({
     establishmentId,

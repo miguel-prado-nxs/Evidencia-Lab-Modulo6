@@ -4,6 +4,21 @@ const svc = require("../services/funnelWebhookService");
 const logger = require("../config/logger");
 const config = require("../config/env");
 
+// Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
+// o si el valor es igual al nombre del parámetro (indicador de error del agente)
+const sanitizeVar = (value, paramName) => {
+  if (typeof value !== "string") return value || null;
+  const v = value.trim();
+
+  // Descarta placeholders sin resolver
+  if (v.includes("{{") || v.includes("}}")) return null;
+
+  // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
+  if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
+
+  return v || null;
+};
+
 // Normaliza enums: acepta valores en español y los mapea a inglés
 const normalizeEnum = (value, options = {}) => {
   if (!value || typeof value !== "string") return value;
@@ -71,22 +86,22 @@ function createQualificationServer() {
     "save_qualification_data",
     "Guarda información de calificación con datos operacionales y de marketing. Llamar después de explorar cada área.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       daily_orders_range: z.string().optional().describe("Rango preciso de pedidos diarios"),
       average_ticket: z.coerce.number().optional().describe("Ticket promedio en pesos"),
       approximate_sales: z.string().optional().describe("Ventas aproximadas mensuales"),
       employee_count: z.coerce.number().int().optional().describe("Empleados en operación"),
       pos_count: z.coerce.number().int().optional().describe("Cajas/puntos de venta"),
       branch_count: z.coerce.number().int().optional().describe("Sucursales"),
-      disorder_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Nivel de desorden operacional"),
+      disorder_level: z.string().optional().describe("Nivel de desorden operacional: HIGH (muy desordenado), MEDIUM (moderado), LOW (bien organizado)"),
       duplicate_processes: z.string().optional().describe("Procesos duplicados identificados"),
       current_tools: z.string().optional().describe("Herramientas actuales que usa"),
       time_impact: z.string().optional().describe("Impacto en tiempo"),
       money_impact: z.string().optional().describe("Impacto en dinero"),
       control_impact: z.string().optional().describe("Impacto en control"),
-      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Prioridad del problema"),
-      resolution_intent: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Intención de resolver"),
+      problem_priority: z.string().optional().describe("Prioridad del problema: HIGH (urgente), MEDIUM (importante), LOW (menor), NONE (sin problema)"),
+      resolution_intent: z.string().optional().describe("Intención de resolver: HIGH (quiere resolverlo pronto), MEDIUM (moderada), LOW (sin urgencia)"),
       decision_maker: z.string().optional().describe("Quién toma la decisión"),
       decision_process: z.string().optional().describe("Proceso de decisión (solo o con alguien más)"),
       evaluating_options: z.boolean().optional().describe("¿Evalúa otras opciones?"),
@@ -98,8 +113,8 @@ function createQualificationServer() {
       try {
         // Normalizar enums: mapear valores españoles a inglés
         const result = await svc.saveQualificationResult({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           dailyOrdersRange: daily_orders_range,
           averageTicket: average_ticket,
           approximateSales: approximate_sales,
@@ -130,7 +145,7 @@ function createQualificationServer() {
 
   server.tool(
     "mark_voicemail_detected",
-    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, debes llamar inmediatamente a la system tool voicemail_detection para terminar la llamada.",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta end_qualification_call con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
@@ -141,8 +156,8 @@ function createQualificationServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: conversation_id,
-          establishmentId: establishment_id,
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -172,7 +187,7 @@ function createQualificationServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "VOICEMAIL DETECTED. CALL end_qualification_call IMMEDIATELY with outcome='VOICEMAIL'. DO NOT SPEAK. DO NOT WAIT.",
+              message: "VOICEMAIL DETECTED. Execute end_qualification_call with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
@@ -185,7 +200,7 @@ function createQualificationServer() {
             text: JSON.stringify({
               success: false,
               error: err.message,
-              fallback: "Call voicemail_detection system tool immediately to end call"
+              fallback: "Call end_call system tool immediately to hang up"
             })
           }],
           isError: true
@@ -198,14 +213,14 @@ function createQualificationServer() {
     "end_qualification_call",
     "Guarda el resultado final de la conversación de Qualification y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       outcome: z.enum(["QUALIFIED", "NOT_QUALIFIED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "NO_ANSWER", "VOICEMAIL"]).describe("Outcome: QUALIFIED, NOT_QUALIFIED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
       call_summary: z.string().describe("Resumen breve de la conversación"),
     },
     async ({ conversation_id, establishment_id, outcome, call_summary }) => {
       try {
-        const result = await svc.endQualificationCall({ conversationId: conversation_id, establishmentId: establishment_id, outcome, callSummary: call_summary });
+        const result = await svc.endQualificationCall({ conversationId: sanitizeVar(conversation_id, "conversation_id"), establishmentId: sanitizeVar(establishment_id, "establishment_id"), outcome, callSummary: call_summary });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
         return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
@@ -217,8 +232,8 @@ function createQualificationServer() {
     "hang_up_call",
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
+      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {

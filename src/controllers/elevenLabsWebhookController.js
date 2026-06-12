@@ -289,11 +289,13 @@ async function handleVoicemailDetected(req, res) {
     });
 
     if (enrichment) {
+      // Solo marcar callStatus, sin tocar enrichmentStatus: cualquier etapa
+      // (Discovery/Qualification/Activation/Conversion) puede detectar voicemail
+      // y forzar discovery_completed regresaria el funnel.
       await prisma.establishmentEnrichment.update({
         where: { establishmentId },
         data: {
           callStatus: "voicemail",
-          enrichmentStatus: "discovery_completed",
           callSummary: detectionReason || "Voicemail detectado automáticamente",
           updatedAt: new Date(),
         },

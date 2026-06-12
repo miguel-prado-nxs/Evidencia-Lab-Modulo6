@@ -5,9 +5,18 @@ const logger = require("../config/logger");
 const config = require("../config/env");
 
 // Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
-const sanitizeVar = (value) => {
-  if (typeof value === "string" && value.includes("{{") && value.includes("}}")) return null;
-  return value || null;
+// o si el valor es igual al nombre del parámetro (indicador de error del agente)
+const sanitizeVar = (value, paramName) => {
+  if (typeof value !== "string") return value || null;
+  const v = value.trim();
+
+  // Descarta placeholders sin resolver
+  if (v.includes("{{") || v.includes("}}")) return null;
+
+  // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
+  if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
+
+  return v || null;
 };
 
 // Normaliza enums: acepta valores en español y los mapea a inglés
@@ -72,33 +81,33 @@ function createDiscoveryServer() {
     "save_discovery_data",
     "Guarda temporalmente la información de descubrimiento capturada durante la conversación. Llamar cada vez que se obtiene un nuevo dato.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       contact_name: z.string().optional().describe("Nombre del contacto"),
       contact_email: z.string().optional().describe("Email del decision maker (para envios posteriores)"),
       business_type: z.string().optional().describe("Tipo de negocio"),
       pain_point: z.string().optional().describe("Principal problema identificado"),
-      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Nivel de interés evaluado"),
+      interest_level: z.string().optional().describe("Nivel de interés evaluado: HIGH (muy interesado), MEDIUM (moderado), LOW (poco interesado)"),
       notes: z.string().optional().describe("Notas adicionales"),
       restaurant_name: z.string().optional().describe("Nombre del restaurante"),
       restaurant_age: z.string().optional().describe("Antigüedad del restaurante"),
       branch_count: z.coerce.number().optional().describe("Cantidad de sucursales"),
-      sales_channel: z.array(z.string()).optional().describe("Canal de ventas (mostrador, whatsapp, apps, llamadas)"),
+      sales_channel: z.union([z.string(), z.array(z.string())]).optional().describe("Canal de ventas (mostrador, whatsapp, apps, llamadas)"),
       order_method: z.string().optional().describe("Método de pedido (mesa, takeout, delivery)"),
       closing_method: z.string().optional().describe("Método de cierre (mesa, takeout, delivery)"),
       main_difficulty: z.string().optional().describe("Dificultad principal identificada"),
       frequent_errors: z.string().optional().describe("Errores frecuentes identificados"),
       time_lost: z.string().optional().describe("Tiempo perdido estimado"),
-      closing_clarity: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Claridad en el cierre"),
+      closing_clarity: z.string().optional().describe("Claridad en el cierre del día: HIGH (claro y rápido), MEDIUM (toma tiempo), LOW (confuso)"),
       previous_systems: z.string().optional().describe("Sistemas previos utilizados"),
-      improvement_interest: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Interés en mejoras"),
-      problem_priority: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("Prioridad del problema"),
+      improvement_interest: z.string().optional().describe("Interés en mejorar procesos: HIGH (muy interesado), MEDIUM (moderado), LOW (poco interesado)"),
+      problem_priority: z.string().optional().describe("Prioridad del problema: HIGH (urgente), MEDIUM (importante), LOW (menor), NONE (sin problema)"),
     },
     async ({ conversation_id, establishment_id, contact_name, contact_email, business_type, pain_point, interest_level, notes, restaurant_name, restaurant_age, branch_count, sales_channel, order_method, closing_method, main_difficulty, frequent_errors, time_lost, closing_clarity, previous_systems, improvement_interest, problem_priority }) => {
       try {
         const result = await svc.saveDiscoveryData({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           contactName: contact_name,
           contactEmail: contact_email,
           businessType: business_type,
@@ -130,13 +139,13 @@ function createDiscoveryServer() {
     "end_discovery_call",
     "Guarda el resultado final de la conversación de Discovery y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
     {
-      conversation_id: z.string().describe("ID de la conversación ElevenLabs ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID del establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID de la conversación ElevenLabs (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       outcome: z.enum(["INTERESTED", "FOLLOW_UP_LATER", "NOT_INTERESTED", "WRONG_NUMBER", "NO_ANSWER", "VOICEMAIL"]).describe("RESULTADO DE LA LLAMADA: INTERESTED (mostró interés), FOLLOW_UP_LATER (llamar después), NOT_INTERESTED (no interesado), WRONG_NUMBER (número incorrecto), NO_ANSWER (sin respuesta), VOICEMAIL (buzón de voz)"),
       contact_name: z.string().optional().describe("Nombre del contacto o decision maker"),
       business_type: z.string().optional().describe("Tipo de negocio (ej: restaurante, panadería, cafetería)"),
       pain_point: z.string().optional().describe("Problema principal identificado en la conversación"),
-      interest_level: z.enum(["HIGH", "MEDIUM", "LOW"]).optional().describe("NIVEL DE INTERÉS del prospecto: HIGH (muy interesado), MEDIUM (moderadamente interesado), LOW (poco interesado). NOTA: Esto es DIFERENTE del outcome."),
+      interest_level: z.string().optional().describe("NIVEL DE INTERÉS del prospecto: HIGH (muy interesado), MEDIUM (moderadamente interesado), LOW (poco interesado). NOTA: Esto es DIFERENTE del outcome."),
       call_summary: z.string().describe("Resumen breve de la conversación (2-3 oraciones sobre lo que pasó)"),
     },
     async ({ conversation_id, establishment_id, outcome, contact_name, business_type, pain_point, interest_level, call_summary }) => {
@@ -145,8 +154,8 @@ function createDiscoveryServer() {
         const mappedOutcome = outcome === "INTERESTED" ? "ADVANCE_TO_ACTIVATION" : outcome;
 
         const result = await svc.endDiscoveryCall({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           outcome: mappedOutcome,
           originalOutcome: outcome,
           contactName: contact_name,
@@ -164,7 +173,7 @@ function createDiscoveryServer() {
 
   server.tool(
     "mark_voicemail_detected",
-    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, debes llamar inmediatamente a la system tool voicemail_detection para terminar la llamada.",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta end_discovery_call con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
@@ -175,8 +184,8 @@ function createDiscoveryServer() {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -207,7 +216,7 @@ function createDiscoveryServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "VOICEMAIL DETECTED. CALL end_discovery_call IMMEDIATELY with outcome='VOICEMAIL'. DO NOT SPEAK. DO NOT WAIT.",
+              message: "VOICEMAIL DETECTED. Execute end_discovery_call with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
@@ -220,7 +229,7 @@ function createDiscoveryServer() {
             text: JSON.stringify({
               success: false,
               error: err.message,
-              fallback: "Call voicemail_detection system tool immediately to end call"
+              fallback: "Call end_call system tool immediately to hang up"
             })
           }],
           isError: true
@@ -231,10 +240,10 @@ function createDiscoveryServer() {
 
   server.tool(
     "send_whatsapp_info",
-    "Envía un mensaje informativo básico de EasyOrder por WhatsApp al prospecto. SIEMPRE ejecutar al finalizar la llamada, sin importar el resultado (incluso buzón de voz o sin respuesta).",
+    "Envía un mensaje informativo de EasyOrder por WhatsApp al prospecto. Llamar ÚNICAMENTE cuando el outcome sea INTERESTED o FOLLOW_UP_LATER y el contacto es el responsable del negocio. NO llamar en: WRONG_NUMBER, NO_ANSWER, VOICEMAIL, NOT_INTERESTED ni en cierres tempranos (número equivocado, encargado no disponible, no es el encargado).",
     {
-      conversation_id: z.string().describe("ID conversación ({{system__conversation_id}})"),
-      establishment_id: z.string().describe("ID establecimiento ({{establishment_id}})"),
+      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
+      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
       phone: z.string().describe("Teléfono del prospecto"),
       prospect_name: z.string().optional().describe("Nombre del prospecto (si se obtuvo)"),
       business_name: z.string().optional().describe("Nombre del negocio (si se obtuvo)"),
@@ -242,11 +251,11 @@ function createDiscoveryServer() {
     async ({ conversation_id, establishment_id, phone, prospect_name, business_name }) => {
       try {
         const result = await svc.sendWhatsappInfo({
-          conversationId: sanitizeVar(conversation_id),
-          establishmentId: sanitizeVar(establishment_id),
-          phone: sanitizeVar(phone),
-          prospectName: sanitizeVar(prospect_name),
-          businessName: sanitizeVar(business_name),
+          conversationId: sanitizeVar(conversation_id, "conversation_id"),
+          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          phone: sanitizeVar(phone, "phone"),
+          prospectName: sanitizeVar(prospect_name, "prospect_name"),
+          businessName: sanitizeVar(business_name, "business_name"),
         });
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (err) {
@@ -259,8 +268,8 @@ function createDiscoveryServer() {
     "hang_up_call",
     "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento ({{establishment_id}})"),
-      conversation_id: z.string().optional().describe("ID de la conversación ({{system__conversation_id}})"),
+      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
+      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       reason: z.string().optional().describe("Razón del cierre")
     },
     async ({ establishment_id, conversation_id, reason }) => {
