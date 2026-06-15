@@ -352,7 +352,11 @@ const getReengagementCandidates = async ({
   }
 
   const fromDate = lastCalledFrom ? new Date(lastCalledFrom) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-  const toDate = lastCalledTo ? new Date(lastCalledTo) : new Date();
+  // "Hasta" debe cubrir el dia completo: una fecha YYYY-MM-DD sola se interpreta como medianoche,
+  // lo que dejaria fuera las llamadas del propio dia seleccionado (ej. una llamada de hoy 18:06).
+  const toDate = lastCalledTo
+    ? new Date(`${lastCalledTo.slice(0, 10)}T23:59:59.999Z`)
+    : new Date();
 
   // Literales SQL seguros (validados contra whitelist, no input directo de usuario)
   const outcomesLiteral = safeOutcomes.map(o => `'${o}'`).join(',');
@@ -402,9 +406,16 @@ const getReengagementCandidates = async ({
     )
   `;
 
-  // DISTINCT ON mantiene la llamada más reciente por establishment_id
+  // Clave de dedup por telefono: ultimos 10 digitos (agrupa formatos +52 / 52 / 10 digitos).
+  // El mismo numero puede existir con varios establishment_id (csv_* de distintas pruebas,
+  // id geo real, etc.); sin esto apareceria N veces y se marcaria N veces al mismo telefono.
+  // Sin telefono valido cae a establishment_id para no colapsar todos los sin-telefono en uno.
+  const phoneDedupKey =
+    `COALESCE(NULLIF(RIGHT(REGEXP_REPLACE(cc.establishment_phone, '[^0-9]', '', 'g'), 10), ''), cc.establishment_id)`;
+
+  // DISTINCT ON sobre el telefono normalizado: conserva la llamada mas reciente por numero.
   const query = `
-    SELECT DISTINCT ON (cc.establishment_id)
+    SELECT DISTINCT ON (${phoneDedupKey})
       cc.establishment_id AS "establishmentId",
       cc.establishment_name AS "establishmentName",
       cc.establishment_phone AS "establishmentPhone",
@@ -421,7 +432,7 @@ const getReengagementCandidates = async ({
     WHERE ${whereClauses}
     ${activeExcludeSubquery}
     ${closedWonExcludeSubquery}
-    ORDER BY cc.establishment_id, cc.updated_at DESC
+    ORDER BY ${phoneDedupKey}, cc.updated_at DESC
     LIMIT $3
   `;
 
@@ -1339,12 +1350,49 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
     };
   });
 
+  // Dedup por teléfono SOLO en reenganche. Las campañas geo/continuación no lo aplican para
+  // que preview y creación coincidan; el reenganche junta contactos históricos de muchas
+  // campañas donde el mismo número puede repetirse con distinto establishmentId/nombre.
+  let finalContactsToCreate = contactsToCreate;
+  let excludedPhoneInProcess = 0;
+  if (isReengagement) {
+    // 1. Dedup intra-batch por teléfono normalizado (últimos 10 dígitos). Defensa contra IDs
+    //    distintos con el mismo número pasados explícitamente desde el cliente.
+    const normalizePhone = (p) => (p || "").replace(/\D/g, "").slice(-10);
+    const seenPhones = new Set();
+    const intraBatchDeduped = [];
+    for (const contact of finalContactsToCreate) {
+      const key = normalizePhone(contact.establishmentPhone);
+      if (key && seenPhones.has(key)) {
+        excludedPhoneInProcess++;
+        continue;
+      }
+      if (key) seenPhones.add(key);
+      intraBatchDeduped.push(contact);
+    }
+
+    // 2. Red de seguridad cross-campaign: excluir números que entraron a una campaña activa
+    //    (in_flight) o ya respondieron en otra identidad entre la búsqueda y la creación.
+    const phoneItems = intraBatchDeduped
+      .filter(c => c.establishmentPhone)
+      .map(c => ({ establishmentId: c.establishmentId, phone: c.establishmentPhone }));
+    const blocked = await findPhonesInProcess(phoneItems);
+    finalContactsToCreate = intraBatchDeduped.filter(c => !blocked.has(c.establishmentId));
+    excludedPhoneInProcess += intraBatchDeduped.length - finalContactsToCreate.length;
+
+    if (excludedPhoneInProcess > 0) {
+      logger.info("[campaignsService:assignContactsToCampaign] Excluidos por teléfono duplicado o en proceso", {
+        campaignId,
+        excludedPhoneInProcess,
+        eligibleBeforePhoneDedup: contactsToCreate.length,
+        toCreate: finalContactsToCreate.length,
+      });
+    }
+  }
+
   // Insertar todos los contactos en una sola operación.
-  // NOTA: el dedup por teléfono en proceso se aplica SOLO en la ruta de llamadas individuales
-  // (quickAction controller via findPhonesInProcess → 409). Aquí no se filtra para no romper
-  // campañas normales ni la continuación de stage (preview y creación deben coincidir).
   const contacts = await prisma.campaignContact.createMany({
-    data: contactsToCreate,
+    data: finalContactsToCreate,
     skipDuplicates: true,
   });
 
@@ -1372,6 +1420,7 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
     excludedNoPrereq,
     excludedAdvanced,
     excludedClient,
+    excludedPhoneInProcess,
   };
 };
 
