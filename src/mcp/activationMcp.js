@@ -207,7 +207,7 @@ function createActivationServer() {
 
   server.tool(
     "mark_voicemail_detected",
-    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta end_activation_call con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta save_activation_outcome con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
@@ -249,7 +249,7 @@ function createActivationServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "VOICEMAIL DETECTED. Execute end_activation_call with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
+              message: "VOICEMAIL DETECTED. Execute save_activation_outcome with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
@@ -272,8 +272,8 @@ function createActivationServer() {
   );
 
   server.tool(
-    "end_activation_call",
-    "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
+    "save_activation_outcome",
+    "Guarda y registra el resultado final de la conversación de Activation en campaign_enrichments. NO cuelga la llamada: después de esta SIEMPRE debes ejecutar el System Tool end_call para colgar.",
     {
       conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
@@ -284,9 +284,9 @@ function createActivationServer() {
         "NOT_INTERESTED",
         "NO_ANSWER",
         "VOICEMAIL",
-      ]).describe("Outcome PLG: ACTIVATED (cuenta creada y pasa a LEAD), DEMO_SCHEDULED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
+      ]).describe("Outcome: ACTIVATED (cuenta creada y pasa a LEAD), DEMO_SCHEDULED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
       demo_date: z.string().optional().describe("Fecha agendada si aplica (ISO 8601)"),
-      call_summary: z.string().describe("Resumen breve"),
+      call_summary: z.string().describe("Resumen breve (2-3 oraciones)"),
     },
     async ({ conversation_id, establishment_id, outcome, demo_date, call_summary }) => {
       try {
