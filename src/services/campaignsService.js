@@ -208,49 +208,121 @@ function getStageRank(enrichmentStatus) {
 
 // Clasifica establishments según el funnel para una campaña de tipo X:
 // - eligibleIds: rank == campaignRank - 1 (etapa inmediatamente anterior)
+//   o, con allowSameStage (reenganche), rank == campaignRank (re-hacer la misma etapa:
+//   FOLLOW_UP_LATER y similares ya marcaron <stage>_completed en el webhook)
 // - excludedNoPrereq: rank < campaignRank - 1 (aun no llegan a la etapa requerida)
-// - excludedAdvanced: rank >= campaignRank (igual o posterior a la etapa objetivo;
-//   no deben recibir la campaña para no sobrescribir su progreso)
-async function classifyEstablishmentsByStage(establishmentIds, campaignType) {
+// - excludedAdvanced: rank posterior a la etapa objetivo (no sobrescribir progreso)
+// - excludedClient: level CLIENT (defensa en profundidad; los ids llegan crudos del cliente)
+async function classifyEstablishmentsByStage(establishmentIds, campaignType, options = {}) {
+  const { allowSameStage = false } = options;
   const ids = [...new Set((establishmentIds || []).filter(Boolean))];
   const campaignRank = CAMPAIGN_RANK[campaignType];
   if (!campaignRank || ids.length === 0) {
-    return { eligibleIds: ids, excludedNoPrereq: 0, excludedAdvanced: 0 };
+    return { eligibleIds: ids, excludedNoPrereq: 0, excludedAdvanced: 0, excludedClient: 0 };
   }
   const requiredPriorRank = campaignRank - 1;
 
-  // Solo nos interesan los que tienen un status del funnel; el resto es rank 0.
+  // Sin registro o sin status del funnel = rank 0. Se trae level para excluir CLIENTs.
   const records = await prisma.establishmentEnrichment.findMany({
-    where: {
-      establishmentId: { in: ids },
-      enrichmentStatus: { in: FUNNEL_STATUSES },
-    },
-    select: { establishmentId: true, enrichmentStatus: true },
+    where: { establishmentId: { in: ids } },
+    select: { establishmentId: true, enrichmentStatus: true, level: true },
   });
-  const rankById = new Map(
-    records.map(r => [r.establishmentId, getStageRank(r.enrichmentStatus)])
-  );
+  const infoById = new Map(records.map(r => [r.establishmentId, r]));
 
   const eligibleIds = [];
   let excludedNoPrereq = 0;
   let excludedAdvanced = 0;
+  let excludedClient = 0;
 
   for (const id of ids) {
-    const rank = rankById.get(id) ?? 0;
-    if (rank === requiredPriorRank) eligibleIds.push(id);
-    else if (rank < requiredPriorRank) excludedNoPrereq++;
-    else excludedAdvanced++;
+    const info = infoById.get(id);
+    const rank = getStageRank(info?.enrichmentStatus);
+    if (info?.level === 'CLIENT') {
+      excludedClient++;
+    } else if (rank === requiredPriorRank) {
+      eligibleIds.push(id);
+    } else if (allowSameStage && rank === campaignRank) {
+      eligibleIds.push(id);
+    } else if (rank < requiredPriorRank) {
+      excludedNoPrereq++;
+    } else {
+      excludedAdvanced++;
+    }
   }
 
-  return { eligibleIds, excludedNoPrereq, excludedAdvanced };
+  return { eligibleIds, excludedNoPrereq, excludedAdvanced, excludedClient };
 }
 
 
-const REENGAGEMENT_VALID_OUTCOMES = [
-  'NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER',
-  'OBJECTION_UNRESOLVED', 'DEMO_DECLINED', 'NOT_INTERESTED', 'DISQUALIFIED',
-];
+// Outcomes re-llamables por etapa, basados en los que cada agente reporta realmente
+// (ver CONVERSATIONAL_OUTCOMES en funnelWebhookService y check constraint de call_status).
+// Criterio: posposicion y no-contacto. Rechazos explicitos (NOT_INTERESTED, LOST) son
+// seleccionables pero NO default. Excluidos: outcomes que avanzan el funnel (INTERESTED,
+// QUALIFIED, ACTIVATED, DEMO_SCHEDULED, CLOSED_WON, READY), datos malos (WRONG_NUMBER)
+// y descalificacion deliberada del agente (DISQUALIFIED, NOT_QUALIFIED).
+const REENGAGEMENT_OUTCOMES_BY_STAGE = {
+  DISCOVERY: {
+    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NOT_INTERESTED'],
+    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER'],
+  },
+  QUALIFICATION: {
+    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NOT_INTERESTED'],
+    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER'],
+  },
+  // DEMO_DECLINED ya no esta en el enum del agente actual (solo datos historicos):
+  // seleccionable pero no default
+  ACTIVATION: {
+    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'DEMO_DECLINED', 'NOT_INTERESTED'],
+    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER'],
+  },
+  // NEEDS_TIME/NOT_NOW no se incluyen: son decision_status de save_conversation_outcome,
+  // nunca llegan como outcome de end_conversion_call (ver enum en conversionMcp)
+  CONVERSION: {
+    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_VALIDATION',
+               'OBJECTION_UNRESOLVED', 'NOT_INTERESTED', 'LOST'],
+    defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_VALIDATION'],
+  },
+};
+
+// Labels en espanol consumidos por el frontend via /reengagement-config.
+// Agregar un agente u outcome nuevo es cambio solo-backend.
+const REENGAGEMENT_OUTCOME_LABELS = {
+  NO_ANSWER: 'No contestó',
+  VOICEMAIL: 'Buzón de voz',
+  FOLLOW_UP_LATER: 'Seguimiento posterior',
+  FOLLOW_UP: 'Seguimiento pendiente',
+  DEMO_DECLINED: 'Demo rechazado',
+  OBJECTION_UNRESOLVED: 'Objeción sin resolver',
+  NEEDS_TIME: 'Necesita tiempo',
+  NOT_NOW: 'Ahora no',
+  NEEDS_VALIDATION: 'Necesita validación',
+  NOT_INTERESTED: 'No interesado',
+  LOST: 'Perdido',
+};
+
 const REENGAGEMENT_VALID_CAMPAIGN_TYPES = ['DISCOVERY', 'QUALIFICATION', 'ACTIVATION', 'CONVERSION'];
+
+const REENGAGEMENT_MAX_RECOMMENDED = 200;
+const REENGAGEMENT_MAX_HARD_CAP = 500;
+
+// Config para el selector de reenganche del frontend: una entrada por agente/etapa
+// con sus outcomes filtrables, defaults, agente fijo y elegibilidad de cupon.
+const getReengagementConfig = () => {
+  return REENGAGEMENT_VALID_CAMPAIGN_TYPES.map(type => ({
+    campaignType: type,
+    agentConfigId: CAMPAIGN_TYPE_TO_AGENT[type],
+    agentName: CAMPAIGN_TYPE_TO_AGENT_NAME[type],
+    couponEligible: COUPON_REQUIRED_TYPES.includes(type),
+    suggestedCouponType: COUPON_REQUIRED_TYPES.includes(type) ? 'COMEBACK' : null,
+    outcomes: REENGAGEMENT_OUTCOMES_BY_STAGE[type].outcomes.map(o => ({
+      value: o,
+      label: REENGAGEMENT_OUTCOME_LABELS[o] || o,
+      default: REENGAGEMENT_OUTCOMES_BY_STAGE[type].defaults.includes(o),
+    })),
+    maxRecommended: REENGAGEMENT_MAX_RECOMMENDED,
+    maxHardCap: REENGAGEMENT_MAX_HARD_CAP,
+  }));
+};
 
 // Retorna establecimientos candidatos para una campaña de reenganche.
 // Filtra por outcome guardado en CampaignContact.establishmentData, rango de fechas,
@@ -268,14 +340,23 @@ const getReengagementCandidates = async ({
 } = {}) => {
   const safeLimit = Math.min(Math.max(1, parseInt(limit) || 500), 1000);
   // Validar contra whitelist para construir SQL inline de forma segura
-  const safeOutcomes = outcomes.filter(o => REENGAGEMENT_VALID_OUTCOMES.includes(o));
   const safeTypes = campaignTypes.filter(t => REENGAGEMENT_VALID_CAMPAIGN_TYPES.includes(t));
-
-  if (safeOutcomes.length === 0) safeOutcomes.push('NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER');
   if (safeTypes.length === 0) safeTypes.push('ACTIVATION', 'CONVERSION');
 
+  // Outcomes permitidos = union de los outcomes de las etapas seleccionadas.
+  // Fallback: defaults de esas etapas (no un trio fijo) si ninguno es valido.
+  const allowedForStages = new Set(safeTypes.flatMap(t => REENGAGEMENT_OUTCOMES_BY_STAGE[t].outcomes));
+  const safeOutcomes = outcomes.filter(o => allowedForStages.has(o));
+  if (safeOutcomes.length === 0) {
+    safeOutcomes.push(...new Set(safeTypes.flatMap(t => REENGAGEMENT_OUTCOMES_BY_STAGE[t].defaults)));
+  }
+
   const fromDate = lastCalledFrom ? new Date(lastCalledFrom) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-  const toDate = lastCalledTo ? new Date(lastCalledTo) : new Date();
+  // "Hasta" debe cubrir el dia completo: una fecha YYYY-MM-DD sola se interpreta como medianoche,
+  // lo que dejaria fuera las llamadas del propio dia seleccionado (ej. una llamada de hoy 18:06).
+  const toDate = lastCalledTo
+    ? new Date(`${lastCalledTo.slice(0, 10)}T23:59:59.999Z`)
+    : new Date();
 
   // Literales SQL seguros (validados contra whitelist, no input directo de usuario)
   const outcomesLiteral = safeOutcomes.map(o => `'${o}'`).join(',');
@@ -325,9 +406,16 @@ const getReengagementCandidates = async ({
     )
   `;
 
-  // DISTINCT ON mantiene la llamada más reciente por establishment_id
+  // Clave de dedup por telefono: ultimos 10 digitos (agrupa formatos +52 / 52 / 10 digitos).
+  // El mismo numero puede existir con varios establishment_id (csv_* de distintas pruebas,
+  // id geo real, etc.); sin esto apareceria N veces y se marcaria N veces al mismo telefono.
+  // Sin telefono valido cae a establishment_id para no colapsar todos los sin-telefono en uno.
+  const phoneDedupKey =
+    `COALESCE(NULLIF(RIGHT(REGEXP_REPLACE(cc.establishment_phone, '[^0-9]', '', 'g'), 10), ''), cc.establishment_id)`;
+
+  // DISTINCT ON sobre el telefono normalizado: conserva la llamada mas reciente por numero.
   const query = `
-    SELECT DISTINCT ON (cc.establishment_id)
+    SELECT DISTINCT ON (${phoneDedupKey})
       cc.establishment_id AS "establishmentId",
       cc.establishment_name AS "establishmentName",
       cc.establishment_phone AS "establishmentPhone",
@@ -335,6 +423,8 @@ const getReengagementCandidates = async ({
       cc.updated_at AS "lastCalledAt",
       c.id AS "sourceCampaignId",
       c.name AS "sourceCampaignName",
+      c.type::text AS "sourceCampaignType",
+      c.agent_config_id AS "sourceAgentConfigId",
       ee.level
     FROM campaign_contacts cc
     JOIN campaigns c ON c.id = cc.campaign_id
@@ -342,7 +432,7 @@ const getReengagementCandidates = async ({
     WHERE ${whereClauses}
     ${activeExcludeSubquery}
     ${closedWonExcludeSubquery}
-    ORDER BY cc.establishment_id, cc.updated_at DESC
+    ORDER BY ${phoneDedupKey}, cc.updated_at DESC
     LIMIT $3
   `;
 
@@ -350,10 +440,12 @@ const getReengagementCandidates = async ({
 
   const byOutcome = {};
   const byLevel = {};
+  const bySourceType = {};
   for (const c of candidates) {
     byOutcome[c.outcome] = (byOutcome[c.outcome] || 0) + 1;
     const lvl = c.level || 'UNKNOWN';
     byLevel[lvl] = (byLevel[lvl] || 0) + 1;
+    bySourceType[c.sourceCampaignType] = (bySourceType[c.sourceCampaignType] || 0) + 1;
   }
 
   logger.info('[campaignsService:getReengagementCandidates] Query completed', {
@@ -365,7 +457,7 @@ const getReengagementCandidates = async ({
   return {
     candidates,
     total: candidates.length,
-    breakdown: { byOutcome, byLevel },
+    breakdown: { byOutcome, byLevel, bySourceType },
     appliedFilters: {
       outcomes: safeOutcomes,
       lastCalledFrom: fromDate.toISOString(),
@@ -470,7 +562,13 @@ const createCampaign = async (data) => {
   if (isReengagement) {
     campaignFilters = {
       ...filters,
-      _reengagement: { sourceCampaignId: sourceCampaignId || null, totalPreloaded: establishmentIds.length },
+      _reengagement: {
+        sourceCampaignId: sourceCampaignId || null,
+        totalPreloaded: establishmentIds.length,
+        campaignType,
+        // Re-llamada con el mismo agente de la etapa (permite rank == campaignRank)
+        sameStageRecall: true,
+      },
     };
   } else if (isCsvUpload) {
     campaignFilters = {
@@ -520,11 +618,19 @@ const createCampaign = async (data) => {
       originalName: csvMetadata?.originalName || null,
     });
   } else if (isReengagement) {
-    await assignContactsToCampaign(campaign.id, establishmentIds);
-    logger.info('[campaignsService:createCampaign] Reengancement campaign created with preloaded contacts', {
+    const assignmentSummary = await assignContactsToCampaign(
+      campaign.id, establishmentIds, { isReengagement: true }
+    );
+    // El frontend usa este summary para informar exclusiones por etapa/cliente
+    campaign.assignmentSummary = assignmentSummary;
+    logger.info('[campaignsService:createCampaign] Reengagement campaign created with preloaded contacts', {
       campaignId: campaign.id,
       sourceCampaignId: sourceCampaignId || null,
       establishmentCount: establishmentIds.length,
+      assignedCount: assignmentSummary.count,
+      excludedNoPrereq: assignmentSummary.excludedNoPrereq,
+      excludedAdvanced: assignmentSummary.excludedAdvanced,
+      excludedClient: assignmentSummary.excludedClient,
     });
   } else if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
     await assignContactsWithGeoFilter(campaign.id, {
@@ -1078,7 +1184,8 @@ const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
   return { ...result, skippedCount };
 };
 
-const assignContactsToCampaign = async (campaignId, establishmentIds) => {
+const assignContactsToCampaign = async (campaignId, establishmentIds, options = {}) => {
+  const { isReengagement = false } = options;
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
   });
@@ -1092,20 +1199,25 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
   }
 
   const rawUniqueIds = [...new Set(establishmentIds.filter(Boolean))];
-  console.log(`[assignContactsToCampaign] Unique establishment IDs received: ${rawUniqueIds.length}`);
 
   const campaignType = getCampaignTypeFromAgent(campaign.agentConfigId);
 
-  // Clasifica por rango de funnel: solo entran los que están en la etapa inmediatamente anterior.
-  // Excluye tanto los que aún no llegan al prerequisito como los que ya están en una etapa
-  // igual o posterior (evita sobrescritura de progreso al ejecutar campañas de etapas anteriores).
-  const { eligibleIds, excludedNoPrereq, excludedAdvanced } =
-    await classifyEstablishmentsByStage(rawUniqueIds, campaignType);
+  // Clasifica por rango de funnel: entran los que están en la etapa inmediatamente anterior.
+  // En reenganche también entran los que ya completaron LA MISMA etapa (re-llamada con el
+  // mismo agente a contactos pospuestos). Nunca entran los de etapas posteriores ni CLIENTs.
+  const { eligibleIds, excludedNoPrereq, excludedAdvanced, excludedClient } =
+    await classifyEstablishmentsByStage(rawUniqueIds, campaignType, { allowSameStage: isReengagement });
 
-  console.log(
-    `[assignContactsToCampaign] type=${campaignType} total=${rawUniqueIds.length} ` +
-    `eligible=${eligibleIds.length} excludedNoPrereq=${excludedNoPrereq} excludedAdvanced=${excludedAdvanced}`
-  );
+  logger.info("[campaignsService:assignContactsToCampaign] Funnel classification", {
+    campaignId,
+    campaignType,
+    isReengagement,
+    totalRequested: rawUniqueIds.length,
+    eligible: eligibleIds.length,
+    excludedNoPrereq,
+    excludedAdvanced,
+    excludedClient,
+  });
 
   const uniqueEstablishmentIds = eligibleIds;
 
@@ -1238,12 +1350,49 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
     };
   });
 
+  // Dedup por teléfono SOLO en reenganche. Las campañas geo/continuación no lo aplican para
+  // que preview y creación coincidan; el reenganche junta contactos históricos de muchas
+  // campañas donde el mismo número puede repetirse con distinto establishmentId/nombre.
+  let finalContactsToCreate = contactsToCreate;
+  let excludedPhoneInProcess = 0;
+  if (isReengagement) {
+    // 1. Dedup intra-batch por teléfono normalizado (últimos 10 dígitos). Defensa contra IDs
+    //    distintos con el mismo número pasados explícitamente desde el cliente.
+    const normalizePhone = (p) => (p || "").replace(/\D/g, "").slice(-10);
+    const seenPhones = new Set();
+    const intraBatchDeduped = [];
+    for (const contact of finalContactsToCreate) {
+      const key = normalizePhone(contact.establishmentPhone);
+      if (key && seenPhones.has(key)) {
+        excludedPhoneInProcess++;
+        continue;
+      }
+      if (key) seenPhones.add(key);
+      intraBatchDeduped.push(contact);
+    }
+
+    // 2. Red de seguridad cross-campaign: excluir números que entraron a una campaña activa
+    //    (in_flight) o ya respondieron en otra identidad entre la búsqueda y la creación.
+    const phoneItems = intraBatchDeduped
+      .filter(c => c.establishmentPhone)
+      .map(c => ({ establishmentId: c.establishmentId, phone: c.establishmentPhone }));
+    const blocked = await findPhonesInProcess(phoneItems);
+    finalContactsToCreate = intraBatchDeduped.filter(c => !blocked.has(c.establishmentId));
+    excludedPhoneInProcess += intraBatchDeduped.length - finalContactsToCreate.length;
+
+    if (excludedPhoneInProcess > 0) {
+      logger.info("[campaignsService:assignContactsToCampaign] Excluidos por teléfono duplicado o en proceso", {
+        campaignId,
+        excludedPhoneInProcess,
+        eligibleBeforePhoneDedup: contactsToCreate.length,
+        toCreate: finalContactsToCreate.length,
+      });
+    }
+  }
+
   // Insertar todos los contactos en una sola operación.
-  // NOTA: el dedup por teléfono en proceso se aplica SOLO en la ruta de llamadas individuales
-  // (quickAction controller via findPhonesInProcess → 409). Aquí no se filtra para no romper
-  // campañas normales ni la continuación de stage (preview y creación deben coincidir).
   const contacts = await prisma.campaignContact.createMany({
-    data: contactsToCreate,
+    data: finalContactsToCreate,
     skipDuplicates: true,
   });
 
@@ -1258,8 +1407,21 @@ const assignContactsToCampaign = async (campaignId, establishmentIds) => {
     },
   });
 
-  logger.info(`Assigned ${contacts.length} contacts to campaign ${campaignId}`);
-  return contacts;
+  logger.info("[campaignsService:assignContactsToCampaign] Contacts assigned", {
+    campaignId,
+    created: contacts.count,
+    totalContacts,
+  });
+
+  // Summary retrocompatible: los call sites existentes solo leen .count
+  return {
+    count: contacts.count,
+    totalRequested: rawUniqueIds.length,
+    excludedNoPrereq,
+    excludedAdvanced,
+    excludedClient,
+    excludedPhoneInProcess,
+  };
 };
 
 const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
@@ -2895,6 +3057,8 @@ module.exports = {
   getCampaignTypeFromAgent,
   getValidCampaignAgentIds,
   getReengagementCandidates,
+  getReengagementConfig,
+  REENGAGEMENT_OUTCOMES_BY_STAGE,
   classifyEstablishmentsByStage,
   previewContinuation,
   continueCampaign,

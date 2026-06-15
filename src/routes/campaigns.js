@@ -102,6 +102,21 @@ const loadCouponTemplatesSchema = z.object({
   }),
 });
 
+const reengagementCandidatesSchema = z.object({
+  query: z.object({
+    sourceCampaignId: z.string().optional(),
+    // Listas CSV, ej. "NO_ANSWER,FOLLOW_UP_LATER"; el service valida contra whitelist por etapa
+    outcomes: z.string().optional(),
+    lastCalledFrom: z.string().optional(),
+    lastCalledTo: z.string().optional(),
+    campaignTypes: z.string().optional(),
+    agentConfigId: z.string().optional(),
+    excludeActiveCampaigns: z.enum(["true", "false"]).optional(),
+    excludeClients: z.enum(["true", "false"]).optional(),
+    limit: z.coerce.number().int().positive().max(1000).optional(),
+  }),
+});
+
 const continueCampaignSchema = z.object({
   body: z.object({
     name: z.string().optional(),
@@ -127,8 +142,9 @@ router.post("/", validate(createCampaignSchema), campaignsController.create);
 router.get("/", campaignsController.list);
 router.get("/agents", campaignsController.getAgents);
 router.get('/eligible-count', campaignsController.getEligibleCount);
-// Ruta antes de /:id para evitar colisión de matching
-router.get('/reengagement-candidates', campaignsController.getReengagementCandidates);
+// Rutas antes de /:id para evitar colisión de matching
+router.get('/reengagement-config', campaignsController.getReengagementConfig);
+router.get('/reengagement-candidates', validate(reengagementCandidatesSchema), campaignsController.getReengagementCandidates);
 router.get("/:id", campaignsController.getById);
 router.patch("/:id", validate(updateCampaignSchema), campaignsController.update);
 router.delete("/:id", campaignsController.delete);
