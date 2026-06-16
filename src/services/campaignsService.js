@@ -519,6 +519,10 @@ const createCampaign = async (data) => {
     // Reenganche: lista pre-armada de IDs, omite filtro geo
     establishmentIds,
     sourceCampaignId,
+    // Continuación al siguiente stage: usa establishmentIds pre-armados igual que reenganche,
+    // pero NO debe aplicar el dedup por teléfono ni el same-stage (avanza el mismo contacto
+    // al stage siguiente; el número repetido es esperado y legítimo).
+    isContinuation = false,
     // CSV: contactos importados desde archivo
     csvContacts,
     contactSource,
@@ -593,8 +597,9 @@ const createCampaign = async (data) => {
         sourceCampaignId: sourceCampaignId || null,
         totalPreloaded: establishmentIds.length,
         campaignType,
-        // Re-llamada con el mismo agente de la etapa (permite rank == campaignRank)
-        sameStageRecall: true,
+        // La re-llamada same-stage (rank == campaignRank) y el dedup por teléfono solo aplican
+        // al reenganche real, no a la continuación al siguiente stage.
+        sameStageRecall: !isContinuation,
       },
     };
   } else if (isCsvUpload) {
@@ -645,8 +650,10 @@ const createCampaign = async (data) => {
       originalName: csvMetadata?.originalName || null,
     });
   } else if (isReengagement) {
+    // Continuación: comportamiento original (sin same-stage ni dedup por teléfono).
+    // Reenganche real: aplica same-stage + dedup por teléfono.
     const assignmentSummary = await assignContactsToCampaign(
-      campaign.id, establishmentIds, { isReengagement: true }
+      campaign.id, establishmentIds, { isReengagement: !isContinuation }
     );
     // El frontend usa este summary para informar exclusiones por etapa/cliente
     campaign.assignmentSummary = assignmentSummary;
@@ -3026,6 +3033,8 @@ const continueCampaign = async (sourceCampaignId, opts = {}) => {
     createdBy,
     establishmentIds: preview.eligibleIds,
     sourceCampaignId,
+    // Marca el flujo como continuación: evita el dedup por teléfono y el same-stage del reenganche
+    isContinuation: true,
     // Propagar source CSV para que CampaignDetails muestre el panel correcto
     contactSource: isCsvSourceCampaign ? 'CSV' : undefined,
   });
