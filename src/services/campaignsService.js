@@ -222,12 +222,16 @@ async function classifyEstablishmentsByStage(establishmentIds, campaignType, opt
   }
   const requiredPriorRank = campaignRank - 1;
 
-  // Sin registro o sin status del funnel = rank 0. Se trae level para excluir CLIENTs.
+  // Sin registro o sin status del funnel = rank 0. Se trae level (excluir CLIENTs) y
+  // callStatus (resultado de la ultima llamada) para la regla de same-stage.
   const records = await prisma.establishmentEnrichment.findMany({
     where: { establishmentId: { in: ids } },
-    select: { establishmentId: true, enrichmentStatus: true, level: true },
+    select: { establishmentId: true, enrichmentStatus: true, level: true, callStatus: true },
   });
   const infoById = new Map(records.map(r => [r.establishmentId, r]));
+
+  // Outcomes re-llamables de la etapa: solo estos justifican re-hacer la misma etapa.
+  const reLlamables = REENGAGEMENT_OUTCOMES_BY_STAGE[campaignType]?.outcomes || [];
 
   const eligibleIds = [];
   let excludedNoPrereq = 0;
@@ -242,7 +246,14 @@ async function classifyEstablishmentsByStage(establishmentIds, campaignType, opt
     } else if (rank === requiredPriorRank) {
       eligibleIds.push(id);
     } else if (allowSameStage && rank === campaignRank) {
-      eligibleIds.push(id);
+      // Re-hacer la misma etapa solo si la ultima llamada quedo re-llamable (no avanzo).
+      // Asi un establishment que completo la etapa con INTERESTED/ADVANCE no se re-llama,
+      // pero el que quedo en FOLLOW_UP_LATER/NO_ANSWER si.
+      if (!info?.callStatus || reLlamables.includes(info.callStatus)) {
+        eligibleIds.push(id);
+      } else {
+        excludedAdvanced++;
+      }
     } else if (rank < requiredPriorRank) {
       excludedNoPrereq++;
     } else {
@@ -372,6 +383,22 @@ const getReengagementCandidates = async ({
     AND cc.updated_at >= $1
     AND cc.updated_at <= $2
   `;
+
+  // El estado consolidado del establishment (enrichment) manda sobre las filas historicas.
+  // Un establishment cuya ULTIMA llamada ya avanzo la etapa NO es candidato, aunque tenga
+  // filas viejas con outcome re-llamable (ej. una llamada colgada como NO_ANSWER seguida de
+  // otra exitosa con INTERESTED). Dos condiciones:
+  // 1. call_status (resultado de la ultima llamada) debe seguir siendo re-llamable o nulo.
+  // 2. enrichment_status no debe haber avanzado a una etapa posterior a la seleccionada.
+  const reLlamablesLiteral = [...allowedForStages].map(o => `'${o}'`).join(',');
+  whereClauses += ` AND (ee.call_status IS NULL OR ee.call_status IN (${reLlamablesLiteral}))`;
+
+  const minCampaignRank = Math.min(...safeTypes.map(t => CAMPAIGN_RANK[t]));
+  const posteriores = FUNNEL_STATUSES.filter(s => STAGE_RANK[s] > minCampaignRank);
+  if (posteriores.length > 0) {
+    const posterioresLiteral = posteriores.map(s => `'${s}'`).join(',');
+    whereClauses += ` AND (ee.enrichment_status IS NULL OR ee.enrichment_status NOT IN (${posterioresLiteral}))`;
+  }
 
   if (sourceCampaignId) {
     queryParams.push(sourceCampaignId);
@@ -1312,6 +1339,8 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
         establishmentPhone: snapshot?.establishmentPhone || null,
         establishmentData: snapshot?.establishmentData || null,
         status: 'PENDING',
+        // Preservar el origen CSV: sin esto hereda el default "GEO" del schema
+        sourceType: 'CSV',
       };
     }
 
@@ -1347,6 +1376,7 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
       establishmentPhone: establishment?.phone || null,
       establishmentData,
       status: "PENDING",
+      sourceType: "GEO",
     };
   });
 
