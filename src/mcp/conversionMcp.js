@@ -145,8 +145,8 @@ function createConversionServer() {
   );
 
   server.tool(
-    "save_conversation_outcome",
-    "Guarda el resultado final de la conversación de Activation y registra en campaign_enrichments. OBLIGATORIO antes de colgar.",
+    "save_decision_data",
+    "Guarda los datos de decisión intermedios de la conversación: timeline, dependencias y valor percibido. Llamar cuando el prospecto comparte su situación de decisión, antes del cierre final.",
     {
       conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
       establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
@@ -180,7 +180,7 @@ function createConversionServer() {
 
   server.tool(
     "mark_voicemail_detected",
-    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta end_conversion_call con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
+    "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta save_conversion_outcome con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
@@ -222,7 +222,7 @@ function createConversionServer() {
             type: "text",
             text: JSON.stringify({
               success: true,
-              message: "VOICEMAIL DETECTED. Execute end_conversion_call with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
+              message: "VOICEMAIL DETECTED. Execute save_conversion_outcome with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
               ...result
             })
           }]
@@ -246,8 +246,8 @@ function createConversionServer() {
 
 
   server.tool(
-    "end_conversion_call",
-    "Guarda el resultado final del cierre y actualiza el estado del lead. OBLIGATORIO antes de colgar.",
+    "save_conversion_outcome",
+    "Guarda el resultado final del cierre y actualiza el estado del lead. OBLIGATORIO antes de colgar. NO cuelga la llamada: después de esta SIEMPRE debes ejecutar el System Tool end_call para colgar.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
