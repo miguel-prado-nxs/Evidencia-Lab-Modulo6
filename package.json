@@ -81,5 +81,12 @@
     "nodemon": "^3.1.0",
     "prettier": "^3.8.4",
     "secretlint": "^13.0.2"
+  },
+  "lint-staged": {
+    "src/**/*.js": [
+      "eslint --no-fix",
+      "prettier --check",
+      "secretlint"
+    ]
   }
 }
