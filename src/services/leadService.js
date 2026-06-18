@@ -1,6 +1,6 @@
-const prisma = require("../config/database");
-const logger = require("../config/logger");
-const { updateOpportunityStatus } = require("./twenty/twentySyncService");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
+const { updateOpportunityStatus } = require('./twenty/twentySyncService');
 
 // Crear nuevo lead
 const createLead = async (data) => {
@@ -45,7 +45,7 @@ const createLead = async (data) => {
         landingPage,
         referrer,
         notes,
-        status: "NEW",
+        status: 'NEW',
       },
     });
 
@@ -63,7 +63,7 @@ const createLead = async (data) => {
       data: {
         partnerId,
         leadId: newLead.id,
-        type: "LEAD_CREATED",
+        type: 'LEAD_CREATED',
         description: `Nuevo lead: ${businessName}`,
       },
     });
@@ -94,7 +94,7 @@ const getLeadById = async (id) => {
       },
       deal: true,
       activities: {
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         take: 10,
       },
     },
@@ -113,8 +113,8 @@ const listLeads = async (filters = {}) => {
     dateTo,
     page = 1,
     limit = 20,
-    sortBy = "createdAt",
-    sortOrder = "desc",
+    sortBy = 'createdAt',
+    sortOrder = 'desc',
   } = filters;
 
   const where = {};
@@ -124,15 +124,15 @@ const listLeads = async (filters = {}) => {
     where.status = status;
   } else {
     // Por defecto, excluir clientes (WON) del listado de leads
-    where.status = { not: "WON" };
+    where.status = { not: 'WON' };
   }
   if (utmCampaign) where.utmCampaign = utmCampaign;
   if (utmSource) where.utmSource = utmSource;
   if (search) {
     where.OR = [
-      { businessName: { contains: search, mode: "insensitive" } },
-      { contactName: { contains: search, mode: "insensitive" } },
-      { email: { contains: search, mode: "insensitive" } },
+      { businessName: { contains: search, mode: 'insensitive' } },
+      { contactName: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (dateFrom || dateTo) {
@@ -195,14 +195,14 @@ const updateLead = async (id, data) => {
 // Cambiar status del lead
 const updateLeadStatus = async (id, status, notes) => {
   const lead = await prisma.lead.findUnique({ where: { id } });
-  if (!lead) throw new Error("Lead no encontrado");
+  if (!lead) throw new Error('Lead no encontrado');
 
   const updateData = { status };
 
-  if (status === "CONTACTED" && !lead.contactedAt) {
+  if (status === 'CONTACTED' && !lead.contactedAt) {
     updateData.contactedAt = new Date();
   }
-  if (status === "QUALIFIED" && !lead.qualifiedAt) {
+  if (status === 'QUALIFIED' && !lead.qualifiedAt) {
     updateData.qualifiedAt = new Date();
   }
 
@@ -216,7 +216,7 @@ const updateLeadStatus = async (id, status, notes) => {
       data: {
         partnerId: lead.partnerId,
         leadId: id,
-        type: "LEAD_STATUS_CHANGED",
+        type: 'LEAD_STATUS_CHANGED',
         description: `Lead ${lead.businessName} cambió de ${lead.status} a ${status}`,
         metadata: notes ? { notes } : undefined,
       },
@@ -231,7 +231,7 @@ const updateLeadStatus = async (id, status, notes) => {
   if (establishmentIdMatch) {
     const establishmentId = establishmentIdMatch[1];
     updateOpportunityStatus(establishmentId, status).catch((err) => {
-      logger.warn("[LeadService] Error actualizando opportunity status en Twenty (no critico)", {
+      logger.warn('[LeadService] Error actualizando opportunity status en Twenty (no critico)', {
         error: err.message,
         leadId: id,
         establishmentId,
@@ -249,8 +249,8 @@ const trackLead = async (partnerCode, leadData) => {
     where: { code: partnerCode },
   });
 
-  if (!partner || partner.status !== "ACTIVE") {
-    throw new Error("Partner no encontrado o inactivo");
+  if (!partner || partner.status !== 'ACTIVE') {
+    throw new Error('Partner no encontrado o inactivo');
   }
 
   // Verificar si el email ya existe como lead de este partner
@@ -292,4 +292,3 @@ module.exports = {
   updateLeadStatus,
   trackLead,
 };
-

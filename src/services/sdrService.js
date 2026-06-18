@@ -1,22 +1,22 @@
 /**
  * SDR Service
  * Servicios para el Agente SDR de identificación de tomadores de decisiones
- * 
+ *
  * El SDR Agent desde agentes-crm-sdk llama a estos endpoints para:
  * - Guardar resultados de llamadas
  * - Actualizar información del tomador de decisiones
  * - Registrar interacciones con gatekeepers
  */
 
-const prisma = require("../config/database");
-const prismaGeo = require("../config/database-geo");
-const logger = require("../config/logger");
-const enrichmentService = require("./enrichmentService");
+const prisma = require('../config/database');
+const prismaGeo = require('../config/database-geo');
+const logger = require('../config/logger');
+const enrichmentService = require('./enrichmentService');
 
 /**
  * Guardar resultado de llamada SDR
  * Actualiza el enriquecimiento del establecimiento con info del tomador de decisiones
- * 
+ *
  * @param {string} establishmentId - ID del establecimiento en Mapa DB
  * @param {Object} data - Datos de la llamada
  * @returns {Object} - Enriquecimiento actualizado
@@ -65,20 +65,22 @@ async function saveCallResult(establishmentId, data) {
     );
 
     // Log de evento de enriquecimiento en campaign_enrichments (non-blocking)
-    enrichmentService.logEnrichmentEvent({
-      establishmentId,
-      source: 'SDR_CALL',
-      agentStage: 'SDR',
-      levelReached: enrichment?.level || null,
-      enrichmentSnapshot: {
-        decisionMaker,
-        callSummary,
-        callStatus,
-        enrichmentStatus,
-        strategy,
-      },
-      enrichedByType: 'AGENT',
-    }).catch(() => {});
+    enrichmentService
+      .logEnrichmentEvent({
+        establishmentId,
+        source: 'SDR_CALL',
+        agentStage: 'SDR',
+        levelReached: enrichment?.level || null,
+        enrichmentSnapshot: {
+          decisionMaker,
+          callSummary,
+          callStatus,
+          enrichmentStatus,
+          strategy,
+        },
+        enrichedByType: 'AGENT',
+      })
+      .catch(() => {});
 
     // Registrar la interacción SDR como metadatos adicionales
     await logSDRInteraction(establishmentId, {
@@ -100,7 +102,7 @@ async function saveCallResult(establishmentId, data) {
 
     return enrichment;
   } catch (error) {
-    logger.error("Error saving SDR call result:", error);
+    logger.error('Error saving SDR call result:', error);
     throw error;
   }
 }
@@ -108,12 +110,12 @@ async function saveCallResult(establishmentId, data) {
 /**
  * Registrar interacción SDR
  * Guarda en sdr_interactions y actualiza campos en establishment_enrichments
- * 
+ *
  * @param {string} establishmentId - ID del establecimiento
  * @param {Object} interactionData - Datos de la interacción
  */
 async function logSDRInteraction(establishmentId, interactionData) {
-  const sdrInteractionsService = require("./sdrInteractionsService");
+  const sdrInteractionsService = require('./sdrInteractionsService');
 
   try {
     const {
@@ -171,7 +173,7 @@ async function logSDRInteraction(establishmentId, interactionData) {
 
     return true;
   } catch (error) {
-    logger.error("Error logging SDR interaction:", error);
+    logger.error('Error logging SDR interaction:', error);
     // No lanzar error - el logging no debe bloquear el flujo principal
     return false;
   }
@@ -180,7 +182,7 @@ async function logSDRInteraction(establishmentId, interactionData) {
 /**
  * Obtener establecimiento para contexto del agente SDR
  * Devuelve datos necesarios para que el agente sepa cómo manejar la llamada
- * 
+ *
  * @param {string} establishmentId - ID del establecimiento
  * @returns {Object} - Datos del establecimiento con contexto SDR
  */
@@ -204,7 +206,7 @@ async function getEstablishmentForCall(establishmentId) {
     });
 
     if (!establishment) {
-      throw new Error("Establecimiento no encontrado");
+      throw new Error('Establecimiento no encontrado');
     }
 
     // Obtener enriquecimiento existente si hay
@@ -225,7 +227,7 @@ async function getEstablishmentForCall(establishmentId) {
       },
     };
   } catch (error) {
-    logger.error("Error getting establishment for SDR call:", error);
+    logger.error('Error getting establishment for SDR call:', error);
     throw error;
   }
 }
@@ -236,13 +238,13 @@ async function getEstablishmentForCall(establishmentId) {
  * - Estrategia B: Referencia interna (negocios grandes 6+ empleados)
  */
 function getRecommendedStrategy(employeeRange) {
-  const smallBusiness = ["0 a 5 personas"];
+  const smallBusiness = ['0 a 5 personas'];
 
   if (smallBusiness.includes(employeeRange)) {
-    return "A";
+    return 'A';
   }
 
-  return "B";
+  return 'B';
 }
 
 /**
@@ -261,7 +263,7 @@ async function getSDRStats() {
     // Contar por nivel PROSPECT (tienen tomador + teléfono)
     const prospects = await prisma.establishmentEnrichment.count({
       where: {
-        level: "PROSPECT",
+        level: 'PROSPECT',
       },
     });
 
@@ -271,11 +273,10 @@ async function getSDRStats() {
       // TODO: Agregar métricas por estrategia cuando tengamos sdr_interactions
     };
   } catch (error) {
-    logger.error("Error getting SDR stats:", error);
+    logger.error('Error getting SDR stats:', error);
     throw error;
   }
 }
-
 
 /**
  * Obtener información de llamadas SDR para un establecimiento
@@ -287,7 +288,7 @@ async function getSDRCallInfo(establishmentId) {
     // Obtener interacciones SDR desde la tabla sdr_interactions
     const sdrInteractions = await prisma.sdrInteraction.findMany({
       where: { establishmentId },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
 
     // Si no hay interacciones, retornar null
@@ -300,7 +301,7 @@ async function getSDRCallInfo(establishmentId) {
 
     // Calcular estadísticas
     const totalAttempts = sdrInteractions.length;
-    const successfulCalls = sdrInteractions.filter(i => i.decisionMakerFound).length;
+    const successfulCalls = sdrInteractions.filter((i) => i.decisionMakerFound).length;
     const totalDuration = sdrInteractions.reduce((sum, i) => sum + (i.callDurationSeconds || 0), 0);
 
     return {
@@ -325,7 +326,7 @@ async function getSDRCallInfo(establishmentId) {
         lastCallDate: lastInteraction.createdAt,
       },
       // Historial completo
-      history: sdrInteractions.map(i => ({
+      history: sdrInteractions.map((i) => ({
         id: i.id,
         callStatus: i.callStatus,
         enrichmentStatus: i.enrichmentStatus,
@@ -338,11 +339,10 @@ async function getSDRCallInfo(establishmentId) {
       })),
     };
   } catch (error) {
-    logger.error("[VentasEnrichment] Error obteniendo info de llamadas SDR:", error);
+    logger.error('[VentasEnrichment] Error obteniendo info de llamadas SDR:', error);
     throw error;
   }
 }
-
 
 /**
  * Obtener información de llamadas de calificación (call_leads) para un prospecto
@@ -354,7 +354,7 @@ async function getLeadCallInfo(establishmentId) {
     // Obtener todas las llamadas para este establecimiento, ordenadas por fecha
     const calls = await prisma.callLead.findMany({
       where: { establishmentId },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         callStatus: true,
@@ -386,16 +386,15 @@ async function getLeadCallInfo(establishmentId) {
     // Estadísticas
     const stats = {
       totalCalls: calls.length,
-      completedCalls: calls.filter((c) => c.callStatus === "completed").length,
+      completedCalls: calls.filter((c) => c.callStatus === 'completed').length,
       totalDuration: calls.reduce((sum, c) => sum + (c.callDurationSeconds || 0), 0),
-      averageScore: calls.filter((c) => c.intentScore).length > 0
-        ? Math.round(
-          calls
-            .filter((c) => c.intentScore)
-            .reduce((sum, c) => sum + c.intentScore, 0) /
-          calls.filter((c) => c.intentScore).length
-        )
-        : null,
+      averageScore:
+        calls.filter((c) => c.intentScore).length > 0
+          ? Math.round(
+              calls.filter((c) => c.intentScore).reduce((sum, c) => sum + c.intentScore, 0) /
+                calls.filter((c) => c.intentScore).length
+            )
+          : null,
     };
 
     // Historial (todas las llamadas)
@@ -432,7 +431,7 @@ async function getLeadCallInfo(establishmentId) {
       history,
     };
   } catch (error) {
-    logger.error("[VentasEnrichment] Error obteniendo info de llamadas de leads:", error);
+    logger.error('[VentasEnrichment] Error obteniendo info de llamadas de leads:', error);
     throw error;
   }
 }
@@ -453,7 +452,7 @@ async function getSDRCallInfoBulk(establishmentIds) {
       where: {
         establishmentId: { in: establishmentIds },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!interactions || interactions.length === 0) {
@@ -478,8 +477,11 @@ async function getSDRCallInfoBulk(establishmentIds) {
 
       const lastInteraction = establishmentInteractions[0];
       const totalAttempts = establishmentInteractions.length;
-      const successfulCalls = establishmentInteractions.filter(i => i.decisionMakerFound).length;
-      const totalDuration = establishmentInteractions.reduce((sum, i) => sum + (i.callDurationSeconds || 0), 0);
+      const successfulCalls = establishmentInteractions.filter((i) => i.decisionMakerFound).length;
+      const totalDuration = establishmentInteractions.reduce(
+        (sum, i) => sum + (i.callDurationSeconds || 0),
+        0
+      );
 
       result[estId] = {
         lastCall: {
@@ -507,7 +509,7 @@ async function getSDRCallInfoBulk(establishmentIds) {
 
     return result;
   } catch (error) {
-    logger.error("[SDR Service] Error obteniendo info de llamadas bulk:", error);
+    logger.error('[SDR Service] Error obteniendo info de llamadas bulk:', error);
     throw error;
   }
 }

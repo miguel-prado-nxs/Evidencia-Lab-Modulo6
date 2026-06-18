@@ -1,13 +1,13 @@
 /**
  * SSE Events Manager
  * Maneja Server-Sent Events para notificaciones en tiempo real
- * 
+ *
  * Alternativa ligera a WebSockets para eventos unidireccionales (servidor -> cliente)
  * Ideal para notificar cambios de nivel de enriquecimiento cuando el agente actualiza datos
  */
 
-const EventEmitter = require("events");
-const logger = require("./logger");
+const EventEmitter = require('events');
+const logger = require('./logger');
 
 // EventEmitter global para eventos de enriquecimiento
 const enrichmentEvents = new EventEmitter();
@@ -28,7 +28,9 @@ function registerClient(partnerId, res) {
     connectedClients.set(partnerId, new Set());
   }
   connectedClients.get(partnerId).add(res);
-  logger.info(`[SSE] Cliente registrado para partner ${partnerId}. Total: ${connectedClients.get(partnerId).size}`);
+  logger.info(
+    `[SSE] Cliente registrado para partner ${partnerId}. Total: ${connectedClients.get(partnerId).size}`
+  );
 }
 
 /**
@@ -43,7 +45,9 @@ function unregisterClient(partnerId, res) {
     if (clients.size === 0) {
       connectedClients.delete(partnerId);
     }
-    logger.info(`[SSE] Cliente desconectado para partner ${partnerId}. Restantes: ${clients?.size || 0}`);
+    logger.info(
+      `[SSE] Cliente desconectado para partner ${partnerId}. Restantes: ${clients?.size || 0}`
+    );
   }
 }
 
@@ -61,7 +65,7 @@ function sendToPartner(partnerId, eventType, data) {
   }
 
   const message = formatSSEMessage(eventType, data);
-  
+
   clients.forEach((res) => {
     try {
       res.write(message);
@@ -72,7 +76,9 @@ function sendToPartner(partnerId, eventType, data) {
     }
   });
 
-  logger.info(`[SSE] Evento ${eventType} enviado a ${clients.size} cliente(s) del partner ${partnerId}`);
+  logger.info(
+    `[SSE] Evento ${eventType} enviado a ${clients.size} cliente(s) del partner ${partnerId}`
+  );
 }
 
 /**
@@ -94,7 +100,13 @@ function formatSSEMessage(eventType, data) {
  * @param {string} params.newLevel - Nuevo nivel
  * @param {object} params.enrichment - Datos del enriquecimiento actualizado
  */
-function emitEnrichmentUpdated({ partnerId, establishmentId, previousLevel, newLevel, enrichment }) {
+function emitEnrichmentUpdated({
+  partnerId,
+  establishmentId,
+  previousLevel,
+  newLevel,
+  enrichment,
+}) {
   const eventData = {
     establishmentId,
     previousLevel,
@@ -104,14 +116,16 @@ function emitEnrichmentUpdated({ partnerId, establishmentId, previousLevel, newL
   };
 
   // Emitir evento interno (para posibles listeners del servidor)
-  enrichmentEvents.emit("enrichment:updated", { partnerId, ...eventData });
+  enrichmentEvents.emit('enrichment:updated', { partnerId, ...eventData });
 
   // Enviar a clientes SSE conectados
   if (partnerId) {
-    sendToPartner(partnerId, "enrichment:updated", eventData);
+    sendToPartner(partnerId, 'enrichment:updated', eventData);
   }
 
-  logger.info(`[SSE] Evento enrichment:updated emitido para ${establishmentId}: ${previousLevel || 'N/A'} -> ${newLevel}`);
+  logger.info(
+    `[SSE] Evento enrichment:updated emitido para ${establishmentId}: ${previousLevel || 'N/A'} -> ${newLevel}`
+  );
 }
 
 /**
@@ -135,14 +149,16 @@ function emitLevelChanged({ partnerId, establishmentId, previousLevel, newLevel,
   };
 
   // Emitir evento interno
-  enrichmentEvents.emit("enrichment:level-changed", { partnerId, ...eventData });
+  enrichmentEvents.emit('enrichment:level-changed', { partnerId, ...eventData });
 
   // Enviar a clientes SSE conectados
   if (partnerId) {
-    sendToPartner(partnerId, "enrichment:level-changed", eventData);
+    sendToPartner(partnerId, 'enrichment:level-changed', eventData);
   }
 
-  logger.info(`[SSE] Evento level-changed emitido: ${establishmentId} de ${previousLevel} a ${newLevel}`);
+  logger.info(
+    `[SSE] Evento level-changed emitido: ${establishmentId} de ${previousLevel} a ${newLevel}`
+  );
 }
 
 /**

@@ -1,4 +1,4 @@
-const prisma = require("../config/database");
+const prisma = require('../config/database');
 
 // Listar comisiones con filtros
 const listCommissions = async (filters = {}) => {
@@ -10,8 +10,8 @@ const listCommissions = async (filters = {}) => {
     dateTo,
     page = 1,
     limit = 20,
-    sortBy = "createdAt",
-    sortOrder = "desc",
+    sortBy = 'createdAt',
+    sortOrder = 'desc',
   } = filters;
 
   const where = {};
@@ -70,7 +70,7 @@ const listCommissions = async (filters = {}) => {
 // Obtener comisiones pendientes
 const getPendingCommissions = async () => {
   const commissions = await prisma.commission.findMany({
-    where: { status: "PENDING" },
+    where: { status: 'PENDING' },
     include: {
       partner: {
         select: {
@@ -95,7 +95,7 @@ const getPendingCommissions = async () => {
         },
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: 'asc' },
   });
 
   // Agrupar por partner
@@ -121,10 +121,10 @@ const approveCommissions = async (commissionIds) => {
   return prisma.commission.updateMany({
     where: {
       id: { in: commissionIds },
-      status: "PENDING",
+      status: 'PENDING',
     },
     data: {
-      status: "APPROVED",
+      status: 'APPROVED',
     },
   });
 };
@@ -136,10 +136,10 @@ const markCommissionsAsPaid = async (commissionIds, paymentRef) => {
     const updated = await tx.commission.updateMany({
       where: {
         id: { in: commissionIds },
-        status: { in: ["PENDING", "APPROVED"] },
+        status: { in: ['PENDING', 'APPROVED'] },
       },
       data: {
-        status: "PAID",
+        status: 'PAID',
         paidAt: new Date(),
         paymentRef,
       },
@@ -163,7 +163,7 @@ const markCommissionsAsPaid = async (commissionIds, paymentRef) => {
       await tx.activity.create({
         data: {
           partnerId,
-          type: "COMMISSION_PAID",
+          type: 'COMMISSION_PAID',
           description: `Pago de comisiones: $${totalPaid.toFixed(2)} MXN`,
           metadata: {
             commissionIds: partnerCommissions.map((c) => c.id),
@@ -194,17 +194,17 @@ const markCommissionsAsPaid = async (commissionIds, paymentRef) => {
 const getCommissionSummary = async (partnerId) => {
   const [pending, approved, paid, total] = await Promise.all([
     prisma.commission.aggregate({
-      where: { partnerId, status: "PENDING" },
+      where: { partnerId, status: 'PENDING' },
       _sum: { amount: true },
       _count: true,
     }),
     prisma.commission.aggregate({
-      where: { partnerId, status: "APPROVED" },
+      where: { partnerId, status: 'APPROVED' },
       _sum: { amount: true },
       _count: true,
     }),
     prisma.commission.aggregate({
-      where: { partnerId, status: "PAID" },
+      where: { partnerId, status: 'PAID' },
       _sum: { amount: true },
       _count: true,
     }),
@@ -242,56 +242,57 @@ const getGlobalStats = async () => {
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-  const [pending, approved, paid, total, thisMonth, lastMonth, partnersWithPending] = await Promise.all([
-    // Comisiones pendientes
-    prisma.commission.aggregate({
-      where: { status: "PENDING" },
-      _sum: { amount: true },
-      _count: true,
-    }),
-    // Comisiones aprobadas
-    prisma.commission.aggregate({
-      where: { status: "APPROVED" },
-      _sum: { amount: true },
-      _count: true,
-    }),
-    // Comisiones pagadas
-    prisma.commission.aggregate({
-      where: { status: "PAID" },
-      _sum: { amount: true },
-      _count: true,
-    }),
-    // Total histórico
-    prisma.commission.aggregate({
-      _sum: { amount: true },
-      _count: true,
-    }),
-    // Este mes
-    prisma.commission.aggregate({
-      where: {
-        createdAt: { gte: startOfMonth },
-      },
-      _sum: { amount: true },
-      _count: true,
-    }),
-    // Mes pasado
-    prisma.commission.aggregate({
-      where: {
-        createdAt: {
-          gte: startOfLastMonth,
-          lte: endOfLastMonth,
+  const [pending, approved, paid, total, thisMonth, lastMonth, partnersWithPending] =
+    await Promise.all([
+      // Comisiones pendientes
+      prisma.commission.aggregate({
+        where: { status: 'PENDING' },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      // Comisiones aprobadas
+      prisma.commission.aggregate({
+        where: { status: 'APPROVED' },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      // Comisiones pagadas
+      prisma.commission.aggregate({
+        where: { status: 'PAID' },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      // Total histórico
+      prisma.commission.aggregate({
+        _sum: { amount: true },
+        _count: true,
+      }),
+      // Este mes
+      prisma.commission.aggregate({
+        where: {
+          createdAt: { gte: startOfMonth },
         },
-      },
-      _sum: { amount: true },
-      _count: true,
-    }),
-    // Partners con comisiones pendientes
-    prisma.commission.groupBy({
-      by: ["partnerId"],
-      where: { status: "PENDING" },
-      _count: true,
-    }),
-  ]);
+        _sum: { amount: true },
+        _count: true,
+      }),
+      // Mes pasado
+      prisma.commission.aggregate({
+        where: {
+          createdAt: {
+            gte: startOfLastMonth,
+            lte: endOfLastMonth,
+          },
+        },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      // Partners con comisiones pendientes
+      prisma.commission.groupBy({
+        by: ['partnerId'],
+        where: { status: 'PENDING' },
+        _count: true,
+      }),
+    ]);
 
   return {
     pending: {
@@ -358,7 +359,7 @@ const exportCommissions = async (filters = {}) => {
         },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
   });
 
   return commissions;
@@ -373,4 +374,3 @@ module.exports = {
   getGlobalStats,
   exportCommissions,
 };
-

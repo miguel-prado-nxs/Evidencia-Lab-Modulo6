@@ -1,5 +1,5 @@
-const campaignsService = require("../services/campaignsService");
-const campaignCouponValidationService = require("../services/campaignCouponValidationService");
+const campaignsService = require('../services/campaignsService');
+const campaignCouponValidationService = require('../services/campaignCouponValidationService');
 const {
   STAGE_PREREQUISITES,
   PRIOR_STAGE_DISPLAY,
@@ -9,12 +9,12 @@ const {
   findPhonesInProcess,
   ALREADY_CONTACTED_STATUSES,
   CAMPAIGN_TYPE_TO_AGENT_NAME,
-} = require("../services/campaignsService");
-const { parseCSV, MAX_ROWS } = require("../services/csvContactsParserService");
-const logger = require("../config/logger");
+} = require('../services/campaignsService');
+const { parseCSV, MAX_ROWS } = require('../services/csvContactsParserService');
+const logger = require('../config/logger');
 const axios = require('axios');
-const geoService = require("../services/geoService");
-const prisma = require("../config/database");
+const geoService = require('../services/geoService');
+const prisma = require('../config/database');
 
 // Construye un texto user-facing claro y específico por caso
 // para el endpoint de elegibilidad. Devuelve null si todos son elegibles.
@@ -35,7 +35,8 @@ const buildEligibilityMessage = ({
     return {
       tone: 'error',
       headline: 'Sin restaurantes en la zona',
-      detail: 'No se encontraron restaurantes dentro del radio seleccionado. Amplía el radio o mueve el centro del mapa.',
+      detail:
+        'No se encontraron restaurantes dentro del radio seleccionado. Amplía el radio o mueve el centro del mapa.',
     };
   }
 
@@ -125,10 +126,10 @@ const getReengagementCandidates = async (req, res, next) => {
 
     const result = await campaignsService.getReengagementCandidates({
       sourceCampaignId,
-      outcomes: outcomes ? outcomes.split(',').map(o => o.trim()) : undefined,
+      outcomes: outcomes ? outcomes.split(',').map((o) => o.trim()) : undefined,
       lastCalledFrom,
       lastCalledTo,
-      campaignTypes: campaignTypes ? campaignTypes.split(',').map(t => t.trim()) : undefined,
+      campaignTypes: campaignTypes ? campaignTypes.split(',').map((t) => t.trim()) : undefined,
       agentConfigId,
       excludeActiveCampaigns: excludeActiveCampaigns !== 'false',
       excludeClients: excludeClients !== 'false',
@@ -144,13 +145,27 @@ const getReengagementCandidates = async (req, res, next) => {
 const create = async (req, res, next) => {
   try {
     const {
-      name, description, type, centerLat, centerLng, radiusMeters,
-      activityCodes, employeeRanges, filters, agentConfigId, agentConfigName,
-      offer, couponPrefix, couponTemplateIds,
+      name,
+      description,
+      type,
+      centerLat,
+      centerLng,
+      radiusMeters,
+      activityCodes,
+      employeeRanges,
+      filters,
+      agentConfigId,
+      agentConfigName,
+      offer,
+      couponPrefix,
+      couponTemplateIds,
       // Reenganche
-      establishmentIds, sourceCampaignId,
+      establishmentIds,
+      sourceCampaignId,
       // CSV
-      csvContacts, contactSource, csvMetadata,
+      csvContacts,
+      contactSource,
+      csvMetadata,
     } = req.body;
 
     const campaign = await campaignsService.createCampaign({
@@ -189,7 +204,7 @@ const list = async (req, res, next) => {
   try {
     const { status, page, limit, includeQuickActions } = req.query;
 
-    const createdBy = req.user?.role === "ADMIN" ? undefined : req.user?.id;
+    const createdBy = req.user?.role === 'ADMIN' ? undefined : req.user?.id;
 
     const result = await campaignsService.listCampaigns({
       status,
@@ -248,7 +263,7 @@ const update = async (req, res, next) => {
       agentConfigName,
       offer,
       couponPrefix,
-      couponTemplateIds
+      couponTemplateIds,
     } = req.body;
 
     const existingCampaign = await campaignsService.getCampaignById(id);
@@ -261,10 +276,10 @@ const update = async (req, res, next) => {
     // }
 
     // Prevent editing active campaigns
-    if (existingCampaign.status === "ACTIVE") {
+    if (existingCampaign.status === 'ACTIVE') {
       return res.status(400).json({
         success: false,
-        error: "No se puede editar una campaña activa",
+        error: 'No se puede editar una campaña activa',
       });
     }
 
@@ -312,7 +327,7 @@ const deleteCampaign = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Campaña eliminada exitosamente",
+      message: 'Campaña eliminada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -326,10 +341,10 @@ const assignContacts = async (req, res, next) => {
 
     const campaign = await campaignsService.getCampaignById(id);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    if (req.user?.role !== 'ADMIN' && campaign.createdBy !== req.user?.id) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para asignar contactos a esta campaña",
+        error: 'No tienes permisos para asignar contactos a esta campaña',
       });
     }
 
@@ -352,10 +367,10 @@ const assignContactsWithGeo = async (req, res, next) => {
 
     const campaign = await campaignsService.getCampaignById(id);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    if (req.user?.role !== 'ADMIN' && campaign.createdBy !== req.user?.id) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para asignar contactos a esta campaña",
+        error: 'No tienes permisos para asignar contactos a esta campaña',
       });
     }
 
@@ -403,13 +418,14 @@ const getContacts = async (req, res, next) => {
 
 const getEligibleCount = async (req, res) => {
   try {
-    const { agentConfigId, centerLat, centerLng, radiusKm, activityCodes, employeeRanges } = req.query;
+    const { agentConfigId, centerLat, centerLng, radiusKm, activityCodes, employeeRanges } =
+      req.query;
 
     //validar parametros requeridos
     if (!agentConfigId || !centerLat || !centerLng || !radiusKm || !activityCodes) {
       return res.status(400).json({
         success: false,
-        error: "Missing Required Parameters"
+        error: 'Missing Required Parameters',
       });
     }
 
@@ -419,7 +435,7 @@ const getEligibleCount = async (req, res) => {
     if (!campaignType) {
       return res.status(400).json({
         success: false,
-        error: "Invalid agentConfigId - not found in campaign type map"
+        error: 'Invalid agentConfigId - not found in campaign type map',
       });
     }
 
@@ -431,16 +447,20 @@ const getEligibleCount = async (req, res) => {
     // Construir filtros de audiencia (activityCodes + employeeRanges)
     const filters = {};
     if (activityCodes) {
-      filters.activityCode = Array.isArray(activityCodes) ? activityCodes.join(",") : activityCodes;
+      filters.activityCode = Array.isArray(activityCodes) ? activityCodes.join(',') : activityCodes;
     }
     if (employeeRanges) {
-      filters.employeeRange = Array.isArray(employeeRanges) ? employeeRanges.join(",") : employeeRanges;
+      filters.employeeRange = Array.isArray(employeeRanges)
+        ? employeeRanges.join(',')
+        : employeeRanges;
     }
 
     // Contar establecimientos por tipo de restaurante (sin filtro de empleados) y filtrados completos en paralelo
     const activityOnlyFilters = {};
     if (activityCodes) {
-      activityOnlyFilters.activityCode = Array.isArray(activityCodes) ? activityCodes.join(",") : activityCodes;
+      activityOnlyFilters.activityCode = Array.isArray(activityCodes)
+        ? activityCodes.join(',')
+        : activityCodes;
     }
 
     const [allInZone, establishments] = await Promise.all([
@@ -450,11 +470,13 @@ const getEligibleCount = async (req, res) => {
 
     const totalInZone = allInZone.length;
     const total = establishments.length;
-    const establishmentIds = establishments.map(e => e.id);
+    const establishmentIds = establishments.map((e) => e.id);
 
     // Clasificación unificada por rango: misma lógica que la asignación real al crear campaña
-    const { eligibleIds, excludedNoPrereq, excludedAdvanced } =
-      await classifyEstablishmentsByStage(establishmentIds, campaignType);
+    const { eligibleIds, excludedNoPrereq, excludedAdvanced } = await classifyEstablishmentsByStage(
+      establishmentIds,
+      campaignType
+    );
     const eligibleCount = eligibleIds.length;
 
     const message = buildEligibilityMessage({
@@ -466,7 +488,7 @@ const getEligibleCount = async (req, res) => {
       excludedAdvanced,
     });
 
-    logger.info("[getEligibleCount] Debug info", {
+    logger.info('[getEligibleCount] Debug info', {
       campaignType,
       prerequisite,
       totalInZone,
@@ -489,12 +511,11 @@ const getEligibleCount = async (req, res) => {
       ineligibleReason: message && message.tone === 'error' ? message.detail : null,
       message,
     });
-
   } catch (error) {
-    logger.error("Error getting eligible count", { error: error.message });
+    logger.error('Error getting eligible count', { error: error.message });
     res.status(500).json({ error: error.message });
   }
-}
+};
 
 const updateContactStatus = async (req, res, next) => {
   try {
@@ -539,15 +560,13 @@ const getStats = async (req, res, next) => {
   }
 };
 
-
-const apiKey = process.env.ELEVENLABS_API_KEY
-
+const apiKey = process.env.ELEVENLABS_API_KEY;
 
 const getAgents = async (req, res, next) => {
   try {
     const response = await axios.get('https://api.elevenlabs.io/v1/convai/agents', {
       headers: {
-        'xi-api-key': apiKey
+        'xi-api-key': apiKey,
       },
     });
 
@@ -558,19 +577,17 @@ const getAgents = async (req, res, next) => {
 
     // Filtrar solo agentes de campaña y mapear
     const agents = agentsArray
-      .filter(agent => validCampaignAgentIds.includes(agent.agent_id))
-      .map(agent => ({
+      .filter((agent) => validCampaignAgentIds.includes(agent.agent_id))
+      .map((agent) => ({
         id: agent.agent_id,
         name: agent.name,
         // Agregar el tipo de campaña para referencia
-        campaignType: campaignsService.getCampaignTypeFromAgent(agent.agent_id)
+        campaignType: campaignsService.getCampaignTypeFromAgent(agent.agent_id),
       }));
-
-
 
     res.json({
       success: true,
-      data: agents
+      data: agents,
     });
   } catch (error) {
     logger.error('Error fetching agents from ElevenLabs:', error);
@@ -594,7 +611,7 @@ const startCampaign = async (req, res, next) => {
       scheduledTimeUnix,
       scheduledTimeUnixType: typeof scheduledTimeUnix,
       agentId,
-      fullBody: req.body
+      fullBody: req.body,
     });
 
     const campaign = await campaignsService.getCampaignById(id);
@@ -619,7 +636,7 @@ const startCampaign = async (req, res, next) => {
     res.json({
       success: true,
       data: result,
-      message: "Campaña iniciada exitosamente",
+      message: 'Campaña iniciada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -644,7 +661,7 @@ const pauseCampaign = async (req, res, next) => {
     res.json({
       success: true,
       data: result,
-      message: "Campaña pausada exitosamente",
+      message: 'Campaña pausada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -666,7 +683,7 @@ const resumeCampaign = async (req, res, next) => {
 
     const result = await campaignsService.resumeCampaign(id);
 
-    let message = "Campaña reanudada exitosamente";
+    let message = 'Campaña reanudada exitosamente';
     if (result.reconciliedContacts > 0) {
       message += ` (${result.reconciliedContacts} contactos reconciliados)`;
     }
@@ -689,24 +706,25 @@ const loadCouponTemplates = async (req, res, next) => {
     if (!Array.isArray(couponTemplateIds)) {
       return res.status(400).json({
         success: false,
-        error: "couponTemplateIds must be an array"
+        error: 'couponTemplateIds must be an array',
       });
     }
 
-    const { templates, validation } = await campaignCouponValidationService.loadAndValidateCouponTemplates(couponTemplateIds);
+    const { templates, validation } =
+      await campaignCouponValidationService.loadAndValidateCouponTemplates(couponTemplateIds);
 
-    logger.info("Coupon templates loaded for campaign", {
+    logger.info('Coupon templates loaded for campaign', {
       campaignId: id,
       templateCount: templates.length,
-      isValid: validation.isValid
+      isValid: validation.isValid,
     });
 
     res.json({
       success: true,
       data: {
         templates,
-        validation
-      }
+        validation,
+      },
     });
   } catch (error) {
     next(error);
@@ -721,7 +739,7 @@ const getCampaignSendPreview = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: preview
+      data: preview,
     });
   } catch (error) {
     next(error);
@@ -736,7 +754,7 @@ const validateBeforeStart = async (req, res, next) => {
 
     res.json({
       success: validation.isValid,
-      data: validation
+      data: validation,
     });
   } catch (error) {
     next(error);
@@ -753,7 +771,7 @@ const getCouponBreakdown = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: breakdown
+      data: breakdown,
     });
   } catch (error) {
     next(error);
@@ -767,7 +785,7 @@ const pause = async (req, res, next) => {
     res.json({
       success: true,
       data: campaign,
-      message: "Campaña pausada exitosamente",
+      message: 'Campaña pausada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -781,7 +799,7 @@ const cancel = async (req, res, next) => {
     res.json({
       success: true,
       data: campaign,
-      message: "Campaña cancelada exitosamente",
+      message: 'Campaña cancelada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -796,7 +814,7 @@ const reschedule = async (req, res, next) => {
     if (!scheduledTimeUnix) {
       return res.status(400).json({
         success: false,
-        error: "scheduledTimeUnix es requerido",
+        error: 'scheduledTimeUnix es requerido',
       });
     }
 
@@ -804,7 +822,7 @@ const reschedule = async (req, res, next) => {
     res.json({
       success: true,
       data: campaign,
-      message: "Campaña reprogramada exitosamente",
+      message: 'Campaña reprogramada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -818,7 +836,7 @@ const resume = async (req, res, next) => {
     res.json({
       success: true,
       data: result,
-      message: "Campaña reanudada exitosamente",
+      message: 'Campaña reanudada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -874,7 +892,9 @@ const postContinueCampaign = async (req, res, next) => {
 const previewCsv = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, error: "Se requiere un archivo CSV (campo 'file')" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Se requiere un archivo CSV (campo 'file')" });
     }
 
     const { originalname, buffer } = req.file;
@@ -884,7 +904,7 @@ const previewCsv = async (req, res) => {
     // Verificar cuántos teléfonos válidos ya tienen historial en otras campañas.
     // Se generan variantes de formato para detectar coincidencias entre geo (sin +52) y CSV (E.164).
     let duplicateCount = 0;
-    const validPhones = result.validRows.map(r => r.phone).filter(Boolean);
+    const validPhones = result.validRows.map((r) => r.phone).filter(Boolean);
 
     if (validPhones.length > 0) {
       const phoneVariants = buildPhoneVariantsForQuery(validPhones);
@@ -898,7 +918,7 @@ const previewCsv = async (req, res) => {
       });
       // Expandir a variantes y cruzar contra los phones del CSV para contar correctamente
       const contactedSet = buildContactedPhonesSet(existing);
-      duplicateCount = validPhones.filter(p => contactedSet.has(p)).length;
+      duplicateCount = validPhones.filter((p) => contactedSet.has(p)).length;
     }
 
     return res.status(200).json({
@@ -917,7 +937,7 @@ const previewCsv = async (req, res) => {
       },
     });
   } catch (error) {
-    logger.warn("[campaignsController:previewCsv] CSV parse error", { error: error.message });
+    logger.warn('[campaignsController:previewCsv] CSV parse error', { error: error.message });
     return res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -930,7 +950,7 @@ const QUICK_ACTION_WINDOW_MS = 60 * 60 * 1000; // 1 hora
 function checkQuickActionRateLimit(userId) {
   const now = Date.now();
   const windowStart = now - QUICK_ACTION_WINDOW_MS;
-  const timestamps = (quickActionRateLimitStore.get(userId) || []).filter(ts => ts > windowStart);
+  const timestamps = (quickActionRateLimitStore.get(userId) || []).filter((ts) => ts > windowStart);
   if (timestamps.length >= QUICK_ACTION_LIMIT) {
     return false;
   }
@@ -940,24 +960,32 @@ function checkQuickActionRateLimit(userId) {
 }
 
 // Derived from service's CAMPAIGN_TYPE_TO_AGENT map (avoids hardcoding)
-const { CAMPAIGN_TYPE_TO_AGENT: CAMPAIGN_TYPE_TO_AGENT_ID } = require("../services/campaignsService");
+const {
+  CAMPAIGN_TYPE_TO_AGENT: CAMPAIGN_TYPE_TO_AGENT_ID,
+} = require('../services/campaignsService');
 
 const quickAction = async (req, res, next) => {
   try {
     const { establishmentId, campaignType, couponTemplateId, couponTemplateIds } = req.body;
 
     if (!establishmentId || !campaignType) {
-      return res.status(400).json({ success: false, error: 'establishmentId y campaignType son requeridos' });
+      return res
+        .status(400)
+        .json({ success: false, error: 'establishmentId y campaignType son requeridos' });
     }
 
     const validTypes = ['DISCOVERY', 'QUALIFICATION', 'ACTIVATION', 'CONVERSION'];
     if (!validTypes.includes(campaignType)) {
-      return res.status(400).json({ success: false, error: `campaignType debe ser uno de: ${validTypes.join(', ')}` });
+      return res
+        .status(400)
+        .json({ success: false, error: `campaignType debe ser uno de: ${validTypes.join(', ')}` });
     }
 
     const agentConfigId = CAMPAIGN_TYPE_TO_AGENT_ID[campaignType];
     if (!agentConfigId) {
-      return res.status(400).json({ success: false, error: 'No hay agente configurado para este tipo de campaña' });
+      return res
+        .status(400)
+        .json({ success: false, error: 'No hay agente configurado para este tipo de campaña' });
     }
 
     // Rate-limit por usuario (usando X-Sales-User-Id o user.id)
@@ -990,7 +1018,7 @@ const quickAction = async (req, res, next) => {
       });
       if (est?.name) establishmentName = est.name;
       if (est?.phone) establishmentPhone = est.phone;
-    } catch (_) { }
+    } catch (_) {}
 
     // Fallback: tomar el telefono del enrichment si geo no lo tiene (ej. contactos CSV/manuales)
     if (!establishmentPhone) {
@@ -1000,7 +1028,7 @@ const quickAction = async (req, res, next) => {
           select: { decisionMakerPhone: true, decisionMakerWhatsApp: true },
         });
         establishmentPhone = enr?.decisionMakerPhone || enr?.decisionMakerWhatsApp || null;
-      } catch (_) { }
+      } catch (_) {}
     }
 
     // Sin teléfono no hay forma de llamar: el dispatch marcaría el recipient como invalido y la
@@ -1018,9 +1046,10 @@ const quickAction = async (req, res, next) => {
       const blocked = await findPhonesInProcess([{ establishmentId, phone: establishmentPhone }]);
       const reason = blocked.get(establishmentId);
       if (reason) {
-        const msg = reason === 'in_flight'
-          ? 'Este numero ya tiene una llamada en curso'
-          : 'Este numero ya esta en otra campana o proceso activo';
+        const msg =
+          reason === 'in_flight'
+            ? 'Este numero ya tiene una llamada en curso'
+            : 'Este numero ya esta en otra campana o proceso activo';
         return res.status(409).json({ success: false, error: msg, reason });
       }
     }
@@ -1043,10 +1072,12 @@ const quickAction = async (req, res, next) => {
             select: { id: true },
           });
           if (defaultTemplate) primaryCouponId = defaultTemplate.id;
-        } catch (_) { }
+        } catch (_) {}
       }
       if (Array.isArray(couponTemplateIds)) {
-        alternativeCouponIds = [...new Set(couponTemplateIds.filter(id => id && id !== primaryCouponId))];
+        alternativeCouponIds = [
+          ...new Set(couponTemplateIds.filter((id) => id && id !== primaryCouponId)),
+        ];
       }
     }
 
@@ -1060,7 +1091,10 @@ const quickAction = async (req, res, next) => {
       contactSource: 'QUICK_ACTION',
       establishmentIds: [establishmentId],
       createdBy: userId,
-      ...(primaryCouponId && { couponPrefix: primaryCouponId, couponTemplateIds: alternativeCouponIds }),
+      ...(primaryCouponId && {
+        couponPrefix: primaryCouponId,
+        couponTemplateIds: alternativeCouponIds,
+      }),
     });
 
     // Iniciar campaña inmediatamente
@@ -1094,10 +1128,12 @@ const phoneCheck = async (req, res, next) => {
     if (!phone) {
       return res.status(400).json({ success: false, error: 'phone es requerido' });
     }
-    const blocked = await findPhonesInProcess([{
-      establishmentId: establishmentId || '__map_check__',
-      phone,
-    }]);
+    const blocked = await findPhonesInProcess([
+      {
+        establishmentId: establishmentId || '__map_check__',
+        phone,
+      },
+    ]);
     const reason = blocked.get(establishmentId || '__map_check__') || null;
     return res.json({
       success: true,

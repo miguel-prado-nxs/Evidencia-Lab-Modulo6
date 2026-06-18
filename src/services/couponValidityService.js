@@ -1,4 +1,4 @@
-const logger = require("../config/logger");
+const logger = require('../config/logger');
 
 /**
  * Calcula si un cupón es válido en este momento según sus restricciones de tiempo
@@ -7,39 +7,39 @@ const logger = require("../config/logger");
  */
 const checkCouponValidity = (coupon) => {
   const now = new Date();
-  
+
   // Verificar validFrom (fecha/hora de inicio)
   if (coupon.validFrom && now < new Date(coupon.validFrom)) {
     return {
       isValid: false,
-      reason: "Cupón aún no es válido",
+      reason: 'Cupón aún no es válido',
       startsAt: coupon.validFrom,
-      timeUntilValid: new Date(coupon.validFrom) - now
+      timeUntilValid: new Date(coupon.validFrom) - now,
     };
   }
-  
+
   // Verificar validUntil (fecha/hora de fin)
   if (coupon.validUntil && now > new Date(coupon.validUntil)) {
     return {
       isValid: false,
-      reason: "Cupón expirado",
-      expiredAt: coupon.validUntil
+      reason: 'Cupón expirado',
+      expiredAt: coupon.validUntil,
     };
   }
-  
+
   // Verificar expiresAt (compatibilidad con campo existente)
   if (coupon.expiresAt && now > new Date(coupon.expiresAt)) {
     return {
       isValid: false,
-      reason: "Cupón expirado",
-      expiredAt: coupon.expiresAt
+      reason: 'Cupón expirado',
+      expiredAt: coupon.expiresAt,
     };
   }
-  
+
   // Calcular tiempo restante
   let timeRemaining = null;
   let expiresAt = null;
-  
+
   if (coupon.validUntil) {
     expiresAt = new Date(coupon.validUntil);
     timeRemaining = expiresAt - now;
@@ -47,12 +47,12 @@ const checkCouponValidity = (coupon) => {
     expiresAt = new Date(coupon.expiresAt);
     timeRemaining = expiresAt - now;
   }
-  
+
   return {
     isValid: true,
     timeRemaining,
     expiresAt,
-    timeRemainingFormatted: timeRemaining ? formatTimeRemaining(timeRemaining) : null
+    timeRemainingFormatted: timeRemaining ? formatTimeRemaining(timeRemaining) : null,
   };
 };
 
@@ -65,43 +65,43 @@ const checkTemplateTimeRestrictions = (template) => {
   if (!template) {
     return { isValid: true };
   }
-  
+
   const now = new Date();
   const currentHour = now.getHours();
   const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-  
+
   // Verificar restricción de días de la semana
   if (template.validDays && template.validDays.length > 0) {
     if (!template.validDays.includes(currentDay)) {
       return {
         isValid: false,
         reason: `Cupón solo válido en: ${template.validDays.join(', ')}`,
-        currentDay
+        currentDay,
       };
     }
   }
-  
+
   // Verificar restricción de horario
   if (template.validFromHour !== null && template.validFromHour !== undefined) {
     if (currentHour < template.validFromHour) {
       return {
         isValid: false,
         reason: `Cupón válido desde las ${template.validFromHour}:00`,
-        currentHour
+        currentHour,
       };
     }
   }
-  
+
   if (template.validUntilHour !== null && template.validUntilHour !== undefined) {
     if (currentHour >= template.validUntilHour) {
       return {
         isValid: false,
         reason: `Cupón válido hasta las ${template.validUntilHour}:00`,
-        currentHour
+        currentHour,
       };
     }
   }
-  
+
   return { isValid: true };
 };
 
@@ -113,7 +113,7 @@ const checkTemplateTimeRestrictions = (template) => {
  */
 const calculateCouponValidityDates = (template, assignedAt = new Date()) => {
   const validFrom = new Date(assignedAt);
-  
+
   // Si el template tiene restricción de hora de inicio, ajustar validFrom
   if (template.validFromHour !== null && template.validFromHour !== undefined) {
     const currentHour = validFrom.getHours();
@@ -121,26 +121,26 @@ const calculateCouponValidityDates = (template, assignedAt = new Date()) => {
       validFrom.setHours(template.validFromHour, 0, 0, 0);
     }
   }
-  
+
   // Calcular validUntil basado en expiresHours del template
   const validUntil = new Date(assignedAt);
   validUntil.setHours(validUntil.getHours() + (template.expiresHours || 48));
-  
+
   // Si el template tiene restricción de hora de fin, ajustar validUntil
   if (template.validUntilHour !== null && template.validUntilHour !== undefined) {
     const targetDate = new Date(validUntil);
     targetDate.setHours(template.validUntilHour, 0, 0, 0);
-    
+
     // Si la hora de fin es antes que validUntil calculado, usar esa hora
     if (targetDate < validUntil) {
       validUntil.setHours(template.validUntilHour, 0, 0, 0);
     }
   }
-  
+
   return {
     validFrom,
     validUntil,
-    expiresAt: validUntil // Compatibilidad con campo existente
+    expiresAt: validUntil, // Compatibilidad con campo existente
   };
 };
 
@@ -151,14 +151,14 @@ const calculateCouponValidityDates = (template, assignedAt = new Date()) => {
  */
 const formatTimeRemaining = (milliseconds) => {
   if (milliseconds <= 0) {
-    return "Expirado";
+    return 'Expirado';
   }
-  
+
   const seconds = Math.floor(milliseconds / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  
+
   if (days > 0) {
     const remainingHours = hours % 24;
     return `${days}d ${remainingHours}h`;
@@ -180,7 +180,7 @@ const formatTimeRemaining = (milliseconds) => {
  */
 const enrichCouponWithValidity = (coupon) => {
   const validity = checkCouponValidity(coupon);
-  
+
   return {
     ...coupon,
     validity: {
@@ -189,8 +189,8 @@ const enrichCouponWithValidity = (coupon) => {
       timeRemaining: validity.timeRemaining,
       timeRemainingFormatted: validity.timeRemainingFormatted,
       expiresAt: validity.expiresAt,
-      startsAt: validity.startsAt
-    }
+      startsAt: validity.startsAt,
+    },
   };
 };
 
@@ -202,7 +202,7 @@ const enrichCouponWithValidity = (coupon) => {
 const getActiveCouponsWithTimeRemaining = (coupons) => {
   return coupons
     .map(enrichCouponWithValidity)
-    .filter(c => c.validity.isValid)
+    .filter((c) => c.validity.isValid)
     .sort((a, b) => {
       // Ordenar por tiempo restante (menor a mayor)
       if (!a.validity.timeRemaining) return 1;
@@ -219,42 +219,42 @@ const getActiveCouponsWithTimeRemaining = (coupons) => {
 const markExpiredCoupons = async (prisma) => {
   try {
     const now = new Date();
-    
+
     // Marcar cupones expirados por validUntil
     const result1 = await prisma.campaignCoupon.updateMany({
       where: {
-        status: { in: ["GENERATED", "SENT", "VISITED"] },
-        validUntil: { lte: now }
+        status: { in: ['GENERATED', 'SENT', 'VISITED'] },
+        validUntil: { lte: now },
       },
       data: {
-        status: "EXPIRED"
-      }
+        status: 'EXPIRED',
+      },
     });
-    
+
     // Marcar cupones expirados por expiresAt (campo legacy)
     const result2 = await prisma.campaignCoupon.updateMany({
       where: {
-        status: { in: ["GENERATED", "SENT", "VISITED"] },
+        status: { in: ['GENERATED', 'SENT', 'VISITED'] },
         expiresAt: { lte: now },
-        validUntil: null
+        validUntil: null,
       },
       data: {
-        status: "EXPIRED"
-      }
+        status: 'EXPIRED',
+      },
     });
-    
+
     const totalExpired = result1.count + result2.count;
-    
+
     if (totalExpired > 0) {
       logger.info(`Marked ${totalExpired} coupons as expired`, {
         byValidUntil: result1.count,
-        byExpiresAt: result2.count
+        byExpiresAt: result2.count,
       });
     }
-    
+
     return totalExpired;
   } catch (error) {
-    logger.error("Error marking expired coupons", { error: error.message });
+    logger.error('Error marking expired coupons', { error: error.message });
     return 0;
   }
 };
@@ -266,5 +266,5 @@ module.exports = {
   formatTimeRemaining,
   enrichCouponWithValidity,
   getActiveCouponsWithTimeRemaining,
-  markExpiredCoupons
+  markExpiredCoupons,
 };

@@ -1,17 +1,17 @@
-const prisma = require("../config/database");
-const crypto = require("crypto");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const crypto = require('crypto');
+const logger = require('../config/logger');
 
 // ========================================
 // Claves de configuración del programa
 // ========================================
 
 const CONFIG_KEYS = {
-  COMMISSION_RATES: "commission_rates",
-  TIER_BONUSES: "tier_bonuses",
-  TIER_REQUIREMENTS: "tier_requirements",
-  NOTIFICATION_SETTINGS: "notification_settings",
-  PROGRAM_INFO: "program_info",
+  COMMISSION_RATES: 'commission_rates',
+  TIER_BONUSES: 'tier_bonuses',
+  TIER_REQUIREMENTS: 'tier_requirements',
+  NOTIFICATION_SETTINGS: 'notification_settings',
+  PROGRAM_INFO: 'program_info',
 };
 
 // ========================================
@@ -47,12 +47,12 @@ const DEFAULT_CONFIG = {
     SYSTEM: { email: true, push: false },
   },
   program_info: {
-    name: "EasyOrder Partners",
-    logoUrl: "/EasyOrder.png",
-    supportEmail: "partners@easyorder.mx",
-    referralBaseUrl: "https://easyorder.mx/?ref=",
-    termsUrl: "https://easyorder.mx/terminos",
-    privacyUrl: "https://easyorder.mx/privacidad",
+    name: 'EasyOrder Partners',
+    logoUrl: '/EasyOrder.png',
+    supportEmail: 'partners@easyorder.mx',
+    referralBaseUrl: 'https://easyorder.mx/?ref=',
+    termsUrl: 'https://easyorder.mx/terminos',
+    privacyUrl: 'https://easyorder.mx/privacidad',
   },
 };
 
@@ -146,7 +146,7 @@ const getAllConfigs = async () => {
 
     return configMap;
   } catch (error) {
-    logger.error("Error getting all configs:", error);
+    logger.error('Error getting all configs:', error);
     throw error;
   }
 };
@@ -173,7 +173,7 @@ const initializeDefaultConfigs = async () => {
       }
     }
   } catch (error) {
-    logger.error("Error initializing default configs:", error);
+    logger.error('Error initializing default configs:', error);
     throw error;
   }
 };
@@ -187,7 +187,7 @@ const initializeDefaultConfigs = async () => {
  */
 const listEmailTemplates = async () => {
   return prisma.emailTemplate.findMany({
-    orderBy: { name: "asc" },
+    orderBy: { name: 'asc' },
   });
 };
 
@@ -254,7 +254,7 @@ const deleteEmailTemplate = async (id) => {
  * Generar una API key segura
  */
 const generateApiKey = () => {
-  return `eo_${crypto.randomBytes(32).toString("hex")}`;
+  return `eo_${crypto.randomBytes(32).toString('hex')}`;
 };
 
 /**
@@ -262,7 +262,7 @@ const generateApiKey = () => {
  */
 const listApiKeys = async () => {
   const keys = await prisma.apiKey.findMany({
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
   });
 
   // Ocultar la key completa, mostrar solo los últimos 8 caracteres
@@ -362,4 +362,3 @@ module.exports = {
   deleteApiKey,
   validateApiKey,
 };
-

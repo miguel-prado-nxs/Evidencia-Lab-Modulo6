@@ -1,5 +1,5 @@
-const prisma = require("../config/database");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
 
 /**
  * Construye el contexto de campaña para pasar a ElevenLabs
@@ -13,19 +13,21 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
       where: { id: campaignId },
       include: {
         _count: {
-          select: { coupons: true }
-        }
-      }
+          select: { coupons: true },
+        },
+      },
     });
 
     if (!campaign) {
-      logger.warn("Campaign not found for context", { campaignId });
+      logger.warn('Campaign not found for context', { campaignId });
       return null;
     }
 
-    const contact = campaignContactId ? await prisma.campaignContact.findUnique({
-      where: { id: campaignContactId }
-    }) : null;
+    const contact = campaignContactId
+      ? await prisma.campaignContact.findUnique({
+          where: { id: campaignContactId },
+        })
+      : null;
 
     // Cargar templates de cupones
     let templates = [];
@@ -36,7 +38,7 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
           // active: true Lo quitamos para que no ignore cupones desactivados temporalmente si ya estaban asignados
         },
         orderBy: {
-          priority: 'desc'
+          priority: 'desc',
         },
         select: {
           id: true,
@@ -49,14 +51,16 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
           expiresHours: true,
           scenarios: true,
           messageTemplate: true,
-          mediaUrl: true
-        }
+          mediaUrl: true,
+        },
       });
     }
 
     // Identificar el tipo principal real (evitar que un UUID pase como código de cupón)
     let resolvedPrimaryType = null;
-    const primaryTemplate = templates.find(t => t.id === campaign.couponPrefix || t.couponType === campaign.couponPrefix);
+    const primaryTemplate = templates.find(
+      (t) => t.id === campaign.couponPrefix || t.couponType === campaign.couponPrefix
+    );
 
     if (primaryTemplate) {
       resolvedPrimaryType = primaryTemplate.couponType;
@@ -64,15 +68,20 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
       // couponPrefix es UUID no incluido en couponTemplateIds — buscarlo directamente en BD
       // IMPORTANTE: este lookup debe ocurrir ANTES del fallback a templates[0] para no mandar
       // el cupón equivocado cuando la campaña tiene múltiples templates asignados.
-      const dbTemplate = await prisma.couponTemplate.findFirst({ where: { id: campaign.couponPrefix } });
+      const dbTemplate = await prisma.couponTemplate.findFirst({
+        where: { id: campaign.couponPrefix },
+      });
       if (dbTemplate) {
         resolvedPrimaryType = dbTemplate.couponType;
         templates.unshift(dbTemplate);
       } else if (templates.length > 0) {
-        logger.warn("[CampaignContext] couponPrefix UUID no encontrado en BD, usando primer template disponible", {
-          couponPrefix: campaign.couponPrefix,
-          fallback: templates[0].couponType,
-        });
+        logger.warn(
+          '[CampaignContext] couponPrefix UUID no encontrado en BD, usando primer template disponible',
+          {
+            couponPrefix: campaign.couponPrefix,
+            fallback: templates[0].couponType,
+          }
+        );
         resolvedPrimaryType = templates[0].couponType;
       }
     } else if (campaign.couponPrefix && !/^[0-9a-f]{8}-/i.test(campaign.couponPrefix)) {
@@ -97,7 +106,7 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
         expiresHours: null,
         scenarios: ['first_contact', 'high_intent'],
         messageTemplate: '',
-        mediaUrl: ''
+        mediaUrl: '',
       });
     }
 
@@ -117,22 +126,23 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
       coupons: {
         available: templates.length > 0,
         couponType: resolvedPrimaryType,
-        templates: templates.map(t => ({
+        templates: templates.map((t) => ({
           id: t.id,
           type: t.couponType,
           name: t.name,
           description: t.description,
-          offer: `${t.percentOff ? t.percentOff + '%' : ''} ${t.durationMonths ? t.durationMonths + ' meses' : ''} ${t.trialDays ? t.trialDays + ' días trial' : ''}`.trim(),
+          offer:
+            `${t.percentOff ? t.percentOff + '%' : ''} ${t.durationMonths ? t.durationMonths + ' meses' : ''} ${t.trialDays ? t.trialDays + ' días trial' : ''}`.trim(),
           percentOff: t.percentOff,
           durationMonths: t.durationMonths,
           trialDays: t.trialDays,
           expiresHours: t.expiresHours,
           applicableScenarios: t.scenarios,
           messageTemplate: t.messageTemplate,
-          mediaUrl: t.mediaUrl
+          mediaUrl: t.mediaUrl,
         })),
         totalGenerated: campaign._count.coupons,
-        sendInstructions: buildCouponSendInstructions(templates, resolvedPrimaryType)
+        sendInstructions: buildCouponSendInstructions(templates, resolvedPrimaryType),
       },
 
       // Instrucciones para el agente
@@ -143,22 +153,22 @@ const buildCampaignContext = async (campaignId, campaignContactId) => {
         createdAt: campaign.createdAt,
         startedAt: campaign.startedAt,
         agentConfigId: campaign.agentConfigId,
-        agentConfigName: campaign.agentConfigName
-      }
+        agentConfigName: campaign.agentConfigName,
+      },
     };
 
-    logger.info("Campaign context built for ElevenLabs", {
+    logger.info('Campaign context built for ElevenLabs', {
       campaignId,
       contactId: contact?.id,
-      templatesAvailable: templates.length
+      templatesAvailable: templates.length,
     });
 
     return context;
   } catch (error) {
-    logger.error("Error building campaign context", {
+    logger.error('Error building campaign context', {
       campaignId,
       campaignContactId,
-      error: error.message
+      error: error.message,
     });
     return null;
   }
@@ -173,7 +183,7 @@ const buildCouponSendInstructions = (templates, campaignCouponType = null) => {
   if (templates.length === 0) {
     return {
       enabled: false,
-      message: "No hay cupones disponibles para esta campaña"
+      message: 'No hay cupones disponibles para esta campaña',
     };
   }
 
@@ -181,27 +191,27 @@ const buildCouponSendInstructions = (templates, campaignCouponType = null) => {
 
   return {
     enabled: true,
-    trigger: "Al final de la llamada si el prospecto muestra interés",
-    method: "whatsapp",
+    trigger: 'Al final de la llamada si el prospecto muestra interés',
+    method: 'whatsapp',
     couponType: primaryType,
-    templates: templates.map(t => ({
+    templates: templates.map((t) => ({
       type: t.couponType,
       name: t.name,
       scenarios: t.scenarios,
-      instruction: `Enviar cupón ${t.couponType} (${t.name}) si el prospecto está interesado`
+      instruction: `Enviar cupón ${t.couponType} (${t.name}) si el prospecto está interesado`,
     })),
-    endpoint: "/api/v1/coupons-whatsapp/generate-and-send",
+    endpoint: '/api/v1/coupons-whatsapp/generate-and-send',
     requiredParams: [
-      "phone",
-      "prospectName",
-      "businessName",
-      "scenario",
-      "agentId",
-      "callId",
-      "campaignId",
-      "campaignContactId",
-      "couponType"
-    ]
+      'phone',
+      'prospectName',
+      'businessName',
+      'scenario',
+      'agentId',
+      'callId',
+      'campaignId',
+      'campaignContactId',
+      'couponType',
+    ],
   };
 };
 
@@ -214,8 +224,8 @@ const buildCouponSendInstructions = (templates, campaignCouponType = null) => {
  */
 const buildAgentInstructions = (campaign, templates, resolvedPrimaryType) => {
   const primaryType = resolvedPrimaryType || templates[0]?.couponType;
-  const primaryTemplate = templates.find(t => t.couponType === primaryType) || templates[0];
-  const alternativeTemplates = templates.filter(t => t.couponType !== primaryType);
+  const primaryTemplate = templates.find((t) => t.couponType === primaryType) || templates[0];
+  const alternativeTemplates = templates.filter((t) => t.couponType !== primaryType);
   const isHybrid = alternativeTemplates.length > 0;
 
   let instructions = `Campaña activa: "${campaign.name}"\n`;
@@ -245,7 +255,7 @@ const buildAgentInstructions = (campaign, templates, resolvedPrimaryType) => {
     }
 
     instructions += `\nCUPONES ALTERNATIVOS (usar SOLO si el contexto lo justifica):\n`;
-    alternativeTemplates.forEach(t => {
+    alternativeTemplates.forEach((t) => {
       instructions += `\n  [${t.couponType}] ${t.name}\n`;
       instructions += `  Beneficio: ${_formatOffer(t)}\n`;
       if (t.scenarios?.length > 0) {
@@ -298,7 +308,7 @@ const _formatOffer = (template) => {
   if (template.percentOff) parts.push(`${template.percentOff}% descuento`);
   if (template.durationMonths) parts.push(`${template.durationMonths} mes(es)`);
   if (template.trialDays) parts.push(`${template.trialDays} días trial`);
-  return parts.length > 0 ? parts.join(' + ') : (template.description || template.name);
+  return parts.length > 0 ? parts.join(' + ') : template.description || template.name;
 };
 
 /**
@@ -313,13 +323,13 @@ const getCampaignContextForAgent = async (campaignId, campaignContactId) => {
   if (!context) {
     return {
       success: false,
-      error: "Campaign context not found"
+      error: 'Campaign context not found',
     };
   }
 
   return {
     success: true,
-    data: context
+    data: context,
   };
 };
 
@@ -346,15 +356,15 @@ const enrichDynamicVariablesWithCampaignContext = async (
       ...dynamicVariables,
       campaignContext: context,
       couponsAvailable: context.coupons.available,
-      couponTypes: context.coupons.templates.map(t => t.type),
+      couponTypes: context.coupons.templates.map((t) => t.type),
       couponType: context.coupons.couponType,
       agentInstructions: context.agentInstructions,
-      couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send"
+      couponSendEndpoint: '/api/v1/coupons-whatsapp/generate-and-send',
     };
   } catch (error) {
-    logger.error("Error enriching dynamic variables with campaign context", {
+    logger.error('Error enriching dynamic variables with campaign context', {
       campaignId,
-      error: error.message
+      error: error.message,
     });
     return dynamicVariables;
   }
@@ -381,12 +391,12 @@ const buildElevenLabsPayloadWithCampaignContext = async (
 
     return {
       ...recipient,
-      dynamic_variables: enrichedVariables
+      dynamic_variables: enrichedVariables,
     };
   } catch (error) {
-    logger.error("Error building ElevenLabs payload with campaign context", {
+    logger.error('Error building ElevenLabs payload with campaign context', {
       campaignId,
-      error: error.message
+      error: error.message,
     });
     return recipient;
   }
@@ -398,5 +408,5 @@ module.exports = {
   enrichDynamicVariablesWithCampaignContext,
   buildElevenLabsPayloadWithCampaignContext,
   buildCouponSendInstructions,
-  buildAgentInstructions
+  buildAgentInstructions,
 };

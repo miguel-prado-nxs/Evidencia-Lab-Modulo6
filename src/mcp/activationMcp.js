@@ -1,17 +1,17 @@
-const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
-const { z } = require("zod");
-const svc = require("../services/funnelWebhookService");
-const logger = require("../config/logger");
-const config = require("../config/env");
+const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+const { z } = require('zod');
+const svc = require('../services/funnelWebhookService');
+const logger = require('../config/logger');
+const config = require('../config/env');
 
 // Devuelve null si el valor es un placeholder ElevenLabs sin reemplazar (ej: "{{callId}}")
 // o si el valor es igual al nombre del parámetro (indicador de error del agente)
 const sanitizeVar = (value, paramName) => {
-  if (typeof value !== "string") return value || null;
+  if (typeof value !== 'string') return value || null;
   const v = value.trim();
 
   // Descarta placeholders sin resolver
-  if (v.includes("{{") || v.includes("}}")) return null;
+  if (v.includes('{{') || v.includes('}}')) return null;
 
   // Descarta si el valor es igual al nombre del parámetro (ej: agente mandó "establishment_id" como valor)
   if (paramName && v.toLowerCase() === paramName.toLowerCase()) return null;
@@ -21,67 +21,117 @@ const sanitizeVar = (value, paramName) => {
 
 // Normaliza enums: acepta valores en español y los mapea a inglés
 const normalizeEnum = (value) => {
-  if (!value || typeof value !== "string") return value;
+  if (!value || typeof value !== 'string') return value;
   const normalized = value.trim().toUpperCase();
   const spanishToEnglish = {
-    ALTO: "HIGH",
-    HIGH: "HIGH",
-    MUY_ALTO: "HIGH",
-    MUY_COMPLEJO: "HIGH",
-    COMPLEJO: "HIGH",
-    COMPLICADO: "HIGH",
-    DIFÍCIL: "HIGH",
-    MEDIO: "MEDIUM",
-    MEDIA: "MEDIUM",
-    MEDIUM: "MEDIUM",
-    MODERADO: "MEDIUM",
-    SENCILLO: "LOW",
-    SENCILLO_Y_PRÁCTICO: "LOW",
-    SIMPLE: "LOW",
-    FÁCIL: "LOW",
-    BAJO: "LOW",
-    LOW: "LOW",
-    MUY_BAJO: "LOW",
+    ALTO: 'HIGH',
+    HIGH: 'HIGH',
+    MUY_ALTO: 'HIGH',
+    MUY_COMPLEJO: 'HIGH',
+    COMPLEJO: 'HIGH',
+    COMPLICADO: 'HIGH',
+    DIFÍCIL: 'HIGH',
+    MEDIO: 'MEDIUM',
+    MEDIA: 'MEDIUM',
+    MEDIUM: 'MEDIUM',
+    MODERADO: 'MEDIUM',
+    SENCILLO: 'LOW',
+    SENCILLO_Y_PRÁCTICO: 'LOW',
+    SIMPLE: 'LOW',
+    FÁCIL: 'LOW',
+    BAJO: 'LOW',
+    LOW: 'LOW',
+    MUY_BAJO: 'LOW',
   };
 
   // Si no encuentra mapeo exacto, intenta inferir por palabras clave
   if (!spanishToEnglish[normalized]) {
-    if (normalized.includes("ALTO") || normalized.includes("COMPLEJO") || normalized.includes("DIFÍCIL")) return "HIGH";
-    if (normalized.includes("SENCILLO") || normalized.includes("SIMPLE") || normalized.includes("FÁCIL")) return "LOW";
-    if (normalized.includes("MEDIO") || normalized.includes("MODERADO")) return "MEDIUM";
+    if (
+      normalized.includes('ALTO') ||
+      normalized.includes('COMPLEJO') ||
+      normalized.includes('DIFÍCIL')
+    )
+      return 'HIGH';
+    if (
+      normalized.includes('SENCILLO') ||
+      normalized.includes('SIMPLE') ||
+      normalized.includes('FÁCIL')
+    )
+      return 'LOW';
+    if (normalized.includes('MEDIO') || normalized.includes('MODERADO')) return 'MEDIUM';
   }
 
   return spanishToEnglish[normalized] || value;
 };
 
 function createActivationServer() {
-  const server = new McpServer({ name: "funnel-activation", version: "1.0.0" });
+  const server = new McpServer({ name: 'funnel-activation', version: '1.0.0' });
 
   server.tool(
-    "save_activation_data",
-    "Guarda datos de activación capturados durante la conversación.",
+    'save_activation_data',
+    'Guarda datos de activación capturados durante la conversación.',
     {
-      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
-      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
-      pain_points_confirmed: z.array(z.string()).optional().describe("Pain points confirmados"),
-      features_of_interest: z.array(z.string()).optional().describe("Funcionalidades que más interesan"),
-      urgency_level: z.string().optional().describe("Urgencia de implementación: HIGH (urgente), MEDIUM (moderada), LOW (sin prisa)"),
+      conversation_id: z
+        .string()
+        .describe('ID conversación (valor conversation_id de la sección DATOS de tu prompt)'),
+      establishment_id: z
+        .string()
+        .describe('ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)'),
+      pain_points_confirmed: z.array(z.string()).optional().describe('Pain points confirmados'),
+      features_of_interest: z
+        .array(z.string())
+        .optional()
+        .describe('Funcionalidades que más interesan'),
+      urgency_level: z
+        .string()
+        .optional()
+        .describe('Urgencia de implementación: HIGH (urgente), MEDIUM (moderada), LOW (sin prisa)'),
       notes: z.string().optional(),
-      account_created: z.boolean().optional().describe("Si se creó la cuenta en el proceso"),
-      business_registered: z.boolean().optional().describe("Si el negocio ya está registrado"),
-      menu_loaded: z.boolean().optional().describe("Si se cargó el menú en el proceso"),
-      first_order_registered: z.boolean().optional().describe("Si se registró la primera orden en el proceso"),
-      confusion_areas: z.array(z.string()).optional().describe("Áreas de confusión o dudas del usuario"),
-      resolve_first: z.string().optional().describe("Acción prioritaria a resolver"),
-      implementation_time: z.string().optional().describe("Tiempo estimado de implementación"),
-      solo_or_team: z.string().optional().describe("Si el usuario prefiere implementar solo o con equipo"),
-      perceived_complexity: z.string().optional().describe("Complejidad percibida por el usuario: LOW (sencillo/fácil), MEDIUM (moderada), HIGH (complejo/difícil)"),
+      account_created: z.boolean().optional().describe('Si se creó la cuenta en el proceso'),
+      business_registered: z.boolean().optional().describe('Si el negocio ya está registrado'),
+      menu_loaded: z.boolean().optional().describe('Si se cargó el menú en el proceso'),
+      first_order_registered: z
+        .boolean()
+        .optional()
+        .describe('Si se registró la primera orden en el proceso'),
+      confusion_areas: z
+        .array(z.string())
+        .optional()
+        .describe('Áreas de confusión o dudas del usuario'),
+      resolve_first: z.string().optional().describe('Acción prioritaria a resolver'),
+      implementation_time: z.string().optional().describe('Tiempo estimado de implementación'),
+      solo_or_team: z
+        .string()
+        .optional()
+        .describe('Si el usuario prefiere implementar solo o con equipo'),
+      perceived_complexity: z
+        .string()
+        .optional()
+        .describe(
+          'Complejidad percibida por el usuario: LOW (sencillo/fácil), MEDIUM (moderada), HIGH (complejo/difícil)'
+        ),
     },
-    async ({ conversation_id, establishment_id, pain_points_confirmed, features_of_interest, urgency_level, notes, account_created, business_registered, menu_loaded, first_order_registered, confusion_areas, resolve_first, implementation_time, solo_or_team, perceived_complexity }) => {
+    async ({
+      conversation_id,
+      establishment_id,
+      pain_points_confirmed,
+      features_of_interest,
+      urgency_level,
+      notes,
+      account_created,
+      business_registered,
+      menu_loaded,
+      first_order_registered,
+      confusion_areas,
+      resolve_first,
+      implementation_time,
+      solo_or_team,
+      perceived_complexity,
+    }) => {
       try {
         const result = await svc.saveActivationData({
-          conversationId: sanitizeVar(conversation_id, "conversation_id"),
-          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          conversationId: sanitizeVar(conversation_id, 'conversation_id'),
+          establishmentId: sanitizeVar(establishment_id, 'establishment_id'),
           painPointsConfirmed: pain_points_confirmed,
           featuresOfInterest: features_of_interest,
           urgencyLevel: normalizeEnum(urgency_level),
@@ -94,11 +144,14 @@ function createActivationServer() {
           resolveFirst: resolve_first,
           implementationTime: implementation_time,
           soloOrTeam: solo_or_team,
-          perceivedComplexity: normalizeEnum(perceived_complexity)
+          perceivedComplexity: normalizeEnum(perceived_complexity),
         });
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       } catch (err) {
-        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ success: false, error: err.message }) }],
+          isError: true,
+        };
       }
     }
   );
@@ -172,54 +225,108 @@ function createActivationServer() {
   */
 
   server.tool(
-    "send_coupon_whatsapp",
-    "Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.",
+    'send_coupon_whatsapp',
+    'Genera un cupón REAL en la base de datos y lo envía por WhatsApp. El sistema selecciona el template correcto según coupon_type o scenario. SOLO usar si el prospecto califica y acepta recibirlo.',
     {
-      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
-      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
-      campaign_id: z.string().optional().describe("ID de la campaña. DEBES extraer obligatoriamente el valor campaignId de la sección DATOS de tu prompt y enviarlo aquí."), campaign_contact_id: z.string().optional().describe("ID contacto campaña (valor campaignContactId de la sección DATOS de tu prompt)"),
-      phone: z.string().optional().describe("Teléfono del prospecto (valor phoneNumber de la sección DATOS de tu prompt). Opcional, si no lo tienes omítelo y el sistema lo buscará."),
-      coupon_type: z.string().optional().describe("Tipo de cupón elegido según árbol de decisión (valor couponType de la sección DATOS de tu prompt). Si no se especifica, se usa el cupón principal."),
-      scenario: z.string().optional().describe("Escenario detectado en la conversación (ej: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead). Se usa para analíticas y para seleccionar template si no se especificó coupon_type."),
-      prospect_name: z.string().optional().describe("Nombre del prospecto para personalizar el mensaje (valor prospectName de la sección DATOS de tu prompt)"),
-      business_name: z.string().optional().describe("Nombre del negocio (valor businessName de la sección DATOS de tu prompt)"),
+      conversation_id: z
+        .string()
+        .describe('ID conversación (valor conversation_id de la sección DATOS de tu prompt)'),
+      establishment_id: z
+        .string()
+        .describe('ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)'),
+      campaign_id: z
+        .string()
+        .optional()
+        .describe(
+          'ID de la campaña. DEBES extraer obligatoriamente el valor campaignId de la sección DATOS de tu prompt y enviarlo aquí.'
+        ),
+      campaign_contact_id: z
+        .string()
+        .optional()
+        .describe('ID contacto campaña (valor campaignContactId de la sección DATOS de tu prompt)'),
+      phone: z
+        .string()
+        .optional()
+        .describe(
+          'Teléfono del prospecto (valor phoneNumber de la sección DATOS de tu prompt). Opcional, si no lo tienes omítelo y el sistema lo buscará.'
+        ),
+      coupon_type: z
+        .string()
+        .optional()
+        .describe(
+          'Tipo de cupón elegido según árbol de decisión (valor couponType de la sección DATOS de tu prompt). Si no se especifica, se usa el cupón principal.'
+        ),
+      scenario: z
+        .string()
+        .optional()
+        .describe(
+          'Escenario detectado en la conversación (ej: price_objection, first_contact, trial_ending, upgrade_interest, referral, cold_lead). Se usa para analíticas y para seleccionar template si no se especificó coupon_type.'
+        ),
+      prospect_name: z
+        .string()
+        .optional()
+        .describe(
+          'Nombre del prospecto para personalizar el mensaje (valor prospectName de la sección DATOS de tu prompt)'
+        ),
+      business_name: z
+        .string()
+        .optional()
+        .describe('Nombre del negocio (valor businessName de la sección DATOS de tu prompt)'),
     },
-    async ({ conversation_id, establishment_id, campaign_id, campaign_contact_id, phone, coupon_type, scenario, prospect_name, business_name }) => {
+    async ({
+      conversation_id,
+      establishment_id,
+      campaign_id,
+      campaign_contact_id,
+      phone,
+      coupon_type,
+      scenario,
+      prospect_name,
+      business_name,
+    }) => {
       try {
         const result = await svc.sendCouponWhatsapp({
-          conversationId: sanitizeVar(conversation_id, "conversation_id"),
-          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
-          campaignId: sanitizeVar(campaign_id, "campaign_id"),
-          campaignContactId: sanitizeVar(campaign_contact_id, "campaign_contact_id"),
-          phone: sanitizeVar(phone, "phone"),
+          conversationId: sanitizeVar(conversation_id, 'conversation_id'),
+          establishmentId: sanitizeVar(establishment_id, 'establishment_id'),
+          campaignId: sanitizeVar(campaign_id, 'campaign_id'),
+          campaignContactId: sanitizeVar(campaign_contact_id, 'campaign_contact_id'),
+          phone: sanitizeVar(phone, 'phone'),
           coupon: {},
           couponType: coupon_type,
           scenario,
           prospectName: prospect_name,
           businessName: business_name,
         });
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       } catch (err) {
-        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ success: false, error: err.message }) }],
+          isError: true,
+        };
       }
     }
   );
 
   server.tool(
-    "mark_voicemail_detected",
+    'mark_voicemail_detected',
     "Marca que se detectó un buzón de voz y registra el evento. Úsala cuando identifiques patrones de buzón: 'grave su mensaje', 'marque la tecla', menús automatizados, tonos DTMF, o falta de respuesta humana coherente en 2 turnos. Después de llamar a esta tool, ejecuta save_activation_outcome con outcome='VOICEMAIL' y luego end_call para colgar. El único tool que cuelga la llamada es end_call.",
     {
       conversation_id: z.string(),
       establishment_id: z.string(),
-      detection_reason: z.string().describe("Por qué detectaste el buzón (ej: 'escuché: grave su mensaje después del tono')"),
-      transcript_snippet: z.string().optional().describe("Fragmento del audio que confirmó que es buzón"),
+      detection_reason: z
+        .string()
+        .describe("Por qué detectaste el buzón (ej: 'escuché: grave su mensaje después del tono')"),
+      transcript_snippet: z
+        .string()
+        .optional()
+        .describe('Fragmento del audio que confirmó que es buzón'),
     },
     async ({ conversation_id, establishment_id, detection_reason, transcript_snippet }) => {
       try {
         // Registrar en tu DB que cayó en voicemail
         const result = await svc.markVoicemail({
-          conversationId: sanitizeVar(conversation_id, "conversation_id"),
-          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          conversationId: sanitizeVar(conversation_id, 'conversation_id'),
+          establishmentId: sanitizeVar(establishment_id, 'establishment_id'),
           detectionReason: detection_reason,
           transcriptSnippet: transcript_snippet,
           detectedAt: new Date().toISOString(),
@@ -228,115 +335,145 @@ function createActivationServer() {
         // NUEVO: Notificar al backend INMEDIATAMENTE por webhook
         const webhookUrl = `${config.server.apiBaseUrl || 'http://localhost:3004'}/api/v1/webhooks/elevenlabs/voicemail-detected`;
         fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             establishment_id,
             conversation_id,
-            status: "voicemail",
+            status: 'voicemail',
             detection_reason,
             timestamp: new Date().toISOString(),
-          })
-        }).catch(err => {
-          logger.error("[mark_voicemail_detected Webhook] Error notificando backend:", {
+          }),
+        }).catch((err) => {
+          logger.error('[mark_voicemail_detected Webhook] Error notificando backend:', {
             url: webhookUrl,
-            error: err.message
+            error: err.message,
           });
         });
 
         return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              success: true,
-              message: "VOICEMAIL DETECTED. Execute save_activation_outcome with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
-              ...result
-            })
-          }]
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: true,
+                message:
+                  "VOICEMAIL DETECTED. Execute save_activation_outcome with outcome='VOICEMAIL', then end_call to hang up. DO NOT SPEAK. DO NOT WAIT.",
+                ...result,
+              }),
+            },
+          ],
         };
       } catch (err) {
         logger.error('[mark_voicemail_detected ERROR]', err);
         return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              success: false,
-              error: err.message,
-              fallback: "Call end_call system tool immediately to hang up"
-            })
-          }],
-          isError: true
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: err.message,
+                fallback: 'Call end_call system tool immediately to hang up',
+              }),
+            },
+          ],
+          isError: true,
         };
       }
     }
   );
 
   server.tool(
-    "save_activation_outcome",
-    "Guarda y registra el resultado final de la conversación de Activation en campaign_enrichments. NO cuelga la llamada: después de esta SIEMPRE debes ejecutar el System Tool end_call para colgar.",
+    'save_activation_outcome',
+    'Guarda y registra el resultado final de la conversación de Activation en campaign_enrichments. NO cuelga la llamada: después de esta SIEMPRE debes ejecutar el System Tool end_call para colgar.',
     {
-      conversation_id: z.string().describe("ID conversación (valor conversation_id de la sección DATOS de tu prompt)"),
-      establishment_id: z.string().describe("ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
-      outcome: z.enum([
-        "ACTIVATED",
-        "DEMO_SCHEDULED",
-        "FOLLOW_UP_LATER",
-        "NOT_INTERESTED",
-        "NO_ANSWER",
-        "VOICEMAIL",
-      ]).describe("Outcome: ACTIVATED (cuenta creada y pasa a LEAD), DEMO_SCHEDULED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL"),
-      demo_date: z.string().optional().describe("Fecha agendada si aplica (ISO 8601)"),
-      call_summary: z.string().describe("Resumen breve (2-3 oraciones)"),
+      conversation_id: z
+        .string()
+        .describe('ID conversación (valor conversation_id de la sección DATOS de tu prompt)'),
+      establishment_id: z
+        .string()
+        .describe('ID establecimiento (valor establishment_id de la sección DATOS de tu prompt)'),
+      outcome: z
+        .enum([
+          'ACTIVATED',
+          'DEMO_SCHEDULED',
+          'FOLLOW_UP_LATER',
+          'NOT_INTERESTED',
+          'NO_ANSWER',
+          'VOICEMAIL',
+        ])
+        .describe(
+          'Outcome: ACTIVATED (cuenta creada y pasa a LEAD), DEMO_SCHEDULED, FOLLOW_UP_LATER, NOT_INTERESTED, NO_ANSWER, VOICEMAIL'
+        ),
+      demo_date: z.string().optional().describe('Fecha agendada si aplica (ISO 8601)'),
+      call_summary: z.string().describe('Resumen breve (2-3 oraciones)'),
     },
     async ({ conversation_id, establishment_id, outcome, demo_date, call_summary }) => {
       try {
         const result = await svc.endActivationCall({
-          conversationId: sanitizeVar(conversation_id, "conversation_id"),
-          establishmentId: sanitizeVar(establishment_id, "establishment_id"),
+          conversationId: sanitizeVar(conversation_id, 'conversation_id'),
+          establishmentId: sanitizeVar(establishment_id, 'establishment_id'),
           outcome,
           demoDate: demo_date,
           callSummary: call_summary,
         });
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        return { content: [{ type: 'text', text: JSON.stringify(result) }] };
       } catch (err) {
-        return { content: [{ type: "text", text: JSON.stringify({ success: false, error: err.message }) }], isError: true };
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ success: false, error: err.message }) }],
+          isError: true,
+        };
       }
     }
   );
 
   server.tool(
-    "hang_up_call",
-    "Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.",
+    'hang_up_call',
+    'Cuelga la llamada inmediatamente. Notifica al backend para terminar la sesión en ElevenLabs.',
     {
-      establishment_id: z.string().optional().describe("ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)"),
-      conversation_id: z.string().optional().describe("ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)"),
-      reason: z.string().optional().describe("Razón del cierre")
+      establishment_id: z
+        .string()
+        .optional()
+        .describe(
+          'ID del establecimiento (valor establishment_id de la sección DATOS de tu prompt)'
+        ),
+      conversation_id: z
+        .string()
+        .optional()
+        .describe('ID de la conversación (valor conversation_id de la sección DATOS de tu prompt)'),
+      reason: z.string().optional().describe('Razón del cierre'),
     },
     async ({ establishment_id, conversation_id, reason }) => {
-      logger.info("[hang_up_call] Cierre de llamada solicitado", { establishment_id, conversation_id, reason });
+      logger.info('[hang_up_call] Cierre de llamada solicitado', {
+        establishment_id,
+        conversation_id,
+        reason,
+      });
 
       const webhookUrl = `${config.server.apiBaseUrl || 'http://localhost:3004'}/api/v1/webhooks/elevenlabs/hang-up-call`;
       fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           establishment_id: establishment_id || null,
           conversation_id: conversation_id || null,
-          reason: reason || "Cierre normal de Activation",
+          reason: reason || 'Cierre normal de Activation',
           timestamp: new Date().toISOString(),
-        })
-      }).catch(err => {
-        logger.error("[hang_up_call Webhook] Error notificando backend:", {
+        }),
+      }).catch((err) => {
+        logger.error('[hang_up_call Webhook] Error notificando backend:', {
           url: webhookUrl,
-          error: err.message
+          error: err.message,
         });
       });
 
       return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({ success: true, message: "Llamada terminada", hangUp: true })
-        }]
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ success: true, message: 'Llamada terminada', hangUp: true }),
+          },
+        ],
       };
     }
   );

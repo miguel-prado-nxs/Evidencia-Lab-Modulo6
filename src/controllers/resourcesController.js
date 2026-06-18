@@ -3,12 +3,12 @@
  * Controlador para la API de recursos/materiales de ventas
  */
 
-const prisma = require("../config/database");
-const storageService = require("../services/storageService");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const storageService = require('../services/storageService');
+const logger = require('../config/logger');
 
 // Mapeo de tiers para filtrar
-const TIER_ORDER = ["REGISTERED", "BRONZE", "SILVER", "GOLD", "PLATINUM"];
+const TIER_ORDER = ['REGISTERED', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM'];
 
 /**
  * GET /resources
@@ -23,7 +23,7 @@ async function list(req, res, next) {
     const where = { isActive: true };
 
     // Para partners, filtrar por tier y tipo
-    if (req.user.role !== "ADMIN" && req.user.partner) {
+    if (req.user.role !== 'ADMIN' && req.user.partner) {
       const partnerTier = req.user.partner.tier;
       const partnerType = req.user.partner.type;
 
@@ -44,8 +44,8 @@ async function list(req, res, next) {
       where.AND = [
         {
           OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { description: { contains: search, mode: "insensitive" } },
+            { name: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
             { tags: { hasSome: [search] } },
           ],
         },
@@ -55,7 +55,7 @@ async function list(req, res, next) {
     const [resources, total] = await Promise.all([
       prisma.resource.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
         skip,
         take: parseInt(limit),
       }),
@@ -73,7 +73,7 @@ async function list(req, res, next) {
       },
     });
   } catch (error) {
-    logger.error("Error listing resources:", error);
+    logger.error('Error listing resources:', error);
     next(error);
   }
 }
@@ -93,12 +93,12 @@ async function getById(req, res, next) {
     if (!resource) {
       return res.status(404).json({
         success: false,
-        error: "Recurso no encontrado",
+        error: 'Recurso no encontrado',
       });
     }
 
     // Verificar permisos si es partner
-    if (req.user.role !== "ADMIN" && req.user.partner) {
+    if (req.user.role !== 'ADMIN' && req.user.partner) {
       const partnerTier = req.user.partner.tier;
       const partnerType = req.user.partner.type;
       const tierIndex = TIER_ORDER.indexOf(partnerTier);
@@ -107,14 +107,14 @@ async function getById(req, res, next) {
       if (tierIndex < minTierIndex) {
         return res.status(403).json({
           success: false,
-          error: "No tienes acceso a este recurso. Sube de tier para desbloquearlo.",
+          error: 'No tienes acceso a este recurso. Sube de tier para desbloquearlo.',
         });
       }
 
       if (resource.partnerTypes.length > 0 && !resource.partnerTypes.includes(partnerType)) {
         return res.status(403).json({
           success: false,
-          error: "Este recurso no está disponible para tu tipo de partner.",
+          error: 'Este recurso no está disponible para tu tipo de partner.',
         });
       }
     }
@@ -130,7 +130,7 @@ async function getById(req, res, next) {
       data: resource,
     });
   } catch (error) {
-    logger.error("Error getting resource:", error);
+    logger.error('Error getting resource:', error);
     next(error);
   }
 }
@@ -150,12 +150,12 @@ async function download(req, res, next) {
     if (!resource) {
       return res.status(404).json({
         success: false,
-        error: "Recurso no encontrado",
+        error: 'Recurso no encontrado',
       });
     }
 
     // Verificar permisos
-    if (req.user.role !== "ADMIN" && req.user.partner) {
+    if (req.user.role !== 'ADMIN' && req.user.partner) {
       const partnerTier = req.user.partner.tier;
       const tierIndex = TIER_ORDER.indexOf(partnerTier);
       const minTierIndex = TIER_ORDER.indexOf(resource.minTier);
@@ -163,7 +163,7 @@ async function download(req, res, next) {
       if (tierIndex < minTierIndex) {
         return res.status(403).json({
           success: false,
-          error: "No tienes acceso a este recurso.",
+          error: 'No tienes acceso a este recurso.',
         });
       }
     }
@@ -186,23 +186,23 @@ async function download(req, res, next) {
       if (!exists) {
         return res.status(404).json({
           success: false,
-          error: "Archivo no encontrado",
+          error: 'Archivo no encontrado',
         });
       }
 
       const buffer = await storageService.readFile(resource.storagePath);
-      const filename = resource.fileName || "download";
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Type", resource.mimeType || "application/octet-stream");
+      const filename = resource.fileName || 'download';
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Type', resource.mimeType || 'application/octet-stream');
       return res.send(buffer);
     }
 
     return res.status(404).json({
       success: false,
-      error: "El recurso no tiene archivo asociado",
+      error: 'El recurso no tiene archivo asociado',
     });
   } catch (error) {
-    logger.error("Error downloading resource:", error);
+    logger.error('Error downloading resource:', error);
     next(error);
   }
 }
@@ -219,7 +219,7 @@ async function create(req, res, next) {
 
     // Si se subió un archivo
     if (req.file) {
-      const processedFile = await storageService.processUploadedFile(req.file, "resources");
+      const processedFile = await storageService.processUploadedFile(req.file, 'resources');
       fileData = {
         fileName: processedFile.fileName,
         fileSize: processedFile.fileSize,
@@ -235,12 +235,16 @@ async function create(req, res, next) {
       data: {
         name,
         description,
-        category: category || "OTHER",
-        type: fileData.type || type || "document",
+        category: category || 'OTHER',
+        type: fileData.type || type || 'document',
         url: fileData.url || url, // Priorizar URL de S3
-        minTier: minTier || "REGISTERED",
-        partnerTypes: partnerTypes ? (Array.isArray(partnerTypes) ? partnerTypes : [partnerTypes]) : [],
-        tags: tags ? (Array.isArray(tags) ? tags : tags.split(",").map((t) => t.trim())) : [],
+        minTier: minTier || 'REGISTERED',
+        partnerTypes: partnerTypes
+          ? Array.isArray(partnerTypes)
+            ? partnerTypes
+            : [partnerTypes]
+          : [],
+        tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map((t) => t.trim())) : [],
         fileName: fileData.fileName,
         fileSize: fileData.fileSize,
         mimeType: fileData.mimeType,
@@ -260,7 +264,7 @@ async function create(req, res, next) {
     if (req.file) {
       await storageService.deleteFile(req.file.path).catch(() => {});
     }
-    logger.error("Error creating resource:", error);
+    logger.error('Error creating resource:', error);
     next(error);
   }
 }
@@ -272,7 +276,8 @@ async function create(req, res, next) {
 async function update(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, description, category, type, url, minTier, partnerTypes, tags, isActive } = req.body;
+    const { name, description, category, type, url, minTier, partnerTypes, tags, isActive } =
+      req.body;
 
     const existingResource = await prisma.resource.findUnique({
       where: { id },
@@ -281,7 +286,7 @@ async function update(req, res, next) {
     if (!existingResource) {
       return res.status(404).json({
         success: false,
-        error: "Recurso no encontrado",
+        error: 'Recurso no encontrado',
       });
     }
 
@@ -289,7 +294,7 @@ async function update(req, res, next) {
 
     // Si se subió un nuevo archivo
     if (req.file) {
-      const processedFile = await storageService.processUploadedFile(req.file, "resources");
+      const processedFile = await storageService.processUploadedFile(req.file, 'resources');
       fileData = {
         fileName: processedFile.fileName,
         fileSize: processedFile.fileSize,
@@ -304,7 +309,10 @@ async function update(req, res, next) {
       if (existingResource.storagePath) {
         await storageService.deleteFile(existingResource.storagePath).catch(() => {});
       }
-      if (existingResource.thumbnailUrl && existingResource.thumbnailUrl.includes("storage.railway.app")) {
+      if (
+        existingResource.thumbnailUrl &&
+        existingResource.thumbnailUrl.includes('storage.railway.app')
+      ) {
         await storageService.deleteFile(existingResource.thumbnailUrl).catch(() => {});
       }
     }
@@ -326,7 +334,7 @@ async function update(req, res, next) {
         tags: tags
           ? Array.isArray(tags)
             ? tags
-            : tags.split(",").map((t) => t.trim())
+            : tags.split(',').map((t) => t.trim())
           : undefined,
         isActive,
         fileName: fileData.fileName,
@@ -347,7 +355,7 @@ async function update(req, res, next) {
     if (req.file) {
       await storageService.deleteFile(req.file.path).catch(() => {});
     }
-    logger.error("Error updating resource:", error);
+    logger.error('Error updating resource:', error);
     next(error);
   }
 }
@@ -367,7 +375,7 @@ async function remove(req, res, next) {
     if (!resource) {
       return res.status(404).json({
         success: false,
-        error: "Recurso no encontrado",
+        error: 'Recurso no encontrado',
       });
     }
 
@@ -387,10 +395,10 @@ async function remove(req, res, next) {
 
     res.json({
       success: true,
-      message: "Recurso eliminado",
+      message: 'Recurso eliminado',
     });
   } catch (error) {
-    logger.error("Error deleting resource:", error);
+    logger.error('Error deleting resource:', error);
     next(error);
   }
 }
@@ -410,10 +418,10 @@ async function trackDownload(req, res, next) {
 
     res.json({
       success: true,
-      message: "Descarga registrada",
+      message: 'Descarga registrada',
     });
   } catch (error) {
-    logger.error("Error tracking download:", error);
+    logger.error('Error tracking download:', error);
     next(error);
   }
 }
@@ -424,16 +432,16 @@ async function trackDownload(req, res, next) {
  */
 async function getCategories(req, res) {
   const categories = [
-    { value: "SALES_DECK", label: "Presentaciones de Venta" },
-    { value: "ONE_PAGER", label: "One Pagers" },
-    { value: "EMAIL_TEMPLATE", label: "Plantillas de Email" },
-    { value: "SOCIAL_MEDIA", label: "Redes Sociales" },
-    { value: "VIDEO", label: "Videos" },
-    { value: "CASE_STUDY", label: "Casos de Éxito" },
-    { value: "PRICE_LIST", label: "Listas de Precios" },
-    { value: "BRAND_ASSETS", label: "Recursos de Marca" },
-    { value: "CONTRACT_TEMPLATE", label: "Plantillas de Contrato" },
-    { value: "OTHER", label: "Otros" },
+    { value: 'SALES_DECK', label: 'Presentaciones de Venta' },
+    { value: 'ONE_PAGER', label: 'One Pagers' },
+    { value: 'EMAIL_TEMPLATE', label: 'Plantillas de Email' },
+    { value: 'SOCIAL_MEDIA', label: 'Redes Sociales' },
+    { value: 'VIDEO', label: 'Videos' },
+    { value: 'CASE_STUDY', label: 'Casos de Éxito' },
+    { value: 'PRICE_LIST', label: 'Listas de Precios' },
+    { value: 'BRAND_ASSETS', label: 'Recursos de Marca' },
+    { value: 'CONTRACT_TEMPLATE', label: 'Plantillas de Contrato' },
+    { value: 'OTHER', label: 'Otros' },
   ];
 
   res.json({
@@ -452,4 +460,3 @@ module.exports = {
   trackDownload,
   getCategories,
 };
-

@@ -1,21 +1,21 @@
-const jwt = require("jsonwebtoken");
-const prisma = require("../config/database");
-const config = require("../config/env");
-const logger = require("../config/logger");
+const jwt = require('jsonwebtoken');
+const prisma = require('../config/database');
+const config = require('../config/env');
+const logger = require('../config/logger');
 
 // Middleware para verificar JWT
 const authenticateJWT = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
-        error: "Token de autenticación requerido",
+        error: 'Token de autenticación requerido',
       });
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, config.auth.jwtSecret);
 
     // Buscar usuario en la base de datos (soportar tanto userId como id para compatibilidad)
@@ -24,7 +24,7 @@ const authenticateJWT = async (req, res, next) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        error: "Token inválido: falta ID de usuario",
+        error: 'Token inválido: falta ID de usuario',
       });
     }
 
@@ -36,25 +36,25 @@ const authenticateJWT = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        error: "Usuario no encontrado",
+        error: 'Usuario no encontrado',
       });
     }
 
     req.user = user;
     next();
   } catch (error) {
-    logger.error("Error de autenticación:", error);
+    logger.error('Error de autenticación:', error);
 
-    if (error.name === "TokenExpiredError") {
+    if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
-        error: "Token expirado",
+        error: 'Token expirado',
       });
     }
 
     return res.status(401).json({
       success: false,
-      error: "Token inválido",
+      error: 'Token inválido',
     });
   }
 };
@@ -63,10 +63,10 @@ const authenticateJWT = async (req, res, next) => {
 const authenticateJWTOrServiceKey = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    const serviceKey = req.headers["x-service-key"];
+    const serviceKey = req.headers['x-service-key'];
 
     // DEBUG: Log de headers recibidos
-    logger.debug("authenticateJWTOrServiceKey - Headers:", {
+    logger.debug('authenticateJWTOrServiceKey - Headers:', {
       hasAuthHeader: !!authHeader,
       hasServiceKey: !!serviceKey,
       serviceKeyReceived: serviceKey ? `${serviceKey.substring(0, 10)}...` : null,
@@ -74,8 +74,8 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
     });
 
     // Opción 1: JWT Bearer token
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
       const decoded = jwt.verify(token, config.auth.jwtSecret);
 
       // Soportar tanto userId como id para compatibilidad
@@ -84,7 +84,7 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
       if (!userId) {
         return res.status(401).json({
           success: false,
-          error: "Token inválido: falta ID de usuario",
+          error: 'Token inválido: falta ID de usuario',
         });
       }
 
@@ -96,7 +96,7 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
       if (!user) {
         return res.status(401).json({
           success: false,
-          error: "Usuario no encontrado",
+          error: 'Usuario no encontrado',
         });
       }
 
@@ -107,9 +107,9 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
     // Opción 2: Service Key para equipo de Ventas
     if (serviceKey) {
       // Verificar la clave de servicio
-      const validServiceKey = process.env.VENTAS_SERVICE_KEY || "ventas-easyorder-2024";
+      const validServiceKey = process.env.VENTAS_SERVICE_KEY || 'ventas-easyorder-2024';
 
-      logger.debug("Service Key validation:", {
+      logger.debug('Service Key validation:', {
         received: serviceKey,
         expected: validServiceKey,
         match: serviceKey === validServiceKey,
@@ -118,14 +118,14 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
       if (serviceKey !== validServiceKey) {
         return res.status(401).json({
           success: false,
-          error: "Service key inválida",
+          error: 'Service key inválida',
         });
       }
 
       // Obtener o crear un partner virtual para Ventas
-      const salesPartnerId = req.headers["x-sales-user-id"] || "ventas-default";
-      const salesUserName = req.headers["x-sales-user-name"] || "Equipo Ventas";
-      const salesUserEmail = req.headers["x-sales-user-email"] || "ventas@easyorder.mx";
+      const salesPartnerId = req.headers['x-sales-user-id'] || 'ventas-default';
+      const salesUserName = req.headers['x-sales-user-name'] || 'Equipo Ventas';
+      const salesUserEmail = req.headers['x-sales-user-email'] || 'ventas@easyorder.mx';
 
       // Buscar o crear el partner de Ventas
       let salesPartner = await prisma.partner.findUnique({
@@ -150,10 +150,10 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
               data: {
                 userId: existingUser.id,
                 code: `VENTAS-${salesPartnerId}`,
-                type: "TECHNOLOGY", // Equipo interno de ventas
-                companyName: "EasyOrder Ventas",
-                status: "ACTIVE",
-                tier: "ELITE",
+                type: 'TECHNOLOGY', // Equipo interno de ventas
+                companyName: 'EasyOrder Ventas',
+                status: 'ACTIVE',
+                tier: 'ELITE',
                 referralLink: referralCode,
               },
             });
@@ -162,15 +162,15 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
           req.user = { ...existingUser, partner: salesPartner };
         } else {
           // Crear usuario y partner nuevos
-          const bcrypt = require("bcryptjs");
-          const passwordHash = await bcrypt.hash("ventas-internal-" + Date.now(), 10);
+          const bcrypt = require('bcryptjs');
+          const passwordHash = await bcrypt.hash('ventas-internal-' + Date.now(), 10);
 
           const newUser = await prisma.user.create({
             data: {
               email: salesUserEmail,
               name: salesUserName,
               passwordHash,
-              role: "PARTNER",
+              role: 'PARTNER',
             },
           });
 
@@ -180,10 +180,10 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
             data: {
               userId: newUser.id,
               code: `VENTAS-${salesPartnerId}`,
-              type: "TECHNOLOGY", // Equipo interno de ventas
-              companyName: "EasyOrder Ventas",
-              status: "ACTIVE",
-              tier: "ELITE",
+              type: 'TECHNOLOGY', // Equipo interno de ventas
+              companyName: 'EasyOrder Ventas',
+              status: 'ACTIVE',
+              tier: 'ELITE',
               referralLink: referralCode2,
             },
           });
@@ -201,43 +201,45 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
       req.salesPartnerId = salesPartner.id;
 
       // DEBUG: Log detallado de IDs para depuración
-      logger.info(`[DEBUG AUTH] SalesUserId header: ${salesPartnerId}, Partner code: ${salesPartner.code}, Partner.id (salesPartnerId): ${salesPartner.id}, req.user.partner.id: ${req.user?.partner?.id}`);
+      logger.info(
+        `[DEBUG AUTH] SalesUserId header: ${salesPartnerId}, Partner code: ${salesPartner.code}, Partner.id (salesPartnerId): ${salesPartner.id}, req.user.partner.id: ${req.user?.partner?.id}`
+      );
 
       logger.info(`Autenticación de servicio Ventas: ${salesUserEmail}`);
       return next();
     }
 
     // Ni JWT ni Service Key proporcionados
-    logger.warn("Autenticación fallida: No se proporcionó JWT ni Service Key");
+    logger.warn('Autenticación fallida: No se proporcionó JWT ni Service Key');
     return res.status(401).json({
       success: false,
-      error: "Token de autenticación o service key requerido",
+      error: 'Token de autenticación o service key requerido',
     });
   } catch (error) {
-    logger.error("Error de autenticación:", {
+    logger.error('Error de autenticación:', {
       name: error.name,
       message: error.message,
       stack: error.stack,
     });
 
-    if (error.name === "TokenExpiredError") {
+    if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
-        error: "Token expirado",
+        error: 'Token expirado',
       });
     }
 
-    if (error.name === "JsonWebTokenError") {
+    if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,
-        error: "Token inválido",
+        error: 'Token inválido',
       });
     }
 
     // Error al crear partner de Ventas u otro error
     return res.status(500).json({
       success: false,
-      error: "Error interno de autenticación: " + error.message,
+      error: 'Error interno de autenticación: ' + error.message,
     });
   }
 };
@@ -246,10 +248,10 @@ const authenticateJWTOrServiceKey = async (req, res, next) => {
 const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    const serviceKey = req.headers["x-service-key"];
+    const serviceKey = req.headers['x-service-key'];
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
       try {
         const decoded = jwt.verify(token, config.auth.jwtSecret);
         const userId = decoded.userId || decoded.id;
@@ -266,17 +268,17 @@ const optionalAuth = async (req, res, next) => {
         // Token inválido, continuar sin autenticación
       }
     } else if (serviceKey) {
-      const validServiceKey = process.env.VENTAS_SERVICE_KEY || "ventas-easyorder-2024";
+      const validServiceKey = process.env.VENTAS_SERVICE_KEY || 'ventas-easyorder-2024';
       if (serviceKey === validServiceKey) {
         req.isServiceKey = true;
 
         // Obtener datos del usuario de Ventas desde headers
-        const salesPartnerId = req.headers["x-sales-user-id"] || "ventas-default";
-        const salesUserEmail = req.headers["x-sales-user-email"] || "ventas@easyorder.mx";
+        const salesPartnerId = req.headers['x-sales-user-id'] || 'ventas-default';
+        const salesUserEmail = req.headers['x-sales-user-email'] || 'ventas@easyorder.mx';
 
         try {
           // Buscar el partner de Ventas existente
-          let salesPartner = await prisma.partner.findUnique({
+          const salesPartner = await prisma.partner.findUnique({
             where: { code: `VENTAS-${salesPartnerId}` },
           });
 
@@ -299,7 +301,7 @@ const optionalAuth = async (req, res, next) => {
           }
         } catch (err) {
           // Si falla la búsqueda, continuar sin usuario (solo isServiceKey)
-          logger.debug("optionalAuth: No se pudo cargar usuario de Ventas:", err.message);
+          logger.debug('optionalAuth: No se pudo cargar usuario de Ventas:', err.message);
         }
       }
     }
@@ -313,12 +315,12 @@ const optionalAuth = async (req, res, next) => {
 // Middleware para verificar API Key (para integraciones)
 const authenticateApiKey = async (req, res, next) => {
   try {
-    const apiKey = req.headers["x-api-key"];
+    const apiKey = req.headers['x-api-key'];
 
     if (!apiKey) {
       return res.status(401).json({
         success: false,
-        error: "API Key requerida",
+        error: 'API Key requerida',
       });
     }
 
@@ -329,14 +331,14 @@ const authenticateApiKey = async (req, res, next) => {
     if (!keyRecord || !keyRecord.isActive) {
       return res.status(401).json({
         success: false,
-        error: "API Key inválida o inactiva",
+        error: 'API Key inválida o inactiva',
       });
     }
 
     if (keyRecord.expiresAt && new Date(keyRecord.expiresAt) < new Date()) {
       return res.status(401).json({
         success: false,
-        error: "API Key expirada",
+        error: 'API Key expirada',
       });
     }
 
@@ -349,20 +351,20 @@ const authenticateApiKey = async (req, res, next) => {
     req.apiKey = keyRecord;
     next();
   } catch (error) {
-    logger.error("Error de autenticación API Key:", error);
+    logger.error('Error de autenticación API Key:', error);
     return res.status(500).json({
       success: false,
-      error: "Error de autenticación",
+      error: 'Error de autenticación',
     });
   }
 };
 
 // Middleware para verificar rol de admin
 const requireAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== "ADMIN") {
+  if (!req.user || req.user.role !== 'ADMIN') {
     return res.status(403).json({
       success: false,
-      error: "Acceso denegado. Se requiere rol de administrador.",
+      error: 'Acceso denegado. Se requiere rol de administrador.',
     });
   }
   next();
@@ -373,14 +375,14 @@ const requireActivePartner = (req, res, next) => {
   if (!req.user || !req.user.partner) {
     return res.status(403).json({
       success: false,
-      error: "No tienes un perfil de partner asociado.",
+      error: 'No tienes un perfil de partner asociado.',
     });
   }
 
-  if (req.user.partner.status !== "ACTIVE") {
+  if (req.user.partner.status !== 'ACTIVE') {
     return res.status(403).json({
       success: false,
-      error: "Tu cuenta de partner no está activa.",
+      error: 'Tu cuenta de partner no está activa.',
     });
   }
 
@@ -406,17 +408,17 @@ const generateToken = (user) => {
  */
 const requireVentasAdmin = (req, res, next) => {
   // Obtener rol del header
-  const salesUserRole = req.headers["x-sales-user-role"];
+  const salesUserRole = req.headers['x-sales-user-role'];
 
-  logger.debug("Verificando rol de ventas:", {
+  logger.debug('Verificando rol de ventas:', {
     salesUserRole,
-    headers: req.headers
+    headers: req.headers,
   });
 
-  if (!salesUserRole || salesUserRole !== "admin") {
+  if (!salesUserRole || salesUserRole !== 'admin') {
     return res.status(403).json({
       success: false,
-      error: "Se requiere rol de administrador de ventas para acceder a este recurso",
+      error: 'Se requiere rol de administrador de ventas para acceder a este recurso',
     });
   }
 
@@ -432,32 +434,32 @@ const requireVentasAdmin = (req, res, next) => {
 const verifyJWTLight = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, error: "Token de autenticación requerido" });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ success: false, error: 'Token de autenticación requerido' });
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader.split(' ')[1];
     const payload = jwt.verify(token, config.auth.jwtSecret);
 
     const userId = payload.userId || payload.id;
     if (!userId) {
-      return res.status(401).json({ success: false, error: "Token inválido: falta ID de usuario" });
+      return res.status(401).json({ success: false, error: 'Token inválido: falta ID de usuario' });
     }
 
     req.user = {
       id: userId,
       email: payload.email || null,
       // Normalizar rol a mayúsculas para consistencia (demo-form usa "admin", partners usa "ADMIN")
-      role: (payload.role || "").toUpperCase(),
+      role: (payload.role || '').toUpperCase(),
     };
 
     next();
   } catch (error) {
-    if (error.name === "TokenExpiredError") {
-      return res.status(401).json({ success: false, error: "Token expirado" });
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, error: 'Token expirado' });
     }
-    logger.warn("[verifyJWTLight] Token inválido", { message: error.message });
-    return res.status(401).json({ success: false, error: "Token inválido" });
+    logger.warn('[verifyJWTLight] Token inválido', { message: error.message });
+    return res.status(401).json({ success: false, error: 'Token inválido' });
   }
 };
 
@@ -467,10 +469,12 @@ const verifyJWTLight = (req, res, next) => {
  */
 const requireAdminLight = (req, res, next) => {
   if (!req.user) {
-    return res.status(401).json({ success: false, error: "No autenticado" });
+    return res.status(401).json({ success: false, error: 'No autenticado' });
   }
-  if (req.user.role !== "ADMIN") {
-    return res.status(403).json({ success: false, error: "Acceso denegado: se requiere rol ADMIN" });
+  if (req.user.role !== 'ADMIN') {
+    return res
+      .status(403)
+      .json({ success: false, error: 'Acceso denegado: se requiere rol ADMIN' });
   }
   next();
 };

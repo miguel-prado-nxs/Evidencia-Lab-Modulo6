@@ -1,14 +1,14 @@
-const config = require("../config/env");
-const logger = require("../config/logger");
+const config = require('../config/env');
+const logger = require('../config/logger');
 
-const CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4";
+const CLOUDFLARE_API_BASE = 'https://api.cloudflare.com/client/v4';
 
 const ALLOWED_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "image/svg+xml",
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
 ]);
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB (límite de Cloudflare Images)
@@ -37,7 +37,7 @@ const uploadImage = async (buffer, filename, mimeType) => {
 
   if (!accountId || !imagesApiToken) {
     throw new Error(
-      "Cloudflare Images no está configurado. Verifica CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_IMAGES_API_TOKEN."
+      'Cloudflare Images no está configurado. Verifica CLOUDFLARE_ACCOUNT_ID y CLOUDFLARE_IMAGES_API_TOKEN.'
     );
   }
 
@@ -45,28 +45,25 @@ const uploadImage = async (buffer, filename, mimeType) => {
 
   // FormData nativo (Node 18+). Blob wrappea el Buffer para el upload multipart.
   const formData = new FormData();
-  formData.append("file", new Blob([buffer], { type: mimeType }), filename);
+  formData.append('file', new Blob([buffer], { type: mimeType }), filename);
 
-  logger.info("[CloudflareImages:upload] Subiendo imagen", {
+  logger.info('[CloudflareImages:upload] Subiendo imagen', {
     filename,
     mimeType,
     sizeKB: Math.round(buffer.length / 1024),
   });
 
-  const response = await fetch(
-    `${CLOUDFLARE_API_BASE}/accounts/${accountId}/images/v1`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${imagesApiToken}` },
-      body: formData,
-    }
-  );
+  const response = await fetch(`${CLOUDFLARE_API_BASE}/accounts/${accountId}/images/v1`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${imagesApiToken}` },
+    body: formData,
+  });
 
   const json = await response.json();
 
   if (!response.ok || !json.success) {
-    const errMsg = json.errors?.[0]?.message || "Error desconocido";
-    logger.error("[CloudflareImages:upload] Error de API", {
+    const errMsg = json.errors?.[0]?.message || 'Error desconocido';
+    logger.error('[CloudflareImages:upload] Error de API', {
       status: response.status,
       errors: json.errors,
     });
@@ -80,10 +77,10 @@ const uploadImage = async (buffer, filename, mimeType) => {
     json.result.variants?.[0];
 
   if (!url) {
-    throw new Error("Cloudflare no retornó una URL válida para la imagen subida.");
+    throw new Error('Cloudflare no retornó una URL válida para la imagen subida.');
   }
 
-  logger.info("[CloudflareImages:upload] Imagen subida exitosamente", { imageId, url });
+  logger.info('[CloudflareImages:upload] Imagen subida exitosamente', { imageId, url });
 
   return { imageId, url };
 };
@@ -96,15 +93,15 @@ const deleteImage = async (imageId) => {
   const { accountId, imagesApiToken } = config.cloudflare;
 
   if (!accountId || !imagesApiToken) {
-    throw new Error("Cloudflare Images no está configurado.");
+    throw new Error('Cloudflare Images no está configurado.');
   }
 
-  logger.info("[CloudflareImages:delete] Eliminando imagen", { imageId });
+  logger.info('[CloudflareImages:delete] Eliminando imagen', { imageId });
 
   const response = await fetch(
     `${CLOUDFLARE_API_BASE}/accounts/${accountId}/images/v1/${imageId}`,
     {
-      method: "DELETE",
+      method: 'DELETE',
       headers: { Authorization: `Bearer ${imagesApiToken}` },
     }
   );
@@ -112,15 +109,15 @@ const deleteImage = async (imageId) => {
   const json = await response.json();
 
   if (!response.ok || !json.success) {
-    const errMsg = json.errors?.[0]?.message || "Error al eliminar imagen";
-    logger.error("[CloudflareImages:delete] Error de API", {
+    const errMsg = json.errors?.[0]?.message || 'Error al eliminar imagen';
+    logger.error('[CloudflareImages:delete] Error de API', {
       imageId,
       errors: json.errors,
     });
     throw new Error(`Error al eliminar imagen de Cloudflare: ${errMsg}`);
   }
 
-  logger.info("[CloudflareImages:delete] Imagen eliminada", { imageId });
+  logger.info('[CloudflareImages:delete] Imagen eliminada', { imageId });
 };
 
 module.exports = { uploadImage, deleteImage };

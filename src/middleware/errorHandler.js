@@ -1,8 +1,8 @@
-const logger = require("../config/logger");
+const logger = require('../config/logger');
 
 // Manejador de errores centralizado
 const errorHandler = (err, req, res, next) => {
-  logger.error("Error:", {
+  logger.error('Error:', {
     message: err.message,
     stack: err.stack,
     path: req.path,
@@ -10,37 +10,37 @@ const errorHandler = (err, req, res, next) => {
   });
 
   // Errores de Prisma
-  if (err.code === "P2002") {
+  if (err.code === 'P2002') {
     return res.status(409).json({
       success: false,
-      error: "Ya existe un registro con esos datos únicos",
+      error: 'Ya existe un registro con esos datos únicos',
     });
   }
 
-  if (err.code === "P2025") {
+  if (err.code === 'P2025') {
     return res.status(404).json({
       success: false,
-      error: "Registro no encontrado",
+      error: 'Registro no encontrado',
     });
   }
 
   // Errores de validación de Zod
-  if (err.name === "ZodError") {
+  if (err.name === 'ZodError') {
     return res.status(400).json({
       success: false,
-      error: "Error de validación",
+      error: 'Error de validación',
       details: err.errors,
     });
   }
 
   // Error por defecto
   const statusCode = err.statusCode || 500;
-  const message = err.message || "Error interno del servidor";
+  const message = err.message || 'Error interno del servidor';
 
   res.status(statusCode).json({
     success: false,
     error: message,
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
 
@@ -53,4 +53,3 @@ const notFoundHandler = (req, res) => {
 };
 
 module.exports = { errorHandler, notFoundHandler };
-

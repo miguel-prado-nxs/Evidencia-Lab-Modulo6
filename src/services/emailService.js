@@ -3,15 +3,15 @@
  * Maneja el envío de emails usando Resend
  */
 
-const { Resend } = require("resend");
-const prisma = require("../config/database");
-const logger = require("../config/logger");
+const { Resend } = require('resend');
+const prisma = require('../config/database');
+const logger = require('../config/logger');
 
 // Inicializar cliente de Resend
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Email remitente por defecto
-const DEFAULT_FROM = process.env.EMAIL_FROM || "EasyOrder Partners <noreply@partners.easyorder.mx>";
+const DEFAULT_FROM = process.env.EMAIL_FROM || 'EasyOrder Partners <noreply@partners.easyorder.mx>';
 
 /**
  * Obtener plantilla de email de la BD
@@ -37,11 +37,11 @@ async function getTemplate(templateName) {
  * Reemplazar variables en el template
  */
 function replaceVariables(text, variables) {
-  if (!text) return "";
+  if (!text) return '';
   let result = text;
   for (const [key, value] of Object.entries(variables)) {
-    const regex = new RegExp(`{{\\s*${key}\\s*}}`, "g");
-    result = result.replace(regex, String(value || ""));
+    const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
+    result = result.replace(regex, String(value || ''));
   }
   return result;
 }
@@ -62,14 +62,18 @@ function getDefaultHtml(variables) {
         <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 700;">EasyOrder Partners</h1>
       </div>
       <div style="padding: 40px 30px; background: #ffffff;">
-        ${variables.name ? `<p style="color: #333; font-size: 16px; margin-bottom: 20px;">Hola <strong>${variables.name}</strong>,</p>` : ""}
-        <h2 style="color: #333; font-size: 22px; margin-bottom: 15px;">${variables.title || "Notificación"}</h2>
-        <p style="color: #666; line-height: 1.7; font-size: 15px;">${variables.message || ""}</p>
-        ${variables.actionUrl ? `
+        ${variables.name ? `<p style="color: #333; font-size: 16px; margin-bottom: 20px;">Hola <strong>${variables.name}</strong>,</p>` : ''}
+        <h2 style="color: #333; font-size: 22px; margin-bottom: 15px;">${variables.title || 'Notificación'}</h2>
+        <p style="color: #666; line-height: 1.7; font-size: 15px;">${variables.message || ''}</p>
+        ${
+          variables.actionUrl
+            ? `
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${variables.actionUrl}" style="display: inline-block; background: linear-gradient(135deg, #FF8C00, #FF6B00); color: white; padding: 14px 35px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">${variables.actionText || "Ver más"}</a>
+            <a href="${variables.actionUrl}" style="display: inline-block; background: linear-gradient(135deg, #FF8C00, #FF6B00); color: white; padding: 14px 35px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">${variables.actionText || 'Ver más'}</a>
           </div>
-        ` : ""}
+        `
+            : ''
+        }
       </div>
       <div style="background: #f9f9f9; padding: 25px; text-align: center; border-top: 1px solid #eee;">
         <p style="color: #999; font-size: 12px; margin: 0;">Este email fue enviado por EasyOrder Partners</p>
@@ -96,9 +100,9 @@ async function sendTemplateEmail(templateName, to, variables = {}) {
       // Si no hay plantilla, usar una por defecto
       return sendEmail({
         to,
-        subject: variables.title || "Notificación de EasyOrder Partners",
+        subject: variables.title || 'Notificación de EasyOrder Partners',
         html: getDefaultHtml(variables),
-        text: `${variables.title || "Notificación"}\n\n${variables.message || ""}\n\n-- EasyOrder Partners`,
+        text: `${variables.title || 'Notificación'}\n\n${variables.message || ''}\n\n-- EasyOrder Partners`,
       });
     }
 
@@ -156,7 +160,7 @@ async function sendEmail({ to, subject, html, text, replyTo = null }) {
 async function sendTestEmail(to) {
   return sendEmail({
     to,
-    subject: "Test Email - EasyOrder Partners",
+    subject: 'Test Email - EasyOrder Partners',
     html: `
       <!DOCTYPE html>
       <html>
@@ -171,7 +175,7 @@ async function sendTestEmail(to) {
           <div style="padding: 30px;">
             <p style="color: #333; font-size: 16px;">Si recibes este email, la configuración de <strong>Resend</strong> es correcta.</p>
             <p style="color: #666; font-size: 14px; margin-top: 20px;">
-              <strong>Fecha:</strong> ${new Date().toLocaleString("es-MX", { timeZone: "America/Mexico_City" })}<br>
+              <strong>Fecha:</strong> ${new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' })}<br>
               <strong>Servicio:</strong> Resend API<br>
               <strong>Dominio:</strong> partners.easyorder.mx
             </p>
@@ -180,7 +184,7 @@ async function sendTestEmail(to) {
       </body>
       </html>
     `,
-    text: "Email de prueba. Si recibes este email, la configuración de Resend es correcta.",
+    text: 'Email de prueba. Si recibes este email, la configuración de Resend es correcta.',
   });
 }
 
@@ -188,15 +192,16 @@ async function sendTestEmail(to) {
  * Enviar email de recuperación de contraseña
  */
 async function sendPasswordResetEmail(to, name, resetToken) {
-  const resetUrl = `${process.env.APP_URL || "https://partners.easyorder.mx"}/reset-password?token=${resetToken}`;
-  
-  return sendTemplateEmail("password_reset", to, {
+  const resetUrl = `${process.env.APP_URL || 'https://partners.easyorder.mx'}/reset-password?token=${resetToken}`;
+
+  return sendTemplateEmail('password_reset', to, {
     name,
-    title: "Recupera tu contraseña",
-    message: "Recibimos una solicitud para restablecer la contraseña de tu cuenta. Haz clic en el botón de abajo para crear una nueva contraseña. Este enlace expirará en 1 hora.",
+    title: 'Recupera tu contraseña',
+    message:
+      'Recibimos una solicitud para restablecer la contraseña de tu cuenta. Haz clic en el botón de abajo para crear una nueva contraseña. Este enlace expirará en 1 hora.',
     resetLink: resetUrl,
     actionUrl: resetUrl,
-    actionText: "Restablecer Contraseña",
+    actionText: 'Restablecer Contraseña',
   });
 }
 
@@ -204,15 +209,16 @@ async function sendPasswordResetEmail(to, name, resetToken) {
  * Enviar email de verificación
  */
 async function sendVerificationEmail(to, name, verificationToken) {
-  const verificationUrl = `${process.env.APP_URL || "https://partners.easyorder.mx"}/verify-email?token=${verificationToken}`;
-  
-  return sendTemplateEmail("email_verification", to, {
+  const verificationUrl = `${process.env.APP_URL || 'https://partners.easyorder.mx'}/verify-email?token=${verificationToken}`;
+
+  return sendTemplateEmail('email_verification', to, {
     name,
-    title: "Verifica tu email",
-    message: "Gracias por registrarte en EasyOrder Partners. Por favor verifica tu dirección de email haciendo clic en el botón de abajo.",
+    title: 'Verifica tu email',
+    message:
+      'Gracias por registrarte en EasyOrder Partners. Por favor verifica tu dirección de email haciendo clic en el botón de abajo.',
     verificationLink: verificationUrl,
     actionUrl: verificationUrl,
-    actionText: "Verificar Email",
+    actionText: 'Verificar Email',
   });
 }
 
@@ -220,10 +226,11 @@ async function sendVerificationEmail(to, name, verificationToken) {
  * Enviar email de bienvenida
  */
 async function sendWelcomeEmail(to, name, partnerCode, referralLink) {
-  return sendTemplateEmail("welcome", to, {
+  return sendTemplateEmail('welcome', to, {
     name,
-    title: "¡Bienvenido a EasyOrder Partners!",
-    message: "Tu solicitud ha sido recibida. Revisaremos tu información y te notificaremos cuando tu cuenta esté activa.",
+    title: '¡Bienvenido a EasyOrder Partners!',
+    message:
+      'Tu solicitud ha sido recibida. Revisaremos tu información y te notificaremos cuando tu cuenta esté activa.',
     code: partnerCode,
     referralLink,
   });
@@ -233,14 +240,15 @@ async function sendWelcomeEmail(to, name, partnerCode, referralLink) {
  * Enviar email de partner aprobado
  */
 async function sendPartnerApprovedEmail(to, name, partnerCode, referralLink) {
-  return sendTemplateEmail("partner_approved", to, {
+  return sendTemplateEmail('partner_approved', to, {
     name,
-    title: "¡Tu cuenta ha sido aprobada!",
-    message: "¡Felicidades! Tu cuenta de partner ha sido aprobada. Ya puedes comenzar a generar leads y ganar comisiones.",
+    title: '¡Tu cuenta ha sido aprobada!',
+    message:
+      '¡Felicidades! Tu cuenta de partner ha sido aprobada. Ya puedes comenzar a generar leads y ganar comisiones.',
     code: partnerCode,
     referralLink,
-    actionUrl: `${process.env.APP_URL || "https://partners.easyorder.mx"}/partner`,
-    actionText: "Ir al Dashboard",
+    actionUrl: `${process.env.APP_URL || 'https://partners.easyorder.mx'}/partner`,
+    actionText: 'Ir al Dashboard',
   });
 }
 

@@ -1,20 +1,20 @@
-const prisma = require("../config/database");
+const prisma = require('../config/database');
 
-const BASE_URL = "https://easyorder.mx/";
+const BASE_URL = 'https://easyorder.mx/';
 
 /**
  * Generar el link completo con parámetros UTM
  */
 const buildFullLink = (partnerCode, utmParams) => {
   const params = new URLSearchParams();
-  params.set("ref", partnerCode);
-  
-  if (utmParams.utmSource) params.set("utm_source", utmParams.utmSource);
-  if (utmParams.utmMedium) params.set("utm_medium", utmParams.utmMedium);
-  if (utmParams.utmCampaign) params.set("utm_campaign", utmParams.utmCampaign);
-  if (utmParams.utmTerm) params.set("utm_term", utmParams.utmTerm);
-  if (utmParams.utmContent) params.set("utm_content", utmParams.utmContent);
-  
+  params.set('ref', partnerCode);
+
+  if (utmParams.utmSource) params.set('utm_source', utmParams.utmSource);
+  if (utmParams.utmMedium) params.set('utm_medium', utmParams.utmMedium);
+  if (utmParams.utmCampaign) params.set('utm_campaign', utmParams.utmCampaign);
+  if (utmParams.utmTerm) params.set('utm_term', utmParams.utmTerm);
+  if (utmParams.utmContent) params.set('utm_content', utmParams.utmContent);
+
   return `${BASE_URL}?${params.toString()}`;
 };
 
@@ -31,7 +31,7 @@ const createCampaign = async (partnerId, data) => {
   });
 
   if (!partner) {
-    throw new Error("Partner no encontrado");
+    throw new Error('Partner no encontrado');
   }
 
   // Generar el link completo
@@ -67,7 +67,7 @@ const listCampaigns = async (partnerId) => {
   // Obtener todas las campañas del partner
   const campaigns = await prisma.referralCampaign.findMany({
     where: { partnerId },
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
   });
 
   // Para cada campaña, calcular estadísticas desde leads
@@ -88,7 +88,7 @@ const listCampaigns = async (partnerId) => {
           partnerId,
           utmCampaign: campaign.utmCampaign,
           utmSource: campaign.utmSource,
-          status: "WON",
+          status: 'WON',
         },
       });
 
@@ -104,9 +104,8 @@ const listCampaigns = async (partnerId) => {
         _sum: { totalValue: true },
       });
 
-      const conversionRate = leadsCount > 0
-        ? ((conversionsCount / leadsCount) * 100).toFixed(1)
-        : 0;
+      const conversionRate =
+        leadsCount > 0 ? ((conversionsCount / leadsCount) * 100).toFixed(1) : 0;
 
       return {
         ...campaign,
@@ -150,7 +149,7 @@ const getCampaignById = async (partnerId, campaignId) => {
       partnerId,
       utmCampaign: campaign.utmCampaign,
       utmSource: campaign.utmSource,
-      status: "WON",
+      status: 'WON',
     },
   });
 
@@ -187,7 +186,7 @@ const deleteCampaign = async (partnerId, campaignId) => {
   });
 
   if (!campaign) {
-    throw new Error("Campaña no encontrada");
+    throw new Error('Campaña no encontrada');
   }
 
   await prisma.referralCampaign.delete({
@@ -216,9 +215,7 @@ const getReferralStats = async (partnerId) => {
   const totalClicks = totalLeads * 3; // Estimación: 3 clics por lead
   const uniqueVisitors = Math.round(totalClicks * 0.7); // Estimación: 70% únicos
 
-  const conversionRate = totalClicks > 0
-    ? ((conversions / totalClicks) * 100).toFixed(1)
-    : 0;
+  const conversionRate = totalClicks > 0 ? ((conversions / totalClicks) * 100).toFixed(1) : 0;
 
   return {
     totalClicks,
@@ -264,7 +261,7 @@ const getPartnerReferralInfo = async (partnerId) => {
   });
 
   if (!partner) {
-    throw new Error("Partner no encontrado");
+    throw new Error('Partner no encontrado');
   }
 
   return {
@@ -284,4 +281,3 @@ module.exports = {
   getPartnerReferralInfo,
   buildFullLink,
 };
-

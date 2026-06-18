@@ -1,5 +1,5 @@
-const prisma = require("../config/database");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
 
 let isRunning = false;
 let intervalId = null;
@@ -9,426 +9,449 @@ const DEFAULT_INTERVAL_MS = 60 * 1000;
 const DEFAULT_ORPHAN_TIMEOUT_HOURS = 0.25; // 15 minutos
 
 const getIntervalMs = () => {
-    const parsed = Number.parseInt(process.env.CAMPAIGN_RECONCILIATION_INTERVAL_MS || "", 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-        return DEFAULT_INTERVAL_MS;
-    }
-    return parsed;
+  const parsed = Number.parseInt(process.env.CAMPAIGN_RECONCILIATION_INTERVAL_MS || '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_INTERVAL_MS;
+  }
+  return parsed;
 };
 
 const getOrphanTimeoutHours = () => {
-    const parsed = Number.parseFloat(process.env.CAMPAIGN_CALLING_TIMEOUT_HOURS || "");
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-        return DEFAULT_ORPHAN_TIMEOUT_HOURS;
-    }
-    return parsed;
+  const parsed = Number.parseFloat(process.env.CAMPAIGN_CALLING_TIMEOUT_HOURS || '');
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_ORPHAN_TIMEOUT_HOURS;
+  }
+  return parsed;
 };
 
 const getOrphanThresholdDate = () => {
-    const orphanTimeoutHours = getOrphanTimeoutHours();
-    return new Date(Date.now() - orphanTimeoutHours * 60 * 60 * 1000);
+  const orphanTimeoutHours = getOrphanTimeoutHours();
+  return new Date(Date.now() - orphanTimeoutHours * 60 * 60 * 1000);
 };
 
 const recalculateCampaignMetrics = async (campaignId) => {
-    const [campaign, statusGroups, couponGroups] = await Promise.all([
-        prisma.campaign.findUnique({
-            where: { id: campaignId },
-            select: { status: true, completedAt: true, scheduledAt: true },
-        }),
-        prisma.campaignContact.groupBy({
-            by: ["status"],
-            where: { campaignId },
-            _count: { _all: true },
-        }),
-        prisma.campaignCoupon.count({
-            where: {
-                campaignId,
-                status: "SENT"
-            },
-        }),
-    ]);
+  const [campaign, statusGroups, couponGroups] = await Promise.all([
+    prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { status: true, completedAt: true, scheduledAt: true },
+    }),
+    prisma.campaignContact.groupBy({
+      by: ['status'],
+      where: { campaignId },
+      _count: { _all: true },
+    }),
+    prisma.campaignCoupon.count({
+      where: {
+        campaignId,
+        status: 'SENT',
+      },
+    }),
+  ]);
 
-    const statusCount = statusGroups.reduce((accumulator, group) => {
-        accumulator[group.status] = group._count._all;
-        return accumulator;
-    }, {});
+  const statusCount = statusGroups.reduce((accumulator, group) => {
+    accumulator[group.status] = group._count._all;
+    return accumulator;
+  }, {});
 
-    const totalContacts = Object.values(statusCount).reduce((sum, count) => sum + count, 0);
-    const totalCalled =
-        (statusCount.CALLING || 0) +
-        (statusCount.CALLED || 0) +
-        (statusCount.RESPONDED || 0) +
-        (statusCount.SENT || 0) +
-        (statusCount.DELIVERED || 0) +
-        (statusCount.VISITED || 0) +
-        (statusCount.CONVERTED || 0) +
-        (statusCount.FAILED || 0);
-    const totalResponded = (statusCount.RESPONDED || 0) + (statusCount.VISITED || 0);
-    const totalConverted = statusCount.CONVERTED || 0;
-    const totalFailed = statusCount.FAILED || 0;
-    const couponsVisited = statusCount.VISITED || 0;
-    const couponsConverted = statusCount.CONVERTED || 0;
-    const pendingContacts = (statusCount.PENDING || 0) + (statusCount.CALLING || 0) + (statusCount.SCHEDULED || 0);
-    const pausedContacts = statusCount.PAUSED || 0;
+  const totalContacts = Object.values(statusCount).reduce((sum, count) => sum + count, 0);
+  const totalCalled =
+    (statusCount.CALLING || 0) +
+    (statusCount.CALLED || 0) +
+    (statusCount.RESPONDED || 0) +
+    (statusCount.SENT || 0) +
+    (statusCount.DELIVERED || 0) +
+    (statusCount.VISITED || 0) +
+    (statusCount.CONVERTED || 0) +
+    (statusCount.FAILED || 0);
+  const totalResponded = (statusCount.RESPONDED || 0) + (statusCount.VISITED || 0);
+  const totalConverted = statusCount.CONVERTED || 0;
+  const totalFailed = statusCount.FAILED || 0;
+  const couponsVisited = statusCount.VISITED || 0;
+  const couponsConverted = statusCount.CONVERTED || 0;
+  const pendingContacts =
+    (statusCount.PENDING || 0) + (statusCount.CALLING || 0) + (statusCount.SCHEDULED || 0);
+  const pausedContacts = statusCount.PAUSED || 0;
 
-    const isCampaignActiveOrPaused = campaign && (campaign.status === "ACTIVE" || campaign.status === "PAUSED");
-    // Solo marcar como COMPLETED si ya no hay contactos PENDING, CALLING ni SCHEDULED.
-    const shouldMarkCompleted = totalContacts > 0 && pendingContacts === 0 && pausedContacts === 0 && isCampaignActiveOrPaused;
+  const isCampaignActiveOrPaused =
+    campaign && (campaign.status === 'ACTIVE' || campaign.status === 'PAUSED');
+  // Solo marcar como COMPLETED si ya no hay contactos PENDING, CALLING ni SCHEDULED.
+  const shouldMarkCompleted =
+    totalContacts > 0 && pendingContacts === 0 && pausedContacts === 0 && isCampaignActiveOrPaused;
 
-    const campaignUpdateData = {
-        totalContacts,
-        totalCalled,
-        totalResponded,
-        totalConverted,
-        totalFailed,
-        couponsSent: couponGroups,
-        couponsVisited,
-        couponsConverted,
-    };
+  const campaignUpdateData = {
+    totalContacts,
+    totalCalled,
+    totalResponded,
+    totalConverted,
+    totalFailed,
+    couponsSent: couponGroups,
+    couponsVisited,
+    couponsConverted,
+  };
 
-    let updatedStatus = undefined;
+  let updatedStatus = undefined;
 
-    // Detectar si una campaña SCHEDULED ya llegó a su hora y convertirla a ACTIVE
-    if (campaign && campaign.status === "SCHEDULED" && campaign.scheduledAt && new Date() >= campaign.scheduledAt) {
-        updatedStatus = "ACTIVE";
-    }
+  // Detectar si una campaña SCHEDULED ya llegó a su hora y convertirla a ACTIVE
+  if (
+    campaign &&
+    campaign.status === 'SCHEDULED' &&
+    campaign.scheduledAt &&
+    new Date() >= campaign.scheduledAt
+  ) {
+    updatedStatus = 'ACTIVE';
+  }
 
-    if (shouldMarkCompleted || (updatedStatus === "ACTIVE" && pendingContacts === 0 && totalContacts > 0 && pausedContacts === 0)) {
-        campaignUpdateData.status = "COMPLETED";
-        campaignUpdateData.completedAt = campaign.completedAt || new Date();
-    } else if (updatedStatus === "ACTIVE") {
-        campaignUpdateData.status = "ACTIVE";
-    }
+  if (
+    shouldMarkCompleted ||
+    (updatedStatus === 'ACTIVE' &&
+      pendingContacts === 0 &&
+      totalContacts > 0 &&
+      pausedContacts === 0)
+  ) {
+    campaignUpdateData.status = 'COMPLETED';
+    campaignUpdateData.completedAt = campaign.completedAt || new Date();
+  } else if (updatedStatus === 'ACTIVE') {
+    campaignUpdateData.status = 'ACTIVE';
+  }
 
-    await prisma.campaign.update({
-        where: { id: campaignId },
-        data: campaignUpdateData,
+  await prisma.campaign.update({
+    where: { id: campaignId },
+    data: campaignUpdateData,
+  });
+
+  if (campaign && campaign.status === 'SCHEDULED' && updatedStatus === 'ACTIVE') {
+    // Cuando una campaña SCHEDULED se activa, los contactos SCHEDULED ya fueron despachados a ElevenLabs
+    // Solo necesitamos cambiar su estado a CALLING para que puedan recibir webhooks
+    await prisma.campaignContact.updateMany({
+      where: {
+        campaignId: campaignId,
+        status: 'SCHEDULED',
+      },
+      data: {
+        status: 'CALLING',
+      },
     });
-
-    if (campaign && campaign.status === "SCHEDULED" && updatedStatus === "ACTIVE") {
-        // Cuando una campaña SCHEDULED se activa, los contactos SCHEDULED ya fueron despachados a ElevenLabs
-        // Solo necesitamos cambiar su estado a CALLING para que puedan recibir webhooks
-        await prisma.campaignContact.updateMany({
-            where: {
-                campaignId: campaignId,
-                status: "SCHEDULED"
-            },
-            data: {
-                status: "CALLING"
-            }
-        });
-        logger.info(`[CampaignReconciliationWorker] Campaign ${campaignId} activated. Contacts moved from SCHEDULED to CALLING.`);
-    }
+    logger.info(
+      `[CampaignReconciliationWorker] Campaign ${campaignId} activated. Contacts moved from SCHEDULED to CALLING.`
+    );
+  }
 };
 
 const appendReconciliationErrorMessage = (establishmentData, errorMessage) => {
-    const previous = establishmentData && typeof establishmentData === "object" ? establishmentData : {};
-    const previousReconciliation =
-        previous.reconciliation && typeof previous.reconciliation === "object"
-            ? previous.reconciliation
-            : {};
+  const previous =
+    establishmentData && typeof establishmentData === 'object' ? establishmentData : {};
+  const previousReconciliation =
+    previous.reconciliation && typeof previous.reconciliation === 'object'
+      ? previous.reconciliation
+      : {};
 
-    return {
-        ...previous,
-        reconciliation: {
-            ...previousReconciliation,
-            errorMessage,
-            lastCheckedAt: new Date().toISOString(),
-        },
-    };
+  return {
+    ...previous,
+    reconciliation: {
+      ...previousReconciliation,
+      errorMessage,
+      lastCheckedAt: new Date().toISOString(),
+    },
+  };
 };
 
 const isAlreadyProcessedByConversation = async (contact) => {
-    if (!contact.conversationId) {
-        return null;
-    }
+  if (!contact.conversationId) {
+    return null;
+  }
 
-    return prisma.campaignContact.findFirst({
-        where: {
-            conversationId: contact.conversationId,
-            webhookReceivedAt: { not: null },
-        },
-        select: {
-            id: true,
-            campaignId: true,
-            webhookReceivedAt: true,
-        },
-    });
+  return prisma.campaignContact.findFirst({
+    where: {
+      conversationId: contact.conversationId,
+      webhookReceivedAt: { not: null },
+    },
+    select: {
+      id: true,
+      campaignId: true,
+      webhookReceivedAt: true,
+    },
+  });
 };
 
 const resolveClosedStatusFromContact = (contact) => {
-    if (!contact || typeof contact !== "object") {
-        return "CALLED";
-    }
+  if (!contact || typeof contact !== 'object') {
+    return 'CALLED';
+  }
 
-    if (contact.errorReason) {
-        return "FAILED";
-    }
+  if (contact.errorReason) {
+    return 'FAILED';
+  }
 
-    return "CALLED";
+  return 'CALLED';
 };
 
 const reconcileContact = async (contact, orphanThreshold) => {
-    const context = {
-        campaignId: contact.campaignId,
-        contactId: contact.id,
-        providerBatchId: contact.providerBatchId,
-        status: contact.status,
-    };
+  const context = {
+    campaignId: contact.campaignId,
+    contactId: contact.id,
+    providerBatchId: contact.providerBatchId,
+    status: contact.status,
+  };
 
-    const processedByConversation = await isAlreadyProcessedByConversation(contact);
-    if (processedByConversation) {
-        if (processedByConversation.id === contact.id && contact.status === "CALLING") {
-            const resolvedStatus = resolveClosedStatusFromContact(contact);
+  const processedByConversation = await isAlreadyProcessedByConversation(contact);
+  if (processedByConversation) {
+    if (processedByConversation.id === contact.id && contact.status === 'CALLING') {
+      const resolvedStatus = resolveClosedStatusFromContact(contact);
 
-            await prisma.campaignContact.update({
-                where: { id: contact.id },
-                data: {
-                    status: resolvedStatus,
-                },
-            });
-
-            logger.warn("[CampaignReconciliationWorker] Contact healed from inconsistent state", {
-                ...context,
-                conversationId: contact.conversationId,
-                webhookReceivedAt: processedByConversation.webhookReceivedAt,
-                processedContactId: processedByConversation.id,
-                action: "healed_closed_contact_state",
-                previousStatus: "CALLING",
-                newStatus: resolvedStatus,
-            });
-
-            return { updated: true, reason: "healed_inconsistent_state" };
-        }
-
-        logger.info("[CampaignReconciliationWorker] Contact skipped (already closed by webhook)", {
-            ...context,
-            conversationId: contact.conversationId,
-            webhookReceivedAt: processedByConversation.webhookReceivedAt,
-            processedContactId: processedByConversation.id,
-            action: "idempotency_skip",
-        });
-        return { updated: false, reason: "idempotent" };
-    }
-
-    if (!["CALLING", "PAUSED"].includes(contact.status)) {
-        return { updated: false, reason: "not_calling_or_paused" };
-    }
-
-    const createdAt = new Date(contact.createdAt);
-    if (createdAt > orphanThreshold) {
-        return { updated: false, reason: "within_timeout_window" };
-    }
-
-    const timeoutHours = getOrphanTimeoutHours();
-    let errorReason = `Reconciliation timeout: ${contact.status} without closure for more than ${timeoutHours}h`;
-    let newStatus = "FAILED";
-    let action = "orphan_timeout_failed";
-
-    // Si tiene conversationId pero no webhookReceivedAt, y se pasó el timeout
-    // verificamos si tiene datos o fue cortada inmediatamente (duración 0, sin transcripción)
-    if (contact.conversationId) {
-        const hasData = contact.callDuration != null || contact.callTranscript != null;
-        if (!hasData) {
-            errorReason = "Call terminated immediately by provider (no data received)";
-            action = "orphan_terminated_immediately";
-        } else {
-            // Si tiene conversationId y datos parciales pero el webhook se perdió, completamos.
-            newStatus = "CALLED";
-            errorReason = null;
-            action = "orphan_healed_with_partial_data";
-        }
-    }
-
-    const updateData = {
-        status: newStatus,
-    };
-
-    if (errorReason) {
-        updateData.errorReason = errorReason;
-        updateData.establishmentData = appendReconciliationErrorMessage(contact.establishmentData, errorReason);
-    }
-
-    await prisma.campaignContact.update({
+      await prisma.campaignContact.update({
         where: { id: contact.id },
-        data: updateData,
-    });
+        data: {
+          status: resolvedStatus,
+        },
+      });
 
-    logger.warn(`[CampaignReconciliationWorker] Orphan contact moved to ${newStatus}`, {
+      logger.warn('[CampaignReconciliationWorker] Contact healed from inconsistent state', {
         ...context,
-        action,
-        errorReason,
-    });
+        conversationId: contact.conversationId,
+        webhookReceivedAt: processedByConversation.webhookReceivedAt,
+        processedContactId: processedByConversation.id,
+        action: 'healed_closed_contact_state',
+        previousStatus: 'CALLING',
+        newStatus: resolvedStatus,
+      });
 
-    return { updated: true, reason: "orphan_timeout" };
+      return { updated: true, reason: 'healed_inconsistent_state' };
+    }
+
+    logger.info('[CampaignReconciliationWorker] Contact skipped (already closed by webhook)', {
+      ...context,
+      conversationId: contact.conversationId,
+      webhookReceivedAt: processedByConversation.webhookReceivedAt,
+      processedContactId: processedByConversation.id,
+      action: 'idempotency_skip',
+    });
+    return { updated: false, reason: 'idempotent' };
+  }
+
+  if (!['CALLING', 'PAUSED'].includes(contact.status)) {
+    return { updated: false, reason: 'not_calling_or_paused' };
+  }
+
+  const createdAt = new Date(contact.createdAt);
+  if (createdAt > orphanThreshold) {
+    return { updated: false, reason: 'within_timeout_window' };
+  }
+
+  const timeoutHours = getOrphanTimeoutHours();
+  let errorReason = `Reconciliation timeout: ${contact.status} without closure for more than ${timeoutHours}h`;
+  let newStatus = 'FAILED';
+  let action = 'orphan_timeout_failed';
+
+  // Si tiene conversationId pero no webhookReceivedAt, y se pasó el timeout
+  // verificamos si tiene datos o fue cortada inmediatamente (duración 0, sin transcripción)
+  if (contact.conversationId) {
+    const hasData = contact.callDuration != null || contact.callTranscript != null;
+    if (!hasData) {
+      errorReason = 'Call terminated immediately by provider (no data received)';
+      action = 'orphan_terminated_immediately';
+    } else {
+      // Si tiene conversationId y datos parciales pero el webhook se perdió, completamos.
+      newStatus = 'CALLED';
+      errorReason = null;
+      action = 'orphan_healed_with_partial_data';
+    }
+  }
+
+  const updateData = {
+    status: newStatus,
+  };
+
+  if (errorReason) {
+    updateData.errorReason = errorReason;
+    updateData.establishmentData = appendReconciliationErrorMessage(
+      contact.establishmentData,
+      errorReason
+    );
+  }
+
+  await prisma.campaignContact.update({
+    where: { id: contact.id },
+    data: updateData,
+  });
+
+  logger.warn(`[CampaignReconciliationWorker] Orphan contact moved to ${newStatus}`, {
+    ...context,
+    action,
+    errorReason,
+  });
+
+  return { updated: true, reason: 'orphan_timeout' };
 };
 
 const runCycle = async () => {
-    if (!isRunning) {
-        return;
+  if (!isRunning) {
+    return;
+  }
+
+  if (isCycleRunning) {
+    logger.warn(
+      '[CampaignReconciliationWorker] Previous cycle still running, skipping this interval'
+    );
+    return;
+  }
+
+  isCycleRunning = true;
+
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      where: {
+        OR: [
+          {
+            status: 'ACTIVE',
+            contacts: {
+              some: {
+                providerBatchId: { not: null },
+              },
+            },
+          },
+          {
+            status: 'SCHEDULED',
+          },
+        ],
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (campaigns.length === 0) {
+      logger.info(
+        '[CampaignReconciliationWorker] No active campaigns with batch contacts to reconcile'
+      );
+      return;
     }
 
-    if (isCycleRunning) {
-        logger.warn("[CampaignReconciliationWorker] Previous cycle still running, skipping this interval");
-        return;
-    }
+    const orphanThreshold = getOrphanThresholdDate();
+    const summary = {
+      campaignsProcessed: 0,
+      contactsScanned: 0,
+      contactsUpdated: 0,
+      idempotentSkips: 0,
+      errors: 0,
+    };
 
-    isCycleRunning = true;
-
-    try {
-        const campaigns = await prisma.campaign.findMany({
-            where: {
-                OR: [
-                    {
-                        status: "ACTIVE",
-                        contacts: {
-                            some: {
-                                providerBatchId: { not: null },
-                            },
-                        },
-                    },
-                    {
-                        status: "SCHEDULED",
-                    },
-                ],
-            },
-            select: {
-                id: true,
-            },
+    for (const campaign of campaigns) {
+      try {
+        const contacts = await prisma.campaignContact.findMany({
+          where: {
+            campaignId: campaign.id,
+            providerBatchId: { not: null },
+          },
+          select: {
+            id: true,
+            campaignId: true,
+            providerBatchId: true,
+            status: true,
+            errorReason: true,
+            conversationId: true,
+            callDuration: true,
+            callTranscript: true,
+            webhookReceivedAt: true,
+            createdAt: true,
+            establishmentData: true,
+          },
         });
 
-        if (campaigns.length === 0) {
-            logger.info("[CampaignReconciliationWorker] No active campaigns with batch contacts to reconcile");
-            return;
-        }
+        summary.campaignsProcessed += 1;
+        summary.contactsScanned += contacts.length;
 
-        const orphanThreshold = getOrphanThresholdDate();
-        const summary = {
-            campaignsProcessed: 0,
-            contactsScanned: 0,
-            contactsUpdated: 0,
-            idempotentSkips: 0,
-            errors: 0,
-        };
-
-        for (const campaign of campaigns) {
-            try {
-                const contacts = await prisma.campaignContact.findMany({
-                    where: {
-                        campaignId: campaign.id,
-                        providerBatchId: { not: null },
-                    },
-                    select: {
-                        id: true,
-                        campaignId: true,
-                        providerBatchId: true,
-                        status: true,
-                        errorReason: true,
-                        conversationId: true,
-                        callDuration: true,
-                        callTranscript: true,
-                        webhookReceivedAt: true,
-                        createdAt: true,
-                        establishmentData: true,
-                    },
-                });
-
-                summary.campaignsProcessed += 1;
-                summary.contactsScanned += contacts.length;
-
-                for (const contact of contacts) {
-                    try {
-                        const result = await reconcileContact(contact, orphanThreshold);
-                        if (result.updated) {
-                            summary.contactsUpdated += 1;
-                        }
-                        if (result.reason === "idempotent") {
-                            summary.idempotentSkips += 1;
-                        }
-                    } catch (error) {
-                        summary.errors += 1;
-                        logger.error("[CampaignReconciliationWorker] Failed to reconcile contact", {
-                            campaignId: contact.campaignId,
-                            contactId: contact.id,
-                            providerBatchId: contact.providerBatchId,
-                            error: error.message,
-                        });
-                    }
-                }
-
-                await recalculateCampaignMetrics(campaign.id);
-            } catch (error) {
-                summary.errors += 1;
-                logger.error("[CampaignReconciliationWorker] Failed to process campaign", {
-                    campaignId: campaign.id,
-                    error: error.message,
-                });
+        for (const contact of contacts) {
+          try {
+            const result = await reconcileContact(contact, orphanThreshold);
+            if (result.updated) {
+              summary.contactsUpdated += 1;
             }
+            if (result.reason === 'idempotent') {
+              summary.idempotentSkips += 1;
+            }
+          } catch (error) {
+            summary.errors += 1;
+            logger.error('[CampaignReconciliationWorker] Failed to reconcile contact', {
+              campaignId: contact.campaignId,
+              contactId: contact.id,
+              providerBatchId: contact.providerBatchId,
+              error: error.message,
+            });
+          }
         }
 
-        logger.info("[CampaignReconciliationWorker] Cycle completed", summary);
-    } catch (error) {
-        logger.error("[CampaignReconciliationWorker] Cycle failed", {
-            error: error.message,
+        await recalculateCampaignMetrics(campaign.id);
+      } catch (error) {
+        summary.errors += 1;
+        logger.error('[CampaignReconciliationWorker] Failed to process campaign', {
+          campaignId: campaign.id,
+          error: error.message,
         });
-    } finally {
-        isCycleRunning = false;
+      }
     }
+
+    logger.info('[CampaignReconciliationWorker] Cycle completed', summary);
+  } catch (error) {
+    logger.error('[CampaignReconciliationWorker] Cycle failed', {
+      error: error.message,
+    });
+  } finally {
+    isCycleRunning = false;
+  }
 };
 
 const start = () => {
-    if (isRunning) {
-        logger.warn("[CampaignReconciliationWorker] Worker already running");
-        return;
-    }
+  if (isRunning) {
+    logger.warn('[CampaignReconciliationWorker] Worker already running');
+    return;
+  }
 
-    isRunning = true;
-    const intervalMs = getIntervalMs();
+  isRunning = true;
+  const intervalMs = getIntervalMs();
 
-    logger.info("[CampaignReconciliationWorker] Worker started", {
-        intervalMs,
-        orphanTimeoutHours: getOrphanTimeoutHours(),
+  logger.info('[CampaignReconciliationWorker] Worker started', {
+    intervalMs,
+    orphanTimeoutHours: getOrphanTimeoutHours(),
+  });
+
+  setTimeout(() => {
+    runCycle().catch((error) => {
+      logger.error('[CampaignReconciliationWorker] Initial cycle failed', {
+        error: error.message,
+      });
     });
+  }, 5000);
 
-    setTimeout(() => {
-        runCycle().catch((error) => {
-            logger.error("[CampaignReconciliationWorker] Initial cycle failed", {
-                error: error.message,
-            });
-        });
-    }, 5000);
-
-    intervalId = setInterval(() => {
-        runCycle().catch((error) => {
-            logger.error("[CampaignReconciliationWorker] Interval cycle failed", {
-                error: error.message,
-            });
-        });
-    }, intervalMs);
+  intervalId = setInterval(() => {
+    runCycle().catch((error) => {
+      logger.error('[CampaignReconciliationWorker] Interval cycle failed', {
+        error: error.message,
+      });
+    });
+  }, intervalMs);
 };
 
 const stop = () => {
-    if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-    }
-    isRunning = false;
-    isCycleRunning = false;
-    logger.info("[CampaignReconciliationWorker] Worker stopped");
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+  isRunning = false;
+  isCycleRunning = false;
+  logger.info('[CampaignReconciliationWorker] Worker stopped');
 };
 
 const getStatus = () => {
-    return {
-        isRunning,
-        isCycleRunning,
-        intervalMs: getIntervalMs(),
-        orphanTimeoutHours: getOrphanTimeoutHours(),
-    };
+  return {
+    isRunning,
+    isCycleRunning,
+    intervalMs: getIntervalMs(),
+    orphanTimeoutHours: getOrphanTimeoutHours(),
+  };
 };
 
 module.exports = {
-    start,
-    stop,
-    getStatus,
+  start,
+  stop,
+  getStatus,
 };
-

@@ -3,11 +3,11 @@
  * Lógica de negocio para el sistema de capacitación (LMS)
  */
 
-const prisma = require("../config/database");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
 
 // Orden de tiers para validación de acceso
-const TIER_ORDER = ["REGISTERED", "BRONZE", "SILVER", "GOLD", "PLATINUM"];
+const TIER_ORDER = ['REGISTERED', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM'];
 
 /**
  * Obtener cursos disponibles para un partner
@@ -21,7 +21,7 @@ async function getAvailableCourses(partnerId, options = {}) {
     select: { tier: true, type: true },
   });
 
-  if (!partner) throw new Error("Partner no encontrado");
+  if (!partner) throw new Error('Partner no encontrado');
 
   const partnerTierIndex = TIER_ORDER.indexOf(partner.tier);
   const allowedTiers = TIER_ORDER.slice(0, partnerTierIndex + 1);
@@ -30,16 +30,13 @@ async function getAvailableCourses(partnerId, options = {}) {
   const where = {
     isPublished: true,
     minTier: { in: allowedTiers },
-    OR: [
-      { partnerTypes: { isEmpty: true } },
-      { partnerTypes: { has: partner.type } },
-    ],
+    OR: [{ partnerTypes: { isEmpty: true } }, { partnerTypes: { has: partner.type } }],
   };
 
   const [courses, total] = await Promise.all([
     prisma.course.findMany({
       where,
-      orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
       include: {
@@ -83,7 +80,7 @@ async function getCourseBySlug(slug, partnerId = null) {
     where: { slug },
     include: {
       lessons: {
-        orderBy: { order: "asc" },
+        orderBy: { order: 'asc' },
         include: {
           quizzes: {
             select: { id: true, title: true, passingScore: true },
@@ -143,7 +140,7 @@ async function enrollInCourse(partnerId, courseId) {
     data: {
       partnerId,
       courseId,
-      status: "IN_PROGRESS",
+      status: 'IN_PROGRESS',
       progress: 0,
     },
   });
@@ -165,7 +162,7 @@ async function getLesson(lessonId, partnerId = null) {
       quizzes: {
         include: {
           questions: {
-            orderBy: { order: "asc" },
+            orderBy: { order: 'asc' },
           },
         },
       },
@@ -265,7 +262,7 @@ async function updateCourseProgress(partnerId, lessonId) {
     },
     data: {
       progress,
-      status: isCompleted ? "COMPLETED" : "IN_PROGRESS",
+      status: isCompleted ? 'COMPLETED' : 'IN_PROGRESS',
       completedAt: isCompleted ? new Date() : null,
     },
   });
@@ -284,7 +281,7 @@ async function getQuiz(quizId) {
     where: { id: quizId },
     include: {
       questions: {
-        orderBy: { order: "asc" },
+        orderBy: { order: 'asc' },
         select: {
           id: true,
           question: true,
@@ -313,7 +310,7 @@ async function submitQuizAnswers(partnerId, quizId, answers) {
     },
   });
 
-  if (!quiz) throw new Error("Quiz no encontrado");
+  if (!quiz) throw new Error('Quiz no encontrado');
 
   // Calcular score
   let correctCount = 0;
@@ -342,9 +339,7 @@ async function submitQuizAnswers(partnerId, quizId, answers) {
     await completeLesson(partnerId, quiz.lesson.id);
   }
 
-  logger.info(
-    `Partner ${partnerId} submitted quiz ${quizId}: score=${score}, passed=${passed}`
-  );
+  logger.info(`Partner ${partnerId} submitted quiz ${quizId}: score=${score}, passed=${passed}`);
 
   return {
     ...attempt,
@@ -439,7 +434,7 @@ async function getPartnerCertificates(partnerId) {
         select: { id: true, title: true, slug: true, thumbnailUrl: true },
       },
     },
-    orderBy: { issuedAt: "desc" },
+    orderBy: { issuedAt: 'desc' },
   });
 }
 
@@ -455,7 +450,7 @@ async function getPartnerProgress(partnerId) {
           select: { id: true, title: true, slug: true, thumbnailUrl: true },
         },
       },
-      orderBy: { startedAt: "desc" },
+      orderBy: { startedAt: 'desc' },
     }),
     prisma.certificate.count({ where: { partnerId } }),
     prisma.lessonProgress.aggregate({
@@ -464,8 +459,8 @@ async function getPartnerProgress(partnerId) {
     }),
   ]);
 
-  const inProgress = enrollments.filter((e) => e.status === "IN_PROGRESS");
-  const completed = enrollments.filter((e) => e.status === "COMPLETED");
+  const inProgress = enrollments.filter((e) => e.status === 'IN_PROGRESS');
+  const completed = enrollments.filter((e) => e.status === 'COMPLETED');
 
   return {
     totalEnrollments: enrollments.length,
@@ -492,7 +487,7 @@ async function getAllCourses(options = {}) {
   const [courses, total] = await Promise.all([
     prisma.course.findMany({
       where,
-      orderBy: [{ order: "asc" }, { createdAt: "desc" }],
+      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       skip: (page - 1) * limit,
       take: limit,
       include: {
@@ -528,10 +523,10 @@ async function createCourse(data) {
   // Generar slug
   const slug = title
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 
   // Verificar si slug existe
   const existing = await prisma.course.findUnique({ where: { slug } });
@@ -544,8 +539,8 @@ async function createCourse(data) {
       description,
       thumbnailUrl,
       duration: duration || 0,
-      difficulty: difficulty || "BEGINNER",
-      minTier: minTier || "REGISTERED",
+      difficulty: difficulty || 'BEGINNER',
+      minTier: minTier || 'REGISTERED',
       partnerTypes: partnerTypes || [],
     },
   });
@@ -584,15 +579,15 @@ async function createLesson(courseId, data) {
   // Generar slug
   const slug = title
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
 
   // Obtener orden
   const lastLesson = await prisma.lesson.findFirst({
     where: { courseId },
-    orderBy: { order: "desc" },
+    orderBy: { order: 'desc' },
   });
   const order = (lastLesson?.order || 0) + 1;
 
@@ -602,7 +597,7 @@ async function createLesson(courseId, data) {
       title,
       slug,
       description,
-      content: content || "",
+      content: content || '',
       videoUrl,
       duration: duration || 0,
       order,
@@ -717,4 +712,3 @@ module.exports = {
   deleteLesson,
   createQuiz,
 };
-

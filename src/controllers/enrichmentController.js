@@ -3,8 +3,8 @@
  * Controladores para la API de enriquecimiento de establecimientos
  */
 
-const enrichmentService = require("../services/enrichmentService");
-const logger = require("../config/logger");
+const enrichmentService = require('../services/enrichmentService');
+const logger = require('../config/logger');
 
 /**
  * GET /api/v1/geo/enrichment/:establishmentId
@@ -20,7 +20,7 @@ async function getEnrichment(req, res, next) {
       return res.json({
         success: true,
         data: null,
-        message: "No hay datos de enriquecimiento para este establecimiento",
+        message: 'No hay datos de enriquecimiento para este establecimiento',
       });
     }
 
@@ -29,7 +29,7 @@ async function getEnrichment(req, res, next) {
       data: enrichment,
     });
   } catch (error) {
-    logger.error("Error en getEnrichment:", error);
+    logger.error('Error en getEnrichment:', error);
     next(error);
   }
 }
@@ -46,21 +46,28 @@ async function updateEnrichment(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden enriquecer establecimientos",
+        error: 'Solo partners pueden enriquecer establecimientos',
       });
     }
 
     const data = req.body;
 
     // Validar que al menos hay algún dato relevante
-    const hasDecisionMakerData = data.decisionMakerName || data.decisionMakerPhone || data.decisionMakerWhatsApp;
+    const hasDecisionMakerData =
+      data.decisionMakerName || data.decisionMakerPhone || data.decisionMakerWhatsApp;
     const hasQualificationData = data.intent || data.fear || data.pain || data.desire;
-    const hasClientData = data.purchaseDate || data.productPurchased || data.purchaseAmount || data.clientSince || data.clientStatus;
+    const hasClientData =
+      data.purchaseDate ||
+      data.productPurchased ||
+      data.purchaseAmount ||
+      data.clientSince ||
+      data.clientStatus;
 
     if (!hasDecisionMakerData && !hasQualificationData && !hasClientData) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere al menos información del tomador de decisiones, de cualificación o de cliente",
+        error:
+          'Se requiere al menos información del tomador de decisiones, de cualificación o de cliente',
       });
     }
 
@@ -73,11 +80,11 @@ async function updateEnrichment(req, res, next) {
     res.json({
       success: true,
       data: enrichment,
-      message: "Enriquecimiento guardado correctamente",
+      message: 'Enriquecimiento guardado correctamente',
     });
   } catch (error) {
-    logger.error("Error en updateEnrichment:", error);
-    if (error.message === "Establecimiento no encontrado") {
+    logger.error('Error en updateEnrichment:', error);
+    if (error.message === 'Establecimiento no encontrado') {
       return res.status(404).json({
         success: false,
         error: error.message,
@@ -98,7 +105,7 @@ async function bulkImport(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden importar enriquecimientos",
+        error: 'Solo partners pueden importar enriquecimientos',
       });
     }
 
@@ -107,7 +114,7 @@ async function bulkImport(req, res, next) {
     if (!Array.isArray(data) || data.length === 0) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere un array de datos para importar",
+        error: 'Se requiere un array de datos para importar',
       });
     }
 
@@ -128,7 +135,7 @@ async function bulkImport(req, res, next) {
       message: `Importación completada: ${results.success}/${results.total} exitosos`,
     });
   } catch (error) {
-    logger.error("Error en bulkImport:", error);
+    logger.error('Error en bulkImport:', error);
     next(error);
   }
 }
@@ -136,7 +143,7 @@ async function bulkImport(req, res, next) {
 /**
  * GET /api/v1/geo/stats/levels
  * Obtener estadísticas por nivel de enriquecimiento
- * 
+ *
  * Si el usuario está autenticado, PROSPECT, LEAD y CLIENT
  * se filtran por su partnerId.
  */
@@ -152,7 +159,7 @@ async function getStatsByLevel(req, res, next) {
       data: stats,
     });
   } catch (error) {
-    logger.error("Error en getStatsByLevel:", error);
+    logger.error('Error en getStatsByLevel:', error);
     next(error);
   }
 }
@@ -170,12 +177,14 @@ async function getMyEnrichments(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver sus enriquecimientos",
+        error: 'Solo partners pueden ver sus enriquecimientos',
       });
     }
 
     // DEBUG: Log para identificar discrepancia de IDs
-    logger.info(`[DEBUG getMyEnrichments] PartnerId usado para filtrar: ${partnerId}, Level: ${level || 'all'}`);
+    logger.info(
+      `[DEBUG getMyEnrichments] PartnerId usado para filtrar: ${partnerId}, Level: ${level || 'all'}`
+    );
 
     const enrichments = await enrichmentService.getEnrichmentsByPartner(partnerId, level);
 
@@ -185,7 +194,7 @@ async function getMyEnrichments(req, res, next) {
       count: enrichments.length,
     });
   } catch (error) {
-    logger.error("Error en getMyEnrichments:", error);
+    logger.error('Error en getMyEnrichments:', error);
     next(error);
   }
 }
@@ -202,7 +211,7 @@ async function getMyStats(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver sus estadísticas",
+        error: 'Solo partners pueden ver sus estadísticas',
       });
     }
 
@@ -213,7 +222,7 @@ async function getMyStats(req, res, next) {
       data: stats,
     });
   } catch (error) {
-    logger.error("Error en getMyStats:", error);
+    logger.error('Error en getMyStats:', error);
     next(error);
   }
 }
@@ -230,7 +239,7 @@ async function deleteEnrichment(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden eliminar enriquecimientos",
+        error: 'Solo partners pueden eliminar enriquecimientos',
       });
     }
 
@@ -238,12 +247,12 @@ async function deleteEnrichment(req, res, next) {
 
     res.json({
       success: true,
-      message: "Enriquecimiento eliminado correctamente",
+      message: 'Enriquecimiento eliminado correctamente',
     });
   } catch (error) {
-    logger.error("Error en deleteEnrichment:", error);
-    if (error.message.includes("no encontrado") || error.message.includes("No tienes permisos")) {
-      return res.status(error.message.includes("permisos") ? 403 : 404).json({
+    logger.error('Error en deleteEnrichment:', error);
+    if (error.message.includes('no encontrado') || error.message.includes('No tienes permisos')) {
+      return res.status(error.message.includes('permisos') ? 403 : 404).json({
         success: false,
         error: error.message,
       });
@@ -265,7 +274,7 @@ async function updateMeetingDetails(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden actualizar meetings",
+        error: 'Solo partners pueden actualizar meetings',
       });
     }
 
@@ -278,12 +287,12 @@ async function updateMeetingDetails(req, res, next) {
     res.json({
       success: true,
       data: enrichment,
-      message: meetingScheduled ? "Meeting agendado correctamente" : "Meeting cancelado",
+      message: meetingScheduled ? 'Meeting agendado correctamente' : 'Meeting cancelado',
     });
   } catch (error) {
-    logger.error("Error en updateMeetingDetails:", error);
-    if (error.message.includes("no encontrado") || error.message.includes("No tienes permisos")) {
-      return res.status(error.message.includes("permisos") ? 403 : 404).json({
+    logger.error('Error en updateMeetingDetails:', error);
+    if (error.message.includes('no encontrado') || error.message.includes('No tienes permisos')) {
+      return res.status(error.message.includes('permisos') ? 403 : 404).json({
         success: false,
         error: error.message,
       });
@@ -304,14 +313,14 @@ async function getScheduledMeetings(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver meetings",
+        error: 'Solo partners pueden ver meetings',
       });
     }
 
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren startDate y endDate",
+        error: 'Se requieren startDate y endDate',
       });
     }
 
@@ -326,7 +335,7 @@ async function getScheduledMeetings(req, res, next) {
       data: meetings,
     });
   } catch (error) {
-    logger.error("Error en getScheduledMeetings:", error);
+    logger.error('Error en getScheduledMeetings:', error);
     next(error);
   }
 }
@@ -342,4 +351,3 @@ module.exports = {
   updateMeetingDetails,
   getScheduledMeetings,
 };
-

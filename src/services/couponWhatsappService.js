@@ -1,13 +1,11 @@
-const prisma = require("../config/database");
-const logger = require("../config/logger");
-const whatsappService = require("./whatsappService");
-const couponGeneratorService = require("./couponGeneratorService");
-const axios = require("axios");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
+const whatsappService = require('./whatsappService');
+const couponGeneratorService = require('./couponGeneratorService');
+const axios = require('axios');
 
 const BAILEYS_URL = process.env.BAILEYS_URL;
 const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY;
-
-
 
 /**
  * Envía un cupón generado mediante WhatsApp usando Baileys
@@ -20,7 +18,7 @@ const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY;
 const sendCouponViaWhatsapp = async ({ couponId, phone, from }) => {
   try {
     const coupon = await prisma.campaignCoupon.findUnique({
-      where: { id: couponId }
+      where: { id: couponId },
     });
 
     if (!coupon) {
@@ -29,7 +27,7 @@ const sendCouponViaWhatsapp = async ({ couponId, phone, from }) => {
 
     // Obtener el template del cupón
     const template = await prisma.couponTemplate.findUnique({
-      where: { couponType: coupon.couponType }
+      where: { couponType: coupon.couponType },
     });
 
     if (!template) {
@@ -41,11 +39,11 @@ const sendCouponViaWhatsapp = async ({ couponId, phone, from }) => {
     if (!fromPhone) {
       fromPhone = await whatsappService.getRandomConnectedSession();
       if (!fromPhone) {
-        throw new Error("No connected WhatsApp sessions available in Baileys");
+        throw new Error('No connected WhatsApp sessions available in Baileys');
       }
-      logger.info("Selected random WhatsApp session", {
+      logger.info('Selected random WhatsApp session', {
         fromPhone,
-        couponId
+        couponId,
       });
     }
 
@@ -60,13 +58,13 @@ const sendCouponViaWhatsapp = async ({ couponId, phone, from }) => {
         to: phone,
         message: message,
         mediaUrl: template.mediaUrl,
-        mediaType: "image"
+        mediaType: 'image',
       },
       {
         headers: {
-          "Content-Type": "application/json",
-          "X-API-KEY": BAILEYS_API_KEY || ""
-        }
+          'Content-Type': 'application/json',
+          'X-API-KEY': BAILEYS_API_KEY || '',
+        },
       }
     );
 
@@ -75,38 +73,38 @@ const sendCouponViaWhatsapp = async ({ couponId, phone, from }) => {
       await prisma.campaignCoupon.update({
         where: { id: couponId },
         data: {
-          status: "SENT",
+          status: 'SENT',
           sentAt: new Date(),
           sentFrom: fromPhone,
-          messageId: baileyResult.data?.data?.key?.id
-        }
+          messageId: baileyResult.data?.data?.key?.id,
+        },
       });
 
-      logger.info("Coupon sent via WhatsApp", {
+      logger.info('Coupon sent via WhatsApp', {
         couponId,
         couponCode: coupon.code,
         phone,
         fromPhone,
-        messageId: baileyResult.data?.data?.key?.id
+        messageId: baileyResult.data?.data?.key?.id,
       });
 
       return {
         success: true,
         messageId: baileyResult.data?.data?.key?.id,
-        fromPhone
+        fromPhone,
       };
     } else {
-      throw new Error(baileyResult.data?.error || "Failed to send WhatsApp message via Baileys");
+      throw new Error(baileyResult.data?.error || 'Failed to send WhatsApp message via Baileys');
     }
   } catch (error) {
-    logger.error("Error sending coupon via WhatsApp", {
+    logger.error('Error sending coupon via WhatsApp', {
       couponId,
       phone,
-      error: error.message
+      error: error.message,
     });
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 };
@@ -123,7 +121,7 @@ const sendCouponsToCampaignContact = async ({ campaignContactId, couponIds, from
   try {
     const contact = await prisma.campaignContact.findUnique({
       where: { id: campaignContactId },
-      include: { campaign: true }
+      include: { campaign: true },
     });
 
     if (!contact) {
@@ -143,14 +141,14 @@ const sendCouponsToCampaignContact = async ({ campaignContactId, couponIds, from
       const result = await sendCouponViaWhatsapp({
         couponId,
         phone,
-        from
+        from,
       });
 
       results.push({
         couponId,
         success: result.success,
         messageId: result.messageId,
-        error: result.error
+        error: result.error,
       });
 
       if (result.success) {
@@ -165,37 +163,37 @@ const sendCouponsToCampaignContact = async ({ campaignContactId, couponIds, from
       await prisma.campaignContact.update({
         where: { id: campaignContactId },
         data: {
-          status: "SENT",
-          sentAt: new Date()
-        }
+          status: 'SENT',
+          sentAt: new Date(),
+        },
       });
     }
 
-    logger.info("Coupons sent to campaign contact", {
+    logger.info('Coupons sent to campaign contact', {
       campaignContactId,
       phone,
       sent,
       failed,
-      total: couponIds.length
+      total: couponIds.length,
     });
 
     return {
       success: failed === 0,
       sent,
       failed,
-      results
+      results,
     };
   } catch (error) {
-    logger.error("Error sending coupons to campaign contact", {
+    logger.error('Error sending coupons to campaign contact', {
       campaignContactId,
-      error: error.message
+      error: error.message,
     });
     return {
       success: false,
       sent: 0,
       failed: couponIds.length,
       error: error.message,
-      results: []
+      results: [],
     };
   }
 };
@@ -225,7 +223,7 @@ const generateAndSendCoupon = async ({
   campaignId = null,
   campaignContactId = null,
   couponType = null,
-  from = null
+  from = null,
 }) => {
   try {
     // 1. Generar el cupón
@@ -238,13 +236,13 @@ const generateAndSendCoupon = async ({
       callId,
       campaignId,
       campaignContactId,
-      couponType
+      couponType,
     });
 
-    logger.info("Coupon generated, sending via WhatsApp", {
+    logger.info('Coupon generated, sending via WhatsApp', {
       couponId: coupon.id,
       couponCode: coupon.code,
-      phone
+      phone,
     });
 
     // 2. Si no se proporciona número remitente, obtener uno al azar de Baileys
@@ -252,11 +250,11 @@ const generateAndSendCoupon = async ({
     if (!fromPhone) {
       fromPhone = await whatsappService.getRandomConnectedSession();
       if (!fromPhone) {
-        throw new Error("No connected WhatsApp sessions available in Baileys");
+        throw new Error('No connected WhatsApp sessions available in Baileys');
       }
-      logger.info("Selected random WhatsApp session for coupon send", {
+      logger.info('Selected random WhatsApp session for coupon send', {
         fromPhone,
-        couponId: coupon.id
+        couponId: coupon.id,
       });
     }
 
@@ -268,52 +266,52 @@ const generateAndSendCoupon = async ({
         to: phone,
         message: message,
         mediaUrl: template.mediaUrl,
-        mediaType: "image"
+        mediaType: 'image',
       },
       {
         headers: {
-          "Content-Type": "application/json",
-          "X-API-KEY": BAILEYS_API_KEY || ""
-        }
+          'Content-Type': 'application/json',
+          'X-API-KEY': BAILEYS_API_KEY || '',
+        },
       }
     );
 
     if (!baileyResult.data?.success) {
-      throw new Error(baileyResult.data?.error || "Failed to send WhatsApp message via Baileys");
+      throw new Error(baileyResult.data?.error || 'Failed to send WhatsApp message via Baileys');
     }
 
     // 4. Actualizar el cupón con estado de envío
     const sentCoupon = await prisma.campaignCoupon.update({
       where: { id: coupon.id },
       data: {
-        status: "SENT",
-        sentAt: new Date()
-      }
+        status: 'SENT',
+        sentAt: new Date(),
+      },
     });
 
-    logger.info("Coupon generated and sent successfully", {
+    logger.info('Coupon generated and sent successfully', {
       couponId: coupon.id,
       couponCode: coupon.code,
       phone,
       fromPhone,
-      messageId: baileyResult.data?.data?.key?.id
+      messageId: baileyResult.data?.data?.key?.id,
     });
 
     return {
       success: true,
       coupon: sentCoupon,
       messageId: baileyResult.data?.data?.key?.id,
-      fromPhone
+      fromPhone,
     };
   } catch (error) {
-    logger.error("Error generating and sending coupon", {
+    logger.error('Error generating and sending coupon', {
       phone,
       scenario,
-      error: error.message
+      error: error.message,
     });
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 };
@@ -325,13 +323,16 @@ const generateAndSendCoupon = async ({
  * @returns {string} Mensaje renderizado
  */
 const renderCouponMessage = (template, coupon) => {
-  let message = template.messageTemplate || "";
+  let message = template.messageTemplate || '';
 
   // Reemplazar variables — coupon.code ya es limpio (ej: EASY-PLUS30)
   message = message.replace(/{{codigo}}/g, coupon.code);
-  message = message.replace(/{{beneficio}}/g, coupon.offer || template.description || template.name);
-  message = message.replace(/{{nombre}}/g, coupon.assignedPhone || "Prospecto");
-  message = message.replace(/{{negocio}}/g, "Establecimiento");
+  message = message.replace(
+    /{{beneficio}}/g,
+    coupon.offer || template.description || template.name
+  );
+  message = message.replace(/{{nombre}}/g, coupon.assignedPhone || 'Prospecto');
+  message = message.replace(/{{negocio}}/g, 'Establecimiento');
 
   return message;
 };
@@ -346,7 +347,7 @@ const renderCouponMessage = (template, coupon) => {
 const resendCoupon = async (couponId, phone, from = null) => {
   try {
     const coupon = await prisma.campaignCoupon.findUnique({
-      where: { id: couponId }
+      where: { id: couponId },
     });
 
     if (!coupon) {
@@ -354,7 +355,7 @@ const resendCoupon = async (couponId, phone, from = null) => {
     }
 
     const template = await prisma.couponTemplate.findUnique({
-      where: { couponType: coupon.couponType }
+      where: { couponType: coupon.couponType },
     });
 
     if (!template) {
@@ -367,42 +368,42 @@ const resendCoupon = async (couponId, phone, from = null) => {
       to: phone,
       message,
       mediaUrl: template.mediaUrl,
-      mediaType: "image",
-      from
+      mediaType: 'image',
+      from,
     });
 
     if (!result.success) {
-      throw new Error(result.error || "Failed to send WhatsApp message");
+      throw new Error(result.error || 'Failed to send WhatsApp message');
     }
 
     // Actualizar el cupón
     await prisma.campaignCoupon.update({
       where: { id: couponId },
       data: {
-        status: "SENT",
-        sentAt: new Date()
-      }
+        status: 'SENT',
+        sentAt: new Date(),
+      },
     });
 
-    logger.info("Coupon resent via WhatsApp", {
+    logger.info('Coupon resent via WhatsApp', {
       couponId,
       couponCode: coupon.code,
-      phone
+      phone,
     });
 
     return {
       success: true,
-      messageId: result.data?.key?.id
+      messageId: result.data?.key?.id,
     };
   } catch (error) {
-    logger.error("Error resending coupon", {
+    logger.error('Error resending coupon', {
       couponId,
       phone,
-      error: error.message
+      error: error.message,
     });
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 };
@@ -412,5 +413,5 @@ module.exports = {
   sendCouponsToCampaignContact,
   generateAndSendCoupon,
   resendCoupon,
-  renderCouponMessage
+  renderCouponMessage,
 };

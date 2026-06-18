@@ -1,17 +1,17 @@
 /**
  * GeoInsights Service
  * Servicios para consultas geográficas de establecimientos DENUE
- * 
+ *
  * ARQUITECTURA:
  * - Mapa DB (prismaGeo): Establecimientos base INEGI/DENUE (800k+) - SOLO LECTURA
  * - Partners DB (prisma): Enriquecimientos, Prospectos, Leads - ESCRITURA/LECTURA
- * 
+ *
  * Esta separación evita duplicar los 800k+ establecimientos.
  */
 
-const prisma = require("../config/database");
-const prismaGeo = require("../config/database-geo");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const prismaGeo = require('../config/database-geo');
+const logger = require('../config/logger');
 
 /**
  * Calcular distancia entre dos puntos usando la fórmula de Haversine
@@ -28,9 +28,9 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) *
-    Math.sin(dLon / 2);
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -42,15 +42,14 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 async function getEstablishmentsInBounds(bounds, filters = {}) {
   const { north, south, east, west } = bounds;
 
-  const {
+  const { activityCode, stateCode, municipalityCode, employeeRange, search } = filters;
+
+  console.log('[getEstablishmentsInBounds] Filters received:', {
     activityCode,
     stateCode,
     municipalityCode,
     employeeRange,
-    search
-  } = filters;
-
-  console.log('[getEstablishmentsInBounds] Filters received:', { activityCode, stateCode, municipalityCode, employeeRange });
+  });
 
   // const {
   //   limit = 1000,
@@ -64,7 +63,10 @@ async function getEstablishmentsInBounds(bounds, filters = {}) {
 
   // Filtros opcionales
   if (activityCode) {
-    const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+    const codes = activityCode
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
     console.log('[getEstablishmentsInBounds] Activity codes to filter:', codes);
     if (codes.length === 1) {
       where.activityCode = codes[0];
@@ -76,7 +78,10 @@ async function getEstablishmentsInBounds(bounds, filters = {}) {
   if (municipalityCode) where.municipalityCode = municipalityCode;
 
   if (employeeRange) {
-    const ranges = employeeRange.split(",").map(r => r.trim()).filter(Boolean);
+    const ranges = employeeRange
+      .split(',')
+      .map((r) => r.trim())
+      .filter(Boolean);
     if (ranges.length === 1) {
       where.employeeRange = ranges[0];
     } else if (ranges.length > 1) {
@@ -86,9 +91,9 @@ async function getEstablishmentsInBounds(bounds, filters = {}) {
 
   if (search) {
     where.OR = [
-      { name: { contains: search, mode: "insensitive" } },
-      { activityName: { contains: search, mode: "insensitive" } },
-      { neighborhood: { contains: search, mode: "insensitive" } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { activityName: { contains: search, mode: 'insensitive' } },
+      { neighborhood: { contains: search, mode: 'insensitive' } },
     ];
   }
 
@@ -126,13 +131,7 @@ async function getEstablishmentsInBounds(bounds, filters = {}) {
 async function countEstablishmentsInBounds(bounds, filters = {}) {
   const { north, south, east, west } = bounds;
 
-  const {
-    activityCode,
-    stateCode,
-    municipalityCode,
-    employeeRange,
-    search
-  } = filters;
+  const { activityCode, stateCode, municipalityCode, employeeRange, search } = filters;
 
   const where = {
     latitude: { gte: south, lte: north },
@@ -140,7 +139,10 @@ async function countEstablishmentsInBounds(bounds, filters = {}) {
   };
 
   if (activityCode) {
-    const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+    const codes = activityCode
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
     if (codes.length === 1) {
       where.activityCode = codes[0];
     } else if (codes.length > 1) {
@@ -151,9 +153,13 @@ async function countEstablishmentsInBounds(bounds, filters = {}) {
   if (municipalityCode) where.municipalityCode = municipalityCode;
 
   if (employeeRange) {
-    const ranges = typeof employeeRange === 'string'
-      ? employeeRange.split(",").map(r => r.trim()).filter(Boolean)
-      : [];
+    const ranges =
+      typeof employeeRange === 'string'
+        ? employeeRange
+            .split(',')
+            .map((r) => r.trim())
+            .filter(Boolean)
+        : [];
     if (ranges.length === 1) {
       where.employeeRange = ranges[0];
     } else if (ranges.length > 1) {
@@ -163,9 +169,9 @@ async function countEstablishmentsInBounds(bounds, filters = {}) {
 
   if (search) {
     where.OR = [
-      { name: { contains: search, mode: "insensitive" } },
-      { activityName: { contains: search, mode: "insensitive" } },
-      { neighborhood: { contains: search, mode: "insensitive" } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { activityName: { contains: search, mode: 'insensitive' } },
+      { neighborhood: { contains: search, mode: 'insensitive' } },
     ];
   }
 
@@ -195,14 +201,12 @@ async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, fi
 
   const activityCodes = Array.isArray(filters.activityCodes)
     ? filters.activityCodes
-    : typeof filters.activityCode === "string"
-      ? filters.activityCode.split(",")
+    : typeof filters.activityCode === 'string'
+      ? filters.activityCode.split(',')
       : [];
 
   if (activityCodes.length > 0) {
-    const codes = activityCodes
-      .map((code) => String(code).trim())
-      .filter(Boolean);
+    const codes = activityCodes.map((code) => String(code).trim()).filter(Boolean);
 
     if (codes.length === 1) {
       where.activityCode = codes[0];
@@ -217,9 +221,13 @@ async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, fi
   if (Array.isArray(filters.employeeRanges) && filters.employeeRanges.length > 0) {
     where.employeeRange = { in: filters.employeeRanges };
   } else if (filters.employeeRange) {
-    const ranges = typeof filters.employeeRange === 'string'
-      ? filters.employeeRange.split(",").map(r => r.trim()).filter(Boolean)
-      : [];
+    const ranges =
+      typeof filters.employeeRange === 'string'
+        ? filters.employeeRange
+            .split(',')
+            .map((r) => r.trim())
+            .filter(Boolean)
+        : [];
     if (ranges.length === 1) {
       where.employeeRange = ranges[0];
     } else if (ranges.length > 1) {
@@ -228,17 +236,17 @@ async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, fi
   }
   if (filters.search) {
     where.OR = [
-      { name: { contains: filters.search, mode: "insensitive" } },
-      { activityName: { contains: filters.search, mode: "insensitive" } },
-      { neighborhood: { contains: filters.search, mode: "insensitive" } },
+      { name: { contains: filters.search, mode: 'insensitive' } },
+      { activityName: { contains: filters.search, mode: 'insensitive' } },
+      { neighborhood: { contains: filters.search, mode: 'insensitive' } },
     ];
   }
 
   // Modificar límite a través de las opciones/filtros (por defecto 200000 para CDMX y áreas grandes)
   // Ignorar limit = 1 (para estimaciones rápidas) y siempre contar todo cuando se filtra por radio
-  const limitValue = (filters.limit && filters.limit > 1) ? filters.limit : 200000;
+  const limitValue = filters.limit && filters.limit > 1 ? filters.limit : 200000;
 
-  let results = [];
+  let results;
   const count = await prismaGeo.establishment.count({ where });
 
   // Retornamos lat y lng también para filtrar por distancia exacta circular
@@ -284,17 +292,17 @@ async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, fi
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }
 
-  let filterCount = 0;
-  let passCount = 0;
+  const filterCount = 0;
+  const passCount = 0;
 
-  const finalResults = results.filter(est => {
+  const finalResults = results.filter((est) => {
     if (!est.latitude || !est.longitude) return false;
     const dist = calculateDistance(centerLat, centerLng, est.latitude, est.longitude);
     return dist <= radiusKm;
@@ -307,7 +315,7 @@ async function findEstablishmentsInRadius(centerLat, centerLng, radiusMeters, fi
 /**
  * Obtener un establecimiento por ID con todos los detalles
  * Combina datos de Mapa DB (establecimiento) con Partners DB (enriquecimiento/prospectos)
- * 
+ *
  * @param {string} id - UUID del establecimiento
  * @param {string|null} partnerId - ID del partner para filtrar enriquecimientos (opcional)
  * @returns {Object|null} Establecimiento con enriquecimiento filtrado por partner
@@ -385,9 +393,9 @@ async function getClusteredData(bounds, zoom) {
 
   let groupBy;
   if (zoom < 6) {
-    groupBy = ["stateCode", "stateName"];
+    groupBy = ['stateCode', 'stateName'];
   } else if (zoom < 10) {
-    groupBy = ["stateCode", "municipalityCode", "municipalityName"];
+    groupBy = ['stateCode', 'municipalityCode', 'municipalityName'];
   } else {
     return getEstablishmentsInBounds(bounds, {}, { limit: 500 });
   }
@@ -402,9 +410,9 @@ async function getClusteredData(bounds, zoom) {
     _avg: { latitude: true, longitude: true },
   });
 
-  return clusters.map(cluster => ({
-    type: zoom < 6 ? "state" : "municipality",
-    code: cluster.stateCode + (cluster.municipalityCode || ""),
+  return clusters.map((cluster) => ({
+    type: zoom < 6 ? 'state' : 'municipality',
+    code: cluster.stateCode + (cluster.municipalityCode || ''),
     name: cluster.municipalityName || cluster.stateName,
     count: cluster._count.id,
     latitude: cluster._avg.latitude,
@@ -437,7 +445,7 @@ async function getHeatmapData(bounds, filters = {}) {
     take: 5000,
   });
 
-  return points.map(p => ({
+  return points.map((p) => ({
     lat: p.latitude,
     lng: p.longitude,
     weight: getEmployeeWeight(p.employeeRange),
@@ -449,13 +457,13 @@ async function getHeatmapData(bounds, filters = {}) {
  */
 function getEmployeeWeight(range) {
   const weights = {
-    "0 a 5 personas": 1,
-    "6 a 10 personas": 2,
-    "11 a 30 personas": 3,
-    "31 a 50 personas": 4,
-    "51 a 100 personas": 5,
-    "101 a 250 personas": 6,
-    "251 y más personas": 7,
+    '0 a 5 personas': 1,
+    '6 a 10 personas': 2,
+    '11 a 30 personas': 3,
+    '31 a 50 personas': 4,
+    '51 a 100 personas': 5,
+    '101 a 250 personas': 6,
+    '251 y más personas': 7,
   };
   return weights[range] || 1;
 }
@@ -469,7 +477,7 @@ async function getGeoZones(type = null) {
 
   return prismaGeo.geoZone.findMany({
     where,
-    orderBy: { totalEstablishments: "desc" },
+    orderBy: { totalEstablishments: 'desc' },
   });
 }
 
@@ -485,17 +493,17 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
   // Estadísticas de establecimientos desde Mapa DB
   const [stats, sizeStats, total] = await Promise.all([
     prismaGeo.establishment.groupBy({
-      by: ["activityCode", "activityName"],
+      by: ['activityCode', 'activityName'],
       where,
       _count: { id: true },
-      orderBy: { _count: { id: "desc" } },
+      orderBy: { _count: { id: 'desc' } },
       take: 10,
     }),
     prismaGeo.establishment.groupBy({
-      by: ["employeeRange"],
+      by: ['employeeRange'],
       where,
       _count: { id: true },
-      orderBy: { _count: { id: "desc" } },
+      orderBy: { _count: { id: 'desc' } },
     }),
     prismaGeo.establishment.count({ where }),
   ]);
@@ -510,11 +518,11 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
       take: 10000, // Limitar para performance
     });
 
-    const ids = establishmentIds.map(e => e.id);
+    const ids = establishmentIds.map((e) => e.id);
 
     if (ids.length > 0) {
       prospectsStats = await prisma.leadProspect.groupBy({
-        by: ["status"],
+        by: ['status'],
         where: { establishmentId: { in: ids } },
         _count: { id: true },
       });
@@ -522,21 +530,21 @@ async function getZoneStats(stateCode = null, municipalityCode = null) {
   } else {
     // Sin filtro de zona, obtener todos los prospectos
     prospectsStats = await prisma.leadProspect.groupBy({
-      by: ["status"],
+      by: ['status'],
       _count: { id: true },
     });
   }
 
   return {
     total,
-    byActivity: stats.map(s => ({
+    byActivity: stats.map((s) => ({
       code: s.activityCode,
       name: s.activityName,
       count: s._count.id,
       percentage: ((s._count.id / total) * 100).toFixed(1),
     })),
-    bySize: sizeStats.map(s => ({
-      range: s.employeeRange || "No especificado",
+    bySize: sizeStats.map((s) => ({
+      range: s.employeeRange || 'No especificado',
       count: s._count.id,
       percentage: ((s._count.id / total) * 100).toFixed(1),
     })),
@@ -558,7 +566,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
   });
 
   if (!establishment) {
-    throw new Error("Establecimiento no encontrado");
+    throw new Error('Establecimiento no encontrado');
   }
 
   // Verificar si ya existe un prospect en Partners DB (usa clee como establishmentId)
@@ -567,8 +575,8 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
   });
 
   if (prospect) {
-    if (prospect.status !== "AVAILABLE") {
-      throw new Error("Este establecimiento ya está asignado o no está disponible");
+    if (prospect.status !== 'AVAILABLE') {
+      throw new Error('Este establecimiento ya está asignado o no está disponible');
     }
 
     // Actualizar prospect existente
@@ -576,7 +584,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
       where: { id: prospect.id },
       data: {
         partnerId,
-        status: "ASSIGNED",
+        status: 'ASSIGNED',
         assignedAt: new Date(),
         notes,
       },
@@ -587,7 +595,7 @@ async function assignProspect(establishmentId, partnerId, notes = null) {
       data: {
         establishmentId,
         partnerId,
-        status: "ASSIGNED",
+        status: 'ASSIGNED',
         assignedAt: new Date(),
         notes,
       },
@@ -623,17 +631,21 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
 
   if (!prospect) {
     logger.error(`[ConvertProspectToLead] Prospect ${prospectId} no encontrado`);
-    throw new Error("Prospect no encontrado");
+    throw new Error('Prospect no encontrado');
   }
 
-  logger.info(`[ConvertProspectToLead] Prospect encontrado: ${prospect.establishmentId}, status: ${prospect.status}`);
+  logger.info(
+    `[ConvertProspectToLead] Prospect encontrado: ${prospect.establishmentId}, status: ${prospect.status}`
+  );
 
   if (!prospect.partnerId) {
     logger.error(`[ConvertProspectToLead] Prospect ${prospectId} no tiene partnerId`);
-    throw new Error("El prospect debe estar asignado a un partner");
+    throw new Error('El prospect debe estar asignado a un partner');
   }
 
-  logger.info(`[ConvertProspectToLead] Buscando establishment con UUID: ${prospect.establishmentId}`);
+  logger.info(
+    `[ConvertProspectToLead] Buscando establishment con UUID: ${prospect.establishmentId}`
+  );
 
   // Obtener datos del establecimiento de Mapa DB (por UUID)
   const establishment = await prismaGeo.establishment.findUnique({
@@ -641,8 +653,10 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
   });
 
   if (!establishment) {
-    logger.error(`[ConvertProspectToLead] Establecimiento no encontrado. prospect.establishmentId (UUID): ${prospect.establishmentId}`);
-    throw new Error("Establecimiento no encontrado");
+    logger.error(
+      `[ConvertProspectToLead] Establecimiento no encontrado. prospect.establishmentId (UUID): ${prospect.establishmentId}`
+    );
+    throw new Error('Establecimiento no encontrado');
   }
 
   logger.info(`[ConvertProspectToLead] Establishment encontrado: ${establishment.name}`);
@@ -653,13 +667,13 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
     data: {
       partnerId: prospect.partnerId,
       businessName: establishment.name,
-      contactName: additionalData.contactName || "Contacto Principal",
-      email: establishment.email || additionalData.email || "",
+      contactName: additionalData.contactName || 'Contacto Principal',
+      email: establishment.email || additionalData.email || '',
       phone: establishment.phone || additionalData.phone,
       businessType: establishment.activityName,
       location: `${establishment.municipalityName}, ${establishment.stateName}`,
-      interests: additionalData.interests || ["POS"],
-      status: "NEW",
+      interests: additionalData.interests || ['POS'],
+      status: 'NEW',
       notes: `Convertido desde prospect DENUE. ID Establecimiento: ${prospect.establishmentId}`,
     },
   });
@@ -670,14 +684,16 @@ async function convertProspectToLead(prospectId, additionalData = {}) {
   const updatedProspect = await prisma.leadProspect.update({
     where: { id: prospectId },
     data: {
-      status: "CONVERTED",
+      status: 'CONVERTED',
       convertedAt: new Date(),
       notes: `Convertido a Lead el ${new Date().toLocaleDateString('es-MX')}. Lead ID: ${lead.id}`,
     },
   });
 
   logger.info(`[ConvertProspectToLead] Prospect actualizado a status: ${updatedProspect.status}`);
-  logger.info(`[ConvertProspectToLead] Conversión completada exitosamente. Prospect ${prospectId} -> Lead ${lead.id}`);
+  logger.info(
+    `[ConvertProspectToLead] Conversión completada exitosamente. Prospect ${prospectId} -> Lead ${lead.id}`
+  );
 
   return lead;
 }
@@ -693,7 +709,7 @@ async function getPartnerProspects(partnerId, status = null) {
   // Obtener prospectos de Partners DB
   const prospects = await prisma.leadProspect.findMany({
     where,
-    orderBy: { createdAt: "desc" },
+    orderBy: { createdAt: 'desc' },
   });
 
   if (prospects.length === 0) {
@@ -701,7 +717,7 @@ async function getPartnerProspects(partnerId, status = null) {
   }
 
   // Obtener IDs únicos de establecimientos (UUIDs)
-  const establishmentIds = [...new Set(prospects.map(p => p.establishmentId))];
+  const establishmentIds = [...new Set(prospects.map((p) => p.establishmentId))];
 
   // Obtener datos de establecimientos de Mapa DB (por UUID)
   const establishments = await prismaGeo.establishment.findMany({
@@ -727,7 +743,7 @@ async function getPartnerProspects(partnerId, status = null) {
   }, {});
 
   // Combinar datos
-  return prospects.map(p => ({
+  return prospects.map((p) => ({
     ...p,
     establishment: establishmentMap[p.establishmentId] || null,
   }));
@@ -741,10 +757,10 @@ async function searchEstablishments(query, limit = 50) {
   return prismaGeo.establishment.findMany({
     where: {
       OR: [
-        { name: { contains: query, mode: "insensitive" } },
-        { activityName: { contains: query, mode: "insensitive" } },
-        { municipalityName: { contains: query, mode: "insensitive" } },
-        { stateName: { contains: query, mode: "insensitive" } },
+        { name: { contains: query, mode: 'insensitive' } },
+        { activityName: { contains: query, mode: 'insensitive' } },
+        { municipalityName: { contains: query, mode: 'insensitive' } },
+        { stateName: { contains: query, mode: 'insensitive' } },
       ],
     },
     select: {
@@ -777,8 +793,8 @@ async function smartSearch(query, options = {}) {
   const [states, municipalities, establishments] = await Promise.all([
     prismaGeo.geoZone.findMany({
       where: {
-        type: "STATE",
-        name: { contains: searchTerm, mode: "insensitive" },
+        type: 'STATE',
+        name: { contains: searchTerm, mode: 'insensitive' },
       },
       select: {
         id: true,
@@ -788,13 +804,13 @@ async function smartSearch(query, options = {}) {
         centerLat: true,
         centerLng: true,
       },
-      orderBy: { totalEstablishments: "desc" },
+      orderBy: { totalEstablishments: 'desc' },
       take: 5,
     }),
     prismaGeo.geoZone.findMany({
       where: {
-        type: "MUNICIPALITY",
-        name: { contains: searchTerm, mode: "insensitive" },
+        type: 'MUNICIPALITY',
+        name: { contains: searchTerm, mode: 'insensitive' },
       },
       select: {
         id: true,
@@ -805,24 +821,24 @@ async function smartSearch(query, options = {}) {
         centerLat: true,
         centerLng: true,
       },
-      orderBy: { totalEstablishments: "desc" },
+      orderBy: { totalEstablishments: 'desc' },
       take: 8,
     }),
     prismaGeo.establishment.findMany({
       where: activityCode
         ? {
-          activityCode,
-          OR: [
-            { name: { contains: searchTerm, mode: "insensitive" } },
-            { activityName: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        }
+            activityCode,
+            OR: [
+              { name: { contains: searchTerm, mode: 'insensitive' } },
+              { activityName: { contains: searchTerm, mode: 'insensitive' } },
+            ],
+          }
         : {
-          OR: [
-            { name: { contains: searchTerm, mode: "insensitive" } },
-            { activityName: { contains: searchTerm, mode: "insensitive" } },
-          ],
-        },
+            OR: [
+              { name: { contains: searchTerm, mode: 'insensitive' } },
+              { activityName: { contains: searchTerm, mode: 'insensitive' } },
+            ],
+          },
       select: {
         id: true,
         name: true,
@@ -842,19 +858,19 @@ async function smartSearch(query, options = {}) {
   const enrichedMunicipalities = await Promise.all(
     municipalities.map(async (muni) => {
       const state = await prismaGeo.geoZone.findFirst({
-        where: { type: "STATE", stateCode: muni.stateCode },
+        where: { type: 'STATE', stateCode: muni.stateCode },
         select: { name: true },
       });
       return {
         ...muni,
-        stateName: state?.name || "",
+        stateName: state?.name || '',
       };
     })
   );
 
   return {
-    states: states.map(s => ({
-      type: "state",
+    states: states.map((s) => ({
+      type: 'state',
       id: s.id,
       name: s.name,
       code: s.stateCode,
@@ -863,8 +879,8 @@ async function smartSearch(query, options = {}) {
       longitude: s.centerLng,
       zoom: 7,
     })),
-    municipalities: enrichedMunicipalities.map(m => ({
-      type: "municipality",
+    municipalities: enrichedMunicipalities.map((m) => ({
+      type: 'municipality',
       id: m.id,
       name: m.name,
       stateName: m.stateName,
@@ -875,8 +891,8 @@ async function smartSearch(query, options = {}) {
       longitude: m.centerLng,
       zoom: 11,
     })),
-    establishments: establishments.map(e => ({
-      type: "establishment",
+    establishments: establishments.map((e) => ({
+      type: 'establishment',
       id: e.id,
       name: e.name,
       activityName: e.activityName,
@@ -895,13 +911,13 @@ async function smartSearch(query, options = {}) {
  */
 async function getActivities() {
   const activities = await prismaGeo.establishment.groupBy({
-    by: ["activityCode", "activityName"],
+    by: ['activityCode', 'activityName'],
     _count: { id: true },
-    orderBy: { _count: { id: "desc" } },
+    orderBy: { _count: { id: 'desc' } },
     take: 15,
   });
 
-  return activities.map(a => ({
+  return activities.map((a) => ({
     code: a.activityCode,
     name: a.activityName,
     count: a._count.id,
@@ -914,7 +930,7 @@ async function getActivities() {
  */
 async function getStatesWithCount() {
   return prismaGeo.geoZone.findMany({
-    where: { type: "STATE" },
+    where: { type: 'STATE' },
     select: {
       id: true,
       name: true,
@@ -923,7 +939,7 @@ async function getStatesWithCount() {
       centerLat: true,
       centerLng: true,
     },
-    orderBy: { totalEstablishments: "desc" },
+    orderBy: { totalEstablishments: 'desc' },
   });
 }
 
@@ -934,7 +950,7 @@ async function getStatesWithCount() {
 async function getMunicipalitiesByState(stateCode) {
   return prismaGeo.geoZone.findMany({
     where: {
-      type: "MUNICIPALITY",
+      type: 'MUNICIPALITY',
       stateCode: stateCode,
     },
     select: {
@@ -945,7 +961,7 @@ async function getMunicipalitiesByState(stateCode) {
       centerLat: true,
       centerLng: true,
     },
-    orderBy: { totalEstablishments: "desc" },
+    orderBy: { totalEstablishments: 'desc' },
   });
 }
 
@@ -953,7 +969,7 @@ async function getMunicipalitiesByState(stateCode) {
  * Obtener establecimientos filtrados por nivel de enriquecimiento
  * Para ESTABLISHMENT/CONTACT: Lee de Mapa DB
  * Para PROSPECT/LEAD/CLIENT: Combina Mapa DB con Partners DB
- * 
+ *
  * IMPORTANTE: Para PROSPECT, LEAD y CLIENT se filtra por partnerId para que
  * cada usuario solo vea sus propios datos
  */
@@ -963,7 +979,7 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
   const { limit = 500, offset = 0, partnerId = null } = options;
 
   // Para niveles que requieren enriquecimiento (PROSPECT, LEAD, CLIENT)
-  if (level === "PROSPECT" || level === "LEAD" || level === "CLIENT") {
+  if (level === 'PROSPECT' || level === 'LEAD' || level === 'CLIENT') {
     // Construir filtro para enriquecimientos
     const enrichmentWhere = { level };
 
@@ -1002,7 +1018,7 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     }
 
     // Obtener IDs de establecimientos enriquecidos
-    const enrichedIds = enrichments.map(e => e.establishmentId);
+    const enrichedIds = enrichments.map((e) => e.establishmentId);
 
     // Construir filtro para Mapa DB
     const where = {
@@ -1012,16 +1028,19 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     };
 
     if (activityCode) {
-      const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+      const codes = activityCode
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
       where.activityCode = codes.length === 1 ? codes[0] : { in: codes };
     }
     if (stateCode) where.stateCode = stateCode;
     if (municipalityCode) where.municipalityCode = municipalityCode;
     if (search) {
       where.OR = [
-        { name: { contains: search, mode: "insensitive" } },
-        { activityName: { contains: search, mode: "insensitive" } },
-        { neighborhood: { contains: search, mode: "insensitive" } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { activityName: { contains: search, mode: 'insensitive' } },
+        { neighborhood: { contains: search, mode: 'insensitive' } },
       ];
     }
 
@@ -1058,7 +1077,7 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
 
     // Para CONTACT y niveles superiores, verificar si están tomados por CUALQUIER usuario
     // Obtener todos los IDs de establecimientos que tienen ALGÚN enriquecimiento
-    const establishmentIds = establishments.map(est => est.id);
+    const establishmentIds = establishments.map((est) => est.id);
     const allEnrichments = await prisma.establishmentEnrichment.findMany({
       where: {
         establishmentId: { in: establishmentIds },
@@ -1069,10 +1088,10 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     });
 
     // Crear set de IDs tomados por cualquier usuario
-    const takenByAnyUserSet = new Set(allEnrichments.map(e => e.establishmentId));
+    const takenByAnyUserSet = new Set(allEnrichments.map((e) => e.establishmentId));
 
     // Combinar datos
-    return establishments.map(est => ({
+    return establishments.map((est) => ({
       ...est,
       enrichment: enrichmentMap[est.id] || null,
       isTakenByAnyUser: takenByAnyUserSet.has(est.id), // Flag para saber si alguien ya lo tiene
@@ -1085,16 +1104,15 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
     longitude: { gte: west, lte: east },
   };
 
-  if (level === "CONTACT") {
-    where.OR = [
-      { phone: { not: null } },
-      { email: { not: null } },
-      { website: { not: null } },
-    ];
+  if (level === 'CONTACT') {
+    where.OR = [{ phone: { not: null } }, { email: { not: null } }, { website: { not: null } }];
   }
 
   if (activityCode) {
-    const codes = activityCode.split(",").map(c => c.trim()).filter(Boolean);
+    const codes = activityCode
+      .split(',')
+      .map((c) => c.trim())
+      .filter(Boolean);
     where.activityCode = codes.length === 1 ? codes[0] : { in: codes };
   }
   if (stateCode) where.stateCode = stateCode;
@@ -1104,15 +1122,15 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
       ...(where.AND || []),
       {
         OR: [
-          { name: { contains: search, mode: "insensitive" } },
-          { activityName: { contains: search, mode: "insensitive" } },
-          { neighborhood: { contains: search, mode: "insensitive" } },
+          { name: { contains: search, mode: 'insensitive' } },
+          { activityName: { contains: search, mode: 'insensitive' } },
+          { neighborhood: { contains: search, mode: 'insensitive' } },
         ],
       },
     ];
   }
 
-  /* 
+  /*
    * Ejecutar consulta a Mapa DB
    */
   const establishments = await prismaGeo.establishment.findMany({
@@ -1140,7 +1158,7 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
   });
 
   // Verificar cuáles están tomados por algún usuario
-  const establishmentIds = establishments.map(est => est.id);
+  const establishmentIds = establishments.map((est) => est.id);
   const allEnrichments = await prisma.establishmentEnrichment.findMany({
     where: {
       establishmentId: { in: establishmentIds },
@@ -1152,19 +1170,19 @@ async function getEstablishmentsByLevel(bounds, level, filters = {}, options = {
   });
 
   // Crear mapas
-  const takenByAnyUserSet = new Set(allEnrichments.map(e => e.establishmentId));
+  const takenByAnyUserSet = new Set(allEnrichments.map((e) => e.establishmentId));
   const enrichmentByUserMap = {};
 
   if (partnerId) {
     allEnrichments
-      .filter(e => e.enrichedBy === partnerId)
-      .forEach(e => {
-        enrichmentByUserMap[e.establishmentId] = { level: "CONTACT" };
+      .filter((e) => e.enrichedBy === partnerId)
+      .forEach((e) => {
+        enrichmentByUserMap[e.establishmentId] = { level: 'CONTACT' };
       });
   }
 
   // Retornar con flags
-  return establishments.map(est => ({
+  return establishments.map((est) => ({
     ...est,
     enrichment: enrichmentByUserMap[est.id] || null,
     isTakenByAnyUser: takenByAnyUserSet.has(est.id),

@@ -1,13 +1,13 @@
 /**
  * Ventas Enrichment Controller
  * Controladores específicos para el flujo de ventas de easyorder-leads
- * 
+ *
  * Endpoints exclusivos para la aplicación de ventas (easyorder-leads)
  * que no afectan el funcionamiento de partners-portal
  */
 
-const ventasEnrichmentService = require("../services/ventasEnrichmentService");
-const logger = require("../config/logger");
+const ventasEnrichmentService = require('../services/ventasEnrichmentService');
+const logger = require('../config/logger');
 
 /**
  * POST /geo/ventas/contacts
@@ -21,35 +21,31 @@ async function addToContacts(req, res) {
     if (!establishmentId) {
       return res.status(400).json({
         success: false,
-        error: "establishmentId es requerido",
+        error: 'establishmentId es requerido',
       });
     }
 
     if (!partnerId) {
       return res.status(401).json({
         success: false,
-        error: "Partner de ventas no identificado",
+        error: 'Partner de ventas no identificado',
       });
     }
 
-    const result = await ventasEnrichmentService.addToContacts(
-      establishmentId,
-      partnerId,
-      notes
-    );
+    const result = await ventasEnrichmentService.addToContacts(establishmentId, partnerId, notes);
 
     res.status(result.isNew ? 201 : 200).json({
       success: true,
       data: result,
       message: result.isNew
-        ? "Establecimiento agregado a tus contactos"
-        : "Este establecimiento ya está en tus contactos",
+        ? 'Establecimiento agregado a tus contactos'
+        : 'Este establecimiento ya está en tus contactos',
     });
   } catch (error) {
-    logger.error("[VentasController] Error en addToContacts:", error);
-    res.status(error.message.includes("no encontrado") ? 404 : 500).json({
+    logger.error('[VentasController] Error en addToContacts:', error);
+    res.status(error.message.includes('no encontrado') ? 404 : 500).json({
       success: false,
-      error: error.message || "Error agregando contacto",
+      error: error.message || 'Error agregando contacto',
     });
   }
 }
@@ -66,21 +62,18 @@ async function bulkAddToContacts(req, res) {
     if (!Array.isArray(establishmentIds) || establishmentIds.length === 0) {
       return res.status(400).json({
         success: false,
-        error: "establishmentIds se requiere y debe ser un array no vacío",
+        error: 'establishmentIds se requiere y debe ser un array no vacío',
       });
     }
 
     if (!partnerId) {
       return res.status(401).json({
         success: false,
-        error: "Partner de ventas no identificado",
+        error: 'Partner de ventas no identificado',
       });
     }
 
-    const result = await ventasEnrichmentService.bulkAddToContacts(
-      establishmentIds,
-      partnerId
-    );
+    const result = await ventasEnrichmentService.bulkAddToContacts(establishmentIds, partnerId);
 
     res.status(200).json({
       success: true,
@@ -88,10 +81,10 @@ async function bulkAddToContacts(req, res) {
       message: `${result.success} contactos agregados, ${result.failed} fallidos`,
     });
   } catch (error) {
-    logger.error("[VentasController] Error en bulkAddToContacts:", error);
+    logger.error('[VentasController] Error en bulkAddToContacts:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Error agregando contactos masivamente",
+      error: error.message || 'Error agregando contactos masivamente',
     });
   }
 }
@@ -109,7 +102,7 @@ async function convertContactToProspect(req, res) {
     if (!partnerId) {
       return res.status(401).json({
         success: false,
-        error: "Partner de ventas no identificado",
+        error: 'Partner de ventas no identificado',
       });
     }
 
@@ -122,13 +115,13 @@ async function convertContactToProspect(req, res) {
     res.json({
       success: true,
       data: result,
-      message: "Contacto convertido a prospecto exitosamente",
+      message: 'Contacto convertido a prospecto exitosamente',
     });
   } catch (error) {
-    logger.error("[VentasController] Error en convertContactToProspect:", error);
-    res.status(error.message.includes("no encontró") ? 404 : 400).json({
+    logger.error('[VentasController] Error en convertContactToProspect:', error);
+    res.status(error.message.includes('no encontró') ? 404 : 400).json({
       success: false,
-      error: error.message || "Error convirtiendo contacto a prospecto",
+      error: error.message || 'Error convirtiendo contacto a prospecto',
     });
   }
 }
@@ -144,7 +137,7 @@ async function getMyContacts(req, res) {
     if (!partnerId) {
       return res.status(401).json({
         success: false,
-        error: "Partner de ventas no identificado",
+        error: 'Partner de ventas no identificado',
       });
     }
 
@@ -156,10 +149,10 @@ async function getMyContacts(req, res) {
       count: contacts.length,
     });
   } catch (error) {
-    logger.error("[VentasController] Error en getMyContacts:", error);
+    logger.error('[VentasController] Error en getMyContacts:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Error obteniendo contactos",
+      error: error.message || 'Error obteniendo contactos',
     });
   }
 }
@@ -175,7 +168,7 @@ async function getVentasStats(req, res) {
     if (!partnerId) {
       return res.status(401).json({
         success: false,
-        error: "Partner de ventas no identificado",
+        error: 'Partner de ventas no identificado',
       });
     }
 
@@ -186,10 +179,10 @@ async function getVentasStats(req, res) {
       data: stats,
     });
   } catch (error) {
-    logger.error("[VentasController] Error en getVentasStats:", error);
+    logger.error('[VentasController] Error en getVentasStats:', error);
     res.status(500).json({
       success: false,
-      error: error.message || "Error obteniendo estadísticas",
+      error: error.message || 'Error obteniendo estadísticas',
     });
   }
 }
@@ -207,26 +200,22 @@ async function updateProspect(req, res) {
     if (!partnerId) {
       return res.status(401).json({
         success: false,
-        error: "Partner de ventas no identificado",
+        error: 'Partner de ventas no identificado',
       });
     }
 
-    const result = await ventasEnrichmentService.updateProspect(
-      establishmentId,
-      data,
-      partnerId
-    );
+    const result = await ventasEnrichmentService.updateProspect(establishmentId, data, partnerId);
 
     res.json({
       success: true,
       data: result,
-      message: "Prospecto actualizado exitosamente",
+      message: 'Prospecto actualizado exitosamente',
     });
   } catch (error) {
-    logger.error("[VentasController] Error en updateProspect:", error);
-    res.status(error.message.includes("no encontró") ? 404 : 400).json({
+    logger.error('[VentasController] Error en updateProspect:', error);
+    res.status(error.message.includes('no encontró') ? 404 : 400).json({
       success: false,
-      error: error.message || "Error actualizando prospecto",
+      error: error.message || 'Error actualizando prospecto',
     });
   }
 }
@@ -243,7 +232,7 @@ async function removeFromMyList(req, res) {
     if (!partnerId) {
       return res.status(401).json({
         success: false,
-        error: "Partner de ventas no identificado",
+        error: 'Partner de ventas no identificado',
       });
     }
 
@@ -251,13 +240,13 @@ async function removeFromMyList(req, res) {
 
     res.json({
       success: true,
-      message: "Registro eliminado exitosamente",
+      message: 'Registro eliminado exitosamente',
     });
   } catch (error) {
-    logger.error("[VentasController] Error en removeFromMyList:", error);
-    res.status(error.message.includes("permiso") ? 403 : 400).json({
+    logger.error('[VentasController] Error en removeFromMyList:', error);
+    res.status(error.message.includes('permiso') ? 403 : 400).json({
       success: false,
-      error: error.message || "Error eliminando registro",
+      error: error.message || 'Error eliminando registro',
     });
   }
 }

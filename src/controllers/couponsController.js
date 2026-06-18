@@ -1,8 +1,8 @@
-const couponService = require("../services/couponService");
-const couponGeneratorService = require("../services/couponGeneratorService");
-const campaignsService = require("../services/campaignsService");
-const { sendWhatsAppMessage } = require("../services/whatsappService");
-const logger = require("../config/logger");
+const couponService = require('../services/couponService');
+const couponGeneratorService = require('../services/couponGeneratorService');
+const campaignsService = require('../services/campaignsService');
+const { sendWhatsAppMessage } = require('../services/whatsappService');
+const logger = require('../config/logger');
 
 const create = async (req, res, next) => {
   try {
@@ -10,10 +10,10 @@ const create = async (req, res, next) => {
 
     const campaign = await campaignsService.getCampaignById(campaignId);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    if (req.user?.role !== 'ADMIN' && campaign.createdBy !== req.user?.id) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para crear cupones en esta campaña",
+        error: 'No tienes permisos para crear cupones en esta campaña',
       });
     }
 
@@ -29,7 +29,7 @@ const create = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: coupon,
-      message: "Cupón creado exitosamente",
+      message: 'Cupón creado exitosamente',
     });
   } catch (error) {
     next(error);
@@ -42,10 +42,10 @@ const generateBulk = async (req, res, next) => {
 
     const campaign = await campaignsService.getCampaignById(campaignId);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    if (req.user?.role !== 'ADMIN' && campaign.createdBy !== req.user?.id) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para generar cupones en esta campaña",
+        error: 'No tienes permisos para generar cupones en esta campaña',
       });
     }
 
@@ -100,10 +100,10 @@ const list = async (req, res, next) => {
     if (campaignId) {
       const campaign = await campaignsService.getCampaignById(campaignId);
 
-      if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+      if (req.user?.role !== 'ADMIN' && campaign.createdBy !== req.user?.id) {
         return res.status(403).json({
           success: false,
-          error: "No tienes permisos para ver los cupones de esta campaña",
+          error: 'No tienes permisos para ver los cupones de esta campaña',
         });
       }
     }
@@ -135,7 +135,7 @@ const trackVisit = async (req, res, next) => {
     res.json({
       success: true,
       data: coupon,
-      message: "Visita registrada exitosamente",
+      message: 'Visita registrada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -152,7 +152,7 @@ const markAsConverted = async (req, res, next) => {
     res.json({
       success: true,
       data: coupon,
-      message: "Cupón marcado como convertido exitosamente",
+      message: 'Cupón marcado como convertido exitosamente',
     });
   } catch (error) {
     next(error);
@@ -169,7 +169,7 @@ const assignToContact = async (req, res, next) => {
     res.json({
       success: true,
       data: contact,
-      message: "Cupón asignado al contacto exitosamente",
+      message: 'Cupón asignado al contacto exitosamente',
     });
   } catch (error) {
     next(error);
@@ -183,16 +183,16 @@ const getAvailable = async (req, res, next) => {
     if (!campaignId) {
       return res.status(400).json({
         success: false,
-        error: "campaignId es requerido",
+        error: 'campaignId es requerido',
       });
     }
 
     const campaign = await campaignsService.getCampaignById(campaignId);
 
-    if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+    if (req.user?.role !== 'ADMIN' && campaign.createdBy !== req.user?.id) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para ver los cupones disponibles de esta campaña",
+        error: 'No tienes permisos para ver los cupones disponibles de esta campaña',
       });
     }
 
@@ -233,7 +233,7 @@ const generateForCall = async (req, res, next) => {
       agentId,
       callId,
       campaignId,
-      campaignContext
+      campaignContext,
     } = req.body;
 
     // Extraer valores de campaignContext si existe
@@ -245,18 +245,18 @@ const generateForCall = async (req, res, next) => {
     if (!phone || !prospectName || !businessName || !agentId || !callId) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields: phone, prospectName, businessName, agentId, callId"
+        error: 'Missing required fields: phone, prospectName, businessName, agentId, callId',
       });
     }
 
     if (!scenario && !couponType) {
       return res.status(400).json({
         success: false,
-        error: "Either scenario or campaignContext.couponType is required"
+        error: 'Either scenario or campaignContext.couponType is required',
       });
     }
 
-    logger.info("Generating coupon for call", {
+    logger.info('Generating coupon for call', {
       phone,
       agentId,
       callId,
@@ -264,7 +264,7 @@ const generateForCall = async (req, res, next) => {
       campaignContactId,
       couponType,
       scenario,
-      hasCampaignContext: !!campaignContext
+      hasCampaignContext: !!campaignContext,
     });
 
     const result = await couponGeneratorService.generateCouponForCall({
@@ -277,14 +277,14 @@ const generateForCall = async (req, res, next) => {
       callId,
       campaignId: effectiveCampaignId,
       campaignContactId,
-      couponType
+      couponType,
     });
 
-    logger.info("Coupon generated successfully", {
+    logger.info('Coupon generated successfully', {
       couponId: result.coupon.id,
       code: result.coupon.code,
       campaignContactId,
-      callId
+      callId,
     });
 
     // ── Enviar cupón por WhatsApp vía Baileys ──
@@ -294,25 +294,25 @@ const generateForCall = async (req, res, next) => {
         to: phone,
         message: result.message,
         mediaUrl: result.template.mediaUrl || null,
-        mediaType: result.template.mediaUrl ? "image" : undefined,
+        mediaType: result.template.mediaUrl ? 'image' : undefined,
       });
       whatsappSent = whatsappResult.success;
 
       if (whatsappSent) {
-        logger.info("WhatsApp coupon message sent", {
+        logger.info('WhatsApp coupon message sent', {
           phone,
           couponCode: result.coupon.code,
           callId,
         });
       } else {
-        logger.warn("WhatsApp coupon message failed (non-blocking)", {
+        logger.warn('WhatsApp coupon message failed (non-blocking)', {
           phone,
           error: whatsappResult.error,
           callId,
         });
       }
     } catch (waError) {
-      logger.error("WhatsApp send threw exception (non-blocking)", {
+      logger.error('WhatsApp send threw exception (non-blocking)', {
         error: waError.message,
         phone,
         callId,
@@ -326,14 +326,14 @@ const generateForCall = async (req, res, next) => {
         message: result.message,
         mediaUrl: result.template.mediaUrl,
         whatsappSent,
-      }
+      },
     });
   } catch (error) {
-    logger.error("Error generating coupon for call", {
+    logger.error('Error generating coupon for call', {
       error: error.message,
       phone: req.body?.phone,
       callId: req.body?.callId,
-      campaignContext: req.body?.campaignContext
+      campaignContext: req.body?.campaignContext,
     });
     next(error);
   }
@@ -350,9 +350,9 @@ const redeemCoupon = async (req, res, next) => {
       success: true,
       data: {
         coupon: result.coupon,
-        stripeConfig: result.stripeConfig
+        stripeConfig: result.stripeConfig,
       },
-      message: "Cupón redimido exitosamente"
+      message: 'Cupón redimido exitosamente',
     });
   } catch (error) {
     next(error);
@@ -366,7 +366,7 @@ const checkEligibility = async (req, res, next) => {
     if (!phone || !couponType) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields: phone, couponType"
+        error: 'Missing required fields: phone, couponType',
       });
     }
 
@@ -374,7 +374,7 @@ const checkEligibility = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     next(error);
@@ -391,10 +391,10 @@ const getActiveWithTimeRemaining = async (req, res, next) => {
     if (campaignId) {
       const campaign = await campaignsService.getCampaignById(campaignId);
 
-      if (req.user?.role !== "ADMIN" && campaign.createdBy !== req.user?.id) {
+      if (req.user?.role !== 'ADMIN' && campaign.createdBy !== req.user?.id) {
         return res.status(403).json({
           success: false,
-          error: "No tienes permisos para ver los cupones de esta campaña",
+          error: 'No tienes permisos para ver los cupones de esta campaña',
         });
       }
     }
@@ -405,7 +405,7 @@ const getActiveWithTimeRemaining = async (req, res, next) => {
       success: true,
       data: coupons,
       count: coupons.length,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     next(error);
@@ -422,9 +422,9 @@ const markExpired = async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        expiredCount: count
+        expiredCount: count,
       },
-      message: `${count} cupones marcados como expirados`
+      message: `${count} cupones marcados como expirados`,
     });
   } catch (error) {
     next(error);
@@ -442,7 +442,7 @@ const validateForUse = async (req, res, next) => {
 
     res.json({
       success: result.valid,
-      data: result
+      data: result,
     });
   } catch (error) {
     next(error);
@@ -465,5 +465,5 @@ module.exports = {
   checkEligibility,
   getActiveWithTimeRemaining,
   markExpired,
-  validateForUse
+  validateForUse,
 };

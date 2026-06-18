@@ -1,14 +1,8 @@
-const prisma = require("../config/database");
+const prisma = require('../config/database');
 
 // Crear deal desde un lead ganado
 const createDeal = async (data) => {
-  const {
-    leadId,
-    customerId,
-    planType,
-    planPrice,
-    setupFee,
-  } = data;
+  const { leadId, customerId, planType, planPrice, setupFee } = data;
 
   // Obtener lead y partner
   const lead = await prisma.lead.findUnique({
@@ -16,11 +10,11 @@ const createDeal = async (data) => {
     include: { partner: true },
   });
 
-  if (!lead) throw new Error("Lead no encontrado");
-  if (lead.deal) throw new Error("Este lead ya tiene un deal asociado");
+  if (!lead) throw new Error('Lead no encontrado');
+  if (lead.deal) throw new Error('Este lead ya tiene un deal asociado');
 
   // Calcular valores
-  const totalValue = (parseFloat(planPrice) * 12) + parseFloat(setupFee || 0);
+  const totalValue = parseFloat(planPrice) * 12 + parseFloat(setupFee || 0);
   const commissionRate = parseFloat(lead.partner.commissionRate);
   const commissionAmount = totalValue * commissionRate;
 
@@ -39,7 +33,7 @@ const createDeal = async (data) => {
         totalValue,
         commissionRate,
         commissionAmount,
-        status: "PENDING",
+        status: 'PENDING',
         closedAt: new Date(),
       },
     });
@@ -47,7 +41,7 @@ const createDeal = async (data) => {
     // Actualizar lead a WON
     await tx.lead.update({
       where: { id: leadId },
-      data: { status: "WON" },
+      data: { status: 'WON' },
     });
 
     // Crear comisión inicial (signup bonus)
@@ -56,9 +50,9 @@ const createDeal = async (data) => {
       data: {
         partnerId: lead.partnerId,
         dealId: newDeal.id,
-        type: "SIGNUP_BONUS",
+        type: 'SIGNUP_BONUS',
         amount: signupBonus,
-        status: "PENDING",
+        status: 'PENDING',
       },
     });
 
@@ -79,7 +73,7 @@ const createDeal = async (data) => {
       data: {
         partnerId: lead.partnerId,
         leadId,
-        type: "DEAL_CLOSED",
+        type: 'DEAL_CLOSED',
         description: `Deal cerrado: ${lead.businessName} - ${planType}`,
         metadata: {
           totalValue,
@@ -115,7 +109,7 @@ const getDealById = async (id) => {
       },
       lead: true,
       commissions: {
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       },
     },
   });
@@ -130,8 +124,8 @@ const listDeals = async (filters = {}) => {
     dateTo,
     page = 1,
     limit = 20,
-    sortBy = "closedAt",
-    sortOrder = "desc",
+    sortBy = 'closedAt',
+    sortOrder = 'desc',
   } = filters;
 
   const where = {};
@@ -192,23 +186,23 @@ const listDeals = async (filters = {}) => {
 // Actualizar status del deal
 const updateDealStatus = async (id, status) => {
   const deal = await prisma.deal.findUnique({ where: { id } });
-  if (!deal) throw new Error("Deal no encontrado");
+  if (!deal) throw new Error('Deal no encontrado');
 
   const updateData = { status };
 
-  if (status === "ACTIVE" && !deal.activatedAt) {
+  if (status === 'ACTIVE' && !deal.activatedAt) {
     updateData.activatedAt = new Date();
   }
-  if (status === "CHURNED") {
+  if (status === 'CHURNED') {
     updateData.cancelledAt = new Date();
-    
+
     // Cancelar comisiones pendientes
     await prisma.commission.updateMany({
       where: {
         dealId: id,
-        status: "PENDING",
+        status: 'PENDING',
       },
-      data: { status: "CANCELLED" },
+      data: { status: 'CANCELLED' },
     });
   }
 
@@ -224,4 +218,3 @@ module.exports = {
   listDeals,
   updateDealStatus,
 };
-

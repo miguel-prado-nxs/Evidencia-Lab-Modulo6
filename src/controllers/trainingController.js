@@ -3,8 +3,8 @@
  * Controlador para la API de capacitación (LMS)
  */
 
-const trainingService = require("../services/trainingService");
-const logger = require("../config/logger");
+const trainingService = require('../services/trainingService');
+const logger = require('../config/logger');
 
 // ========================================
 // Partner endpoints
@@ -22,7 +22,7 @@ async function listCourses(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -33,7 +33,7 @@ async function listCourses(req, res, next) {
 
     res.json({ success: true, ...result });
   } catch (error) {
-    logger.error("Error listing courses:", error);
+    logger.error('Error listing courses:', error);
     next(error);
   }
 }
@@ -52,13 +52,13 @@ async function getCourse(req, res, next) {
     if (!course) {
       return res.status(404).json({
         success: false,
-        error: "Curso no encontrado",
+        error: 'Curso no encontrado',
       });
     }
 
     res.json({ success: true, data: course });
   } catch (error) {
-    logger.error("Error getting course:", error);
+    logger.error('Error getting course:', error);
     next(error);
   }
 }
@@ -75,7 +75,7 @@ async function enrollInCourse(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -84,10 +84,10 @@ async function enrollInCourse(req, res, next) {
     res.json({
       success: true,
       data: enrollment,
-      message: "Inscripción exitosa",
+      message: 'Inscripción exitosa',
     });
   } catch (error) {
-    logger.error("Error enrolling in course:", error);
+    logger.error('Error enrolling in course:', error);
     next(error);
   }
 }
@@ -106,13 +106,13 @@ async function getLesson(req, res, next) {
     if (!lesson) {
       return res.status(404).json({
         success: false,
-        error: "Lección no encontrada",
+        error: 'Lección no encontrada',
       });
     }
 
     res.json({ success: true, data: lesson });
   } catch (error) {
-    logger.error("Error getting lesson:", error);
+    logger.error('Error getting lesson:', error);
     next(error);
   }
 }
@@ -129,7 +129,7 @@ async function completeLesson(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -138,10 +138,10 @@ async function completeLesson(req, res, next) {
     res.json({
       success: true,
       data: progress,
-      message: "Lección completada",
+      message: 'Lección completada',
     });
   } catch (error) {
-    logger.error("Error completing lesson:", error);
+    logger.error('Error completing lesson:', error);
     next(error);
   }
 }
@@ -159,7 +159,7 @@ async function trackWatchTime(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -167,7 +167,7 @@ async function trackWatchTime(req, res, next) {
 
     res.json({ success: true, data: progress });
   } catch (error) {
-    logger.error("Error tracking watch time:", error);
+    logger.error('Error tracking watch time:', error);
     next(error);
   }
 }
@@ -185,13 +185,13 @@ async function getQuiz(req, res, next) {
     if (!quiz) {
       return res.status(404).json({
         success: false,
-        error: "Quiz no encontrado",
+        error: 'Quiz no encontrado',
       });
     }
 
     res.json({ success: true, data: quiz });
   } catch (error) {
-    logger.error("Error getting quiz:", error);
+    logger.error('Error getting quiz:', error);
     next(error);
   }
 }
@@ -209,14 +209,14 @@ async function submitQuiz(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
-    if (!answers || typeof answers !== "object") {
+    if (!answers || typeof answers !== 'object') {
       return res.status(400).json({
         success: false,
-        error: "Las respuestas son requeridas",
+        error: 'Las respuestas son requeridas',
       });
     }
 
@@ -225,10 +225,10 @@ async function submitQuiz(req, res, next) {
     res.json({
       success: true,
       data: result,
-      message: result.passed ? "¡Felicidades! Aprobaste el quiz" : "No aprobaste, intenta de nuevo",
+      message: result.passed ? '¡Felicidades! Aprobaste el quiz' : 'No aprobaste, intenta de nuevo',
     });
   } catch (error) {
-    logger.error("Error submitting quiz:", error);
+    logger.error('Error submitting quiz:', error);
     next(error);
   }
 }
@@ -244,7 +244,7 @@ async function getCertificates(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -252,7 +252,7 @@ async function getCertificates(req, res, next) {
 
     res.json({ success: true, data: certificates });
   } catch (error) {
-    logger.error("Error getting certificates:", error);
+    logger.error('Error getting certificates:', error);
     next(error);
   }
 }
@@ -270,13 +270,13 @@ async function verifyCertificate(req, res, next) {
     if (!result) {
       return res.status(404).json({
         success: false,
-        error: "Certificado no encontrado o inválido",
+        error: 'Certificado no encontrado o inválido',
       });
     }
 
     res.json({ success: true, data: result });
   } catch (error) {
-    logger.error("Error verifying certificate:", error);
+    logger.error('Error verifying certificate:', error);
     next(error);
   }
 }
@@ -288,9 +288,9 @@ async function verifyCertificate(req, res, next) {
 async function downloadCertificate(req, res, next) {
   try {
     const { code } = req.params;
-    const certificateService = require("../services/certificateService");
-    const prisma = require("../config/database");
-    const fs = require("fs");
+    const certificateService = require('../services/certificateService');
+    const prisma = require('../config/database');
+    const fs = require('fs');
 
     // Verificar que el certificado existe
     const certificate = await prisma.certificate.findUnique({
@@ -306,7 +306,7 @@ async function downloadCertificate(req, res, next) {
     if (!certificate) {
       return res.status(404).json({
         success: false,
-        error: "Certificado no encontrado",
+        error: 'Certificado no encontrado',
       });
     }
 
@@ -317,16 +317,13 @@ async function downloadCertificate(req, res, next) {
     }
 
     // Enviar archivo
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="certificado_${code}.pdf"`
-    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="certificado_${code}.pdf"`);
 
     const fileStream = fs.createReadStream(pdfPath);
     fileStream.pipe(res);
   } catch (error) {
-    logger.error("Error downloading certificate:", error);
+    logger.error('Error downloading certificate:', error);
     next(error);
   }
 }
@@ -342,7 +339,7 @@ async function getProgress(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -350,7 +347,7 @@ async function getProgress(req, res, next) {
 
     res.json({ success: true, data: progress });
   } catch (error) {
-    logger.error("Error getting progress:", error);
+    logger.error('Error getting progress:', error);
     next(error);
   }
 }
@@ -370,12 +367,12 @@ async function adminListCourses(req, res, next) {
     const result = await trainingService.getAllCourses({
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 20,
-      includeUnpublished: includeUnpublished !== "false",
+      includeUnpublished: includeUnpublished !== 'false',
     });
 
     res.json({ success: true, ...result });
   } catch (error) {
-    logger.error("Error listing courses (admin):", error);
+    logger.error('Error listing courses (admin):', error);
     next(error);
   }
 }
@@ -391,10 +388,10 @@ async function createCourse(req, res, next) {
     res.status(201).json({
       success: true,
       data: course,
-      message: "Curso creado",
+      message: 'Curso creado',
     });
   } catch (error) {
-    logger.error("Error creating course:", error);
+    logger.error('Error creating course:', error);
     next(error);
   }
 }
@@ -412,16 +409,16 @@ async function updateCourse(req, res, next) {
     res.json({
       success: true,
       data: course,
-      message: "Curso actualizado",
+      message: 'Curso actualizado',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Curso no encontrado",
+        error: 'Curso no encontrado',
       });
     }
-    logger.error("Error updating course:", error);
+    logger.error('Error updating course:', error);
     next(error);
   }
 }
@@ -438,16 +435,16 @@ async function deleteCourse(req, res, next) {
 
     res.json({
       success: true,
-      message: "Curso eliminado",
+      message: 'Curso eliminado',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Curso no encontrado",
+        error: 'Curso no encontrado',
       });
     }
-    logger.error("Error deleting course:", error);
+    logger.error('Error deleting course:', error);
     next(error);
   }
 }
@@ -465,10 +462,10 @@ async function createLesson(req, res, next) {
     res.status(201).json({
       success: true,
       data: lesson,
-      message: "Lección creada",
+      message: 'Lección creada',
     });
   } catch (error) {
-    logger.error("Error creating lesson:", error);
+    logger.error('Error creating lesson:', error);
     next(error);
   }
 }
@@ -486,16 +483,16 @@ async function updateLesson(req, res, next) {
     res.json({
       success: true,
       data: lesson,
-      message: "Lección actualizada",
+      message: 'Lección actualizada',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Lección no encontrada",
+        error: 'Lección no encontrada',
       });
     }
-    logger.error("Error updating lesson:", error);
+    logger.error('Error updating lesson:', error);
     next(error);
   }
 }
@@ -512,16 +509,16 @@ async function deleteLesson(req, res, next) {
 
     res.json({
       success: true,
-      message: "Lección eliminada",
+      message: 'Lección eliminada',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Lección no encontrada",
+        error: 'Lección no encontrada',
       });
     }
-    logger.error("Error deleting lesson:", error);
+    logger.error('Error deleting lesson:', error);
     next(error);
   }
 }
@@ -539,10 +536,10 @@ async function createQuiz(req, res, next) {
     res.status(201).json({
       success: true,
       data: quiz,
-      message: "Quiz creado",
+      message: 'Quiz creado',
     });
   } catch (error) {
-    logger.error("Error creating quiz:", error);
+    logger.error('Error creating quiz:', error);
     next(error);
   }
 }
@@ -571,4 +568,3 @@ module.exports = {
   deleteLesson,
   createQuiz,
 };
-

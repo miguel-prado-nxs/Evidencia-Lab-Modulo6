@@ -3,8 +3,8 @@
  * Controlador para la API de exportación de datos
  */
 
-const exportService = require("../services/exportService");
-const logger = require("../config/logger");
+const exportService = require('../services/exportService');
+const logger = require('../config/logger');
 
 /**
  * GET /export/leads
@@ -12,16 +12,15 @@ const logger = require("../config/logger");
  */
 async function exportLeads(req, res, next) {
   try {
-    const { format = "csv", partnerId, status, dateFrom, dateTo } = req.query;
+    const { format = 'csv', partnerId, status, dateFrom, dateTo } = req.query;
 
     // Si no es admin, forzar su partnerId
-    const filterPartnerId =
-      req.user.role === "ADMIN" ? partnerId : req.user.partner?.id;
+    const filterPartnerId = req.user.role === 'ADMIN' ? partnerId : req.user.partner?.id;
 
-    if (!filterPartnerId && req.user.role !== "ADMIN") {
+    if (!filterPartnerId && req.user.role !== 'ADMIN') {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -35,18 +34,13 @@ async function exportLeads(req, res, next) {
       format
     );
 
-    res.setHeader("Content-Type", result.contentType);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${result.filename}"`
-    );
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.data);
 
-    logger.info(
-      `Leads exported: ${format} by user ${req.user.id} (partner: ${filterPartnerId})`
-    );
+    logger.info(`Leads exported: ${format} by user ${req.user.id} (partner: ${filterPartnerId})`);
   } catch (error) {
-    logger.error("Error exporting leads:", error);
+    logger.error('Error exporting leads:', error);
     next(error);
   }
 }
@@ -59,13 +53,12 @@ async function exportLeadsForElevenLabs(req, res, next) {
   try {
     const { partnerId, status, dateFrom, dateTo } = req.query;
 
-    const filterPartnerId =
-      req.user.role === "ADMIN" ? partnerId : req.user.partner?.id;
+    const filterPartnerId = req.user.role === 'ADMIN' ? partnerId : req.user.partner?.id;
 
-    if (!filterPartnerId && req.user.role !== "ADMIN") {
+    if (!filterPartnerId && req.user.role !== 'ADMIN') {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -76,18 +69,15 @@ async function exportLeadsForElevenLabs(req, res, next) {
       dateTo,
     });
 
-    res.setHeader("Content-Type", result.contentType);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${result.filename}"`
-    );
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.data);
 
     logger.info(
       `Leads exported for ElevenLabs by user ${req.user.id} (partner: ${filterPartnerId})`
     );
   } catch (error) {
-    logger.error("Error exporting for ElevenLabs:", error);
+    logger.error('Error exporting for ElevenLabs:', error);
     next(error);
   }
 }
@@ -98,16 +88,15 @@ async function exportLeadsForElevenLabs(req, res, next) {
  */
 async function exportDeals(req, res, next) {
   try {
-    const { format = "csv", partnerId, status, dateFrom, dateTo } = req.query;
+    const { format = 'csv', partnerId, status, dateFrom, dateTo } = req.query;
 
     // Si no es admin, forzar su partnerId
-    const filterPartnerId =
-      req.user.role === "ADMIN" ? partnerId : req.user.partner?.id;
+    const filterPartnerId = req.user.role === 'ADMIN' ? partnerId : req.user.partner?.id;
 
-    if (!filterPartnerId && req.user.role !== "ADMIN") {
+    if (!filterPartnerId && req.user.role !== 'ADMIN') {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -121,16 +110,13 @@ async function exportDeals(req, res, next) {
       format
     );
 
-    res.setHeader("Content-Type", result.contentType);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${result.filename}"`
-    );
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.data);
 
     logger.info(`Deals exported: ${format} by user ${req.user.id}`);
   } catch (error) {
-    logger.error("Error exporting deals:", error);
+    logger.error('Error exporting deals:', error);
     next(error);
   }
 }
@@ -141,17 +127,15 @@ async function exportDeals(req, res, next) {
  */
 async function exportCommissions(req, res, next) {
   try {
-    const { format = "csv", partnerId, status, type, dateFrom, dateTo } =
-      req.query;
+    const { format = 'csv', partnerId, status, type, dateFrom, dateTo } = req.query;
 
     // Si no es admin, forzar su partnerId
-    const filterPartnerId =
-      req.user.role === "ADMIN" ? partnerId : req.user.partner?.id;
+    const filterPartnerId = req.user.role === 'ADMIN' ? partnerId : req.user.partner?.id;
 
-    if (!filterPartnerId && req.user.role !== "ADMIN") {
+    if (!filterPartnerId && req.user.role !== 'ADMIN') {
       return res.status(403).json({
         success: false,
-        error: "No tienes un perfil de partner asociado",
+        error: 'No tienes un perfil de partner asociado',
       });
     }
 
@@ -166,16 +150,13 @@ async function exportCommissions(req, res, next) {
       format
     );
 
-    res.setHeader("Content-Type", result.contentType);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${result.filename}"`
-    );
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.data);
 
     logger.info(`Commissions exported: ${format} by user ${req.user.id}`);
   } catch (error) {
-    logger.error("Error exporting commissions:", error);
+    logger.error('Error exporting commissions:', error);
     next(error);
   }
 }
@@ -186,7 +167,7 @@ async function exportCommissions(req, res, next) {
  */
 async function exportPartners(req, res, next) {
   try {
-    const { format = "csv", type, tier, status, dateFrom, dateTo } = req.query;
+    const { format = 'csv', type, tier, status, dateFrom, dateTo } = req.query;
 
     const result = await exportService.exportPartners(
       {
@@ -199,16 +180,13 @@ async function exportPartners(req, res, next) {
       format
     );
 
-    res.setHeader("Content-Type", result.contentType);
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${result.filename}"`
-    );
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.data);
 
     logger.info(`Partners exported: ${format} by admin ${req.user.id}`);
   } catch (error) {
-    logger.error("Error exporting partners:", error);
+    logger.error('Error exporting partners:', error);
     next(error);
   }
 }
@@ -222,31 +200,28 @@ async function generatePartnerReport(req, res, next) {
     const { partnerId } = req.params;
 
     // Verificar permisos
-    if (req.user.role !== "ADMIN" && req.user.partner?.id !== partnerId) {
+    if (req.user.role !== 'ADMIN' && req.user.partner?.id !== partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para ver este reporte",
+        error: 'No tienes permisos para ver este reporte',
       });
     }
 
     const pdfBuffer = await exportService.generatePartnerReport(partnerId);
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="partner_report_${partnerId}.pdf"`
-    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="partner_report_${partnerId}.pdf"`);
     res.send(pdfBuffer);
 
     logger.info(`Partner report generated: ${partnerId} by user ${req.user.id}`);
   } catch (error) {
-    if (error.message === "Partner no encontrado") {
+    if (error.message === 'Partner no encontrado') {
       return res.status(404).json({
         success: false,
         error: error.message,
       });
     }
-    logger.error("Error generating partner report:", error);
+    logger.error('Error generating partner report:', error);
     next(error);
   }
 }
@@ -259,4 +234,3 @@ module.exports = {
   generatePartnerReport,
   exportLeadsForElevenLabs,
 };
-

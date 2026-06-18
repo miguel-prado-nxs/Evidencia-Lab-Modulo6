@@ -1,11 +1,11 @@
-const prisma = require("../config/database");
-const { v4: uuidv4 } = require("uuid");
-const bcrypt = require("bcryptjs");
+const prisma = require('../config/database');
+const { v4: uuidv4 } = require('uuid');
+const bcrypt = require('bcryptjs');
 
 // Generar código único de partner
 const generatePartnerCode = () => {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "EO-";
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = 'EO-';
   for (let i = 0; i < 6; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
@@ -15,18 +15,7 @@ const generatePartnerCode = () => {
 // Crear nuevo partner
 // autoApprove: si true, crea el partner ya activo (para creación desde admin)
 const createPartner = async (data, autoApprove = false) => {
-  const {
-    email,
-    password,
-    name,
-    type,
-    companyName,
-    phone,
-    website,
-    country,
-    state,
-    city,
-  } = data;
+  const { email, password, name, type, companyName, phone, website, country, state, city } = data;
 
   // Hash de la contraseña
   const passwordHash = await bcrypt.hash(password, 10);
@@ -45,7 +34,7 @@ const createPartner = async (data, autoApprove = false) => {
 
   // Determinar comisión según tipo (máximo 15%)
   const commissionRates = {
-    AFFILIATE: 0.10,
+    AFFILIATE: 0.1,
     REFERRAL: 0.08,
     RESELLER: 0.15,
     SOLUTIONS: 0.12,
@@ -53,8 +42,8 @@ const createPartner = async (data, autoApprove = false) => {
   };
 
   // Determinar status y role según autoApprove
-  const initialStatus = autoApprove ? "ACTIVE" : "PENDING";
-  const initialRole = autoApprove ? "PARTNER" : "PENDING";
+  const initialStatus = autoApprove ? 'ACTIVE' : 'PENDING';
+  const initialRole = autoApprove ? 'PARTNER' : 'PENDING';
 
   // Crear usuario y partner en una transacción
   const result = await prisma.$transaction(async (tx) => {
@@ -72,12 +61,12 @@ const createPartner = async (data, autoApprove = false) => {
         userId: user.id,
         code,
         type,
-        tier: "REGISTERED",
+        tier: 'REGISTERED',
         status: initialStatus,
         companyName,
         phone,
         website,
-        country: country || "MX",
+        country: country || 'MX',
         state,
         city,
         commissionRate: commissionRates[type] || 0.15,
@@ -90,8 +79,8 @@ const createPartner = async (data, autoApprove = false) => {
     await tx.activity.create({
       data: {
         partnerId: partner.id,
-        type: autoApprove ? "PARTNER_CREATED_BY_ADMIN" : "PARTNER_REGISTERED",
-        description: autoApprove 
+        type: autoApprove ? 'PARTNER_CREATED_BY_ADMIN' : 'PARTNER_REGISTERED',
+        description: autoApprove
           ? `Partner ${name} creado y activado por admin como ${type}`
           : `Partner ${name} registrado como ${type}`,
       },
@@ -153,8 +142,8 @@ const listPartners = async (filters = {}) => {
     search,
     page = 1,
     limit = 20,
-    sortBy = "createdAt",
-    sortOrder = "desc",
+    sortBy = 'createdAt',
+    sortOrder = 'desc',
   } = filters;
 
   const where = {};
@@ -164,10 +153,10 @@ const listPartners = async (filters = {}) => {
   if (status) where.status = status;
   if (search) {
     where.OR = [
-      { code: { contains: search, mode: "insensitive" } },
-      { companyName: { contains: search, mode: "insensitive" } },
-      { user: { name: { contains: search, mode: "insensitive" } } },
-      { user: { email: { contains: search, mode: "insensitive" } } },
+      { code: { contains: search, mode: 'insensitive' } },
+      { companyName: { contains: search, mode: 'insensitive' } },
+      { user: { name: { contains: search, mode: 'insensitive' } } },
+      { user: { email: { contains: search, mode: 'insensitive' } } },
     ];
   }
 
@@ -229,24 +218,24 @@ const updatePartner = async (id, data) => {
 // Cambiar status del partner
 const updatePartnerStatus = async (id, status) => {
   const partner = await prisma.partner.findUnique({ where: { id } });
-  if (!partner) throw new Error("Partner no encontrado");
+  if (!partner) throw new Error('Partner no encontrado');
 
   const updateData = { status };
-  
+
   // Si se está aprobando, actualizar rol del usuario
-  if (status === "ACTIVE" && partner.status === "PENDING") {
+  if (status === 'ACTIVE' && partner.status === 'PENDING') {
     updateData.approvedAt = new Date();
-    
+
     await prisma.user.update({
       where: { id: partner.userId },
-      data: { role: "PARTNER" },
+      data: { role: 'PARTNER' },
     });
 
     await prisma.activity.create({
       data: {
         partnerId: id,
-        type: "PARTNER_APPROVED",
-        description: "Partner aprobado y activado",
+        type: 'PARTNER_APPROVED',
+        description: 'Partner aprobado y activado',
       },
     });
   }
@@ -270,20 +259,20 @@ const updatePartnerStatus = async (id, status) => {
 // Cambiar tier del partner
 const updatePartnerTier = async (id, tier) => {
   const partner = await prisma.partner.findUnique({ where: { id } });
-  if (!partner) throw new Error("Partner no encontrado");
+  if (!partner) throw new Error('Partner no encontrado');
 
   // Actualizar comisión según tier (bonos +5/10/15%)
   const commissionRates = {
     REGISTERED: partner.commissionRate,
     SILVER: partner.commissionRate + 0.05,
-    GOLD: partner.commissionRate + 0.10,
+    GOLD: partner.commissionRate + 0.1,
     ELITE: partner.commissionRate + 0.15,
   };
 
   await prisma.activity.create({
     data: {
       partnerId: id,
-      type: "PARTNER_TIER_UPGRADE",
+      type: 'PARTNER_TIER_UPGRADE',
       description: `Partner ascendido de ${partner.tier} a ${tier}`,
     },
   });
@@ -311,7 +300,7 @@ const getPartnerStats = async (partnerId) => {
     prisma.partner.findUnique({ where: { id: partnerId } }),
     prisma.lead.count({ where: { partnerId } }),
     prisma.lead.groupBy({
-      by: ["status"],
+      by: ['status'],
       where: { partnerId },
       _count: { status: true },
     }),
@@ -329,7 +318,7 @@ const getPartnerStats = async (partnerId) => {
       _sum: { amount: true },
     }),
     prisma.commission.aggregate({
-      where: { partnerId, status: "PENDING" },
+      where: { partnerId, status: 'PENDING' },
       _sum: { amount: true },
     }),
   ]);
@@ -348,14 +337,17 @@ const getPartnerStats = async (partnerId) => {
   };
 
   const currentTierReq = tierRequirements[partner.tier];
-  const nextTier = partner.tier === "REGISTERED" ? "SILVER" :
-                   partner.tier === "SILVER" ? "GOLD" :
-                   partner.tier === "GOLD" ? "ELITE" : null;
-  
+  const nextTier =
+    partner.tier === 'REGISTERED'
+      ? 'SILVER'
+      : partner.tier === 'SILVER'
+        ? 'GOLD'
+        : partner.tier === 'GOLD'
+          ? 'ELITE'
+          : null;
+
   const nextTierReq = nextTier ? tierRequirements[nextTier] : null;
-  const progressToNextTier = nextTierReq 
-    ? Math.min((dealsCount / nextTierReq) * 100, 100)
-    : 100;
+  const progressToNextTier = nextTierReq ? Math.min((dealsCount / nextTierReq) * 100, 100) : 100;
 
   return {
     totalLeads: leadsCount,
@@ -396,4 +388,3 @@ module.exports = {
   getPartnerStats,
   updateUserName,
 };
-

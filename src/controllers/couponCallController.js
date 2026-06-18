@@ -1,5 +1,5 @@
-const couponWhatsappService = require("../services/couponWhatsappService");
-const logger = require("../config/logger");
+const couponWhatsappService = require('../services/couponWhatsappService');
+const logger = require('../config/logger');
 
 /**
  * Endpoint para que ElevenLabs genere y envíe un cupón durante una llamada
@@ -17,53 +17,53 @@ const generateForCall = async (req, res, next) => {
       campaignId,
       campaignContactId,
       couponType,
-      from
+      from,
     } = req.body;
 
     // Validar parámetros requeridos
     if (!phone) {
       return res.status(400).json({
         success: false,
-        error: "phone is required"
+        error: 'phone is required',
       });
     }
 
     if (!prospectName) {
       return res.status(400).json({
         success: false,
-        error: "prospectName is required"
+        error: 'prospectName is required',
       });
     }
 
     if (!businessName) {
       return res.status(400).json({
         success: false,
-        error: "businessName is required"
+        error: 'businessName is required',
       });
     }
 
     if (!scenario) {
       return res.status(400).json({
         success: false,
-        error: "scenario is required"
+        error: 'scenario is required',
       });
     }
 
     if (!agentId) {
       return res.status(400).json({
         success: false,
-        error: "agentId is required"
+        error: 'agentId is required',
       });
     }
 
     if (!callId) {
       return res.status(400).json({
         success: false,
-        error: "callId is required"
+        error: 'callId is required',
       });
     }
 
-    logger.info("Generating coupon for call", {
+    logger.info('Generating coupon for call', {
       phone,
       prospectName,
       businessName,
@@ -72,11 +72,11 @@ const generateForCall = async (req, res, next) => {
       callId,
       campaignId,
       campaignContactId,
-      couponType
+      couponType,
     });
 
     // Helper para ignorar variables no resueltas de Postman ("{{variable}}") o strings vacíos
-    const parseOptionalId = (id) => (!id || id.startsWith("{{") ? null : id);
+    const parseOptionalId = (id) => (!id || id.startsWith('{{') ? null : id);
 
     // Generar y enviar el cupón
     const result = await couponWhatsappService.generateAndSendCoupon({
@@ -89,26 +89,26 @@ const generateForCall = async (req, res, next) => {
       campaignId: parseOptionalId(campaignId),
       campaignContactId: parseOptionalId(campaignContactId),
       couponType: couponType || null,
-      from: from || null
+      from: from || null,
     });
 
     if (!result.success) {
-      logger.error("Failed to generate coupon for call", {
+      logger.error('Failed to generate coupon for call', {
         phone,
-        error: result.error
+        error: result.error,
       });
 
       return res.status(400).json({
         success: false,
-        error: result.error
+        error: result.error,
       });
     }
 
-    logger.info("Coupon generated and sent successfully", {
+    logger.info('Coupon generated and sent successfully', {
       couponId: result.coupon.id,
       couponCode: result.coupon.code,
       phone,
-      messageId: result.messageId
+      messageId: result.messageId,
     });
 
     res.status(201).json({
@@ -121,17 +121,17 @@ const generateForCall = async (req, res, next) => {
           couponType: result.coupon.couponType,
           status: result.coupon.status,
           expiresAt: result.coupon.expiresAt,
-          sentAt: result.coupon.sentAt
+          sentAt: result.coupon.sentAt,
         },
         messageId: result.messageId,
         phone: phone,
-        message: "Cupón generado y enviado exitosamente por WhatsApp"
-      }
+        message: 'Cupón generado y enviado exitosamente por WhatsApp',
+      },
     });
   } catch (error) {
-    logger.error("Error in generateForCall", {
+    logger.error('Error in generateForCall', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     next(error);
@@ -139,5 +139,5 @@ const generateForCall = async (req, res, next) => {
 };
 
 module.exports = {
-  generateForCall
+  generateForCall,
 };

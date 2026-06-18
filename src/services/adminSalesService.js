@@ -1,13 +1,13 @@
 /**
  * Admin Sales Service
  * Servicios para que administradores de ventas vean datos de todos los agentes
- * 
+ *
  * Identifica partners de ventas por su código: VENTAS-{userId}
  */
 
-const prisma = require("../config/database");
-const prismaGeo = require("../config/database-geo");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const prismaGeo = require('../config/database-geo');
+const logger = require('../config/logger');
 
 /**
  * Obtener todos los partners de ventas (código empieza con VENTAS-)
@@ -16,8 +16,8 @@ async function getSalesPartners() {
   try {
     const partners = await prisma.partner.findMany({
       where: {
-        code: { startsWith: "VENTAS-" },
-        type: "TECHNOLOGY",
+        code: { startsWith: 'VENTAS-' },
+        type: 'TECHNOLOGY',
       },
       include: {
         user: {
@@ -33,7 +33,7 @@ async function getSalesPartners() {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
 
     // Obtener estadísticas adicionales para cada partner
@@ -41,7 +41,7 @@ async function getSalesPartners() {
       partners.map(async (partner) => {
         // Contar enrichments por nivel
         const enrichmentStats = await prisma.establishmentEnrichment.groupBy({
-          by: ["level"],
+          by: ['level'],
           where: { enrichedBy: partner.id },
           _count: { id: true },
         });
@@ -70,7 +70,7 @@ async function getSalesPartners() {
 
     return partnersWithStats;
   } catch (error) {
-    logger.error("Error obteniendo partners de ventas:", error);
+    logger.error('Error obteniendo partners de ventas:', error);
     throw error;
   }
 }
@@ -84,8 +84,8 @@ async function getAllSalesProspects(filters = {}) {
     // 1. Obtener todos los partners de ventas
     const salesPartners = await prisma.partner.findMany({
       where: {
-        code: { startsWith: "VENTAS-" },
-        type: "TECHNOLOGY",
+        code: { startsWith: 'VENTAS-' },
+        type: 'TECHNOLOGY',
       },
       select: { id: true, code: true, companyName: true, user: { select: { name: true } } },
     });
@@ -116,9 +116,9 @@ async function getAllSalesProspects(filters = {}) {
     const prospects = await prisma.leadProspect.findMany({
       where: {
         partnerId: partnerFilter,
-        status: filters.status || "ASSIGNED",
+        status: filters.status || 'ASSIGNED',
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (prospects.length === 0) {
@@ -170,7 +170,7 @@ async function getAllSalesProspects(filters = {}) {
       return {
         id: enrichment?.id || p.id,
         establishmentId: p.establishmentId,
-        level: enrichment?.level || "PROSPECT",
+        level: enrichment?.level || 'PROSPECT',
         // Datos del agente de ventas
         agent: agent
           ? {
@@ -200,7 +200,7 @@ async function getAllSalesProspects(filters = {}) {
       };
     });
   } catch (error) {
-    logger.error("Error obteniendo prospectos de ventas:", error);
+    logger.error('Error obteniendo prospectos de ventas:', error);
     throw error;
   }
 }
@@ -213,8 +213,8 @@ async function getAllSalesLeads(filters = {}) {
     // 1. Obtener todos los partners de ventas
     const salesPartners = await prisma.partner.findMany({
       where: {
-        code: { startsWith: "VENTAS-" },
-        type: "TECHNOLOGY",
+        code: { startsWith: 'VENTAS-' },
+        type: 'TECHNOLOGY',
       },
       select: { id: true, code: true, companyName: true, user: { select: { name: true } } },
     });
@@ -244,9 +244,9 @@ async function getAllSalesLeads(filters = {}) {
     const enrichments = await prisma.establishmentEnrichment.findMany({
       where: {
         enrichedBy: partnerFilter,
-        level: "LEAD",
+        level: 'LEAD',
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: { updatedAt: 'desc' },
     });
 
     if (enrichments.length === 0) {
@@ -313,7 +313,7 @@ async function getAllSalesLeads(filters = {}) {
       };
     });
   } catch (error) {
-    logger.error("Error obteniendo leads de ventas:", error);
+    logger.error('Error obteniendo leads de ventas:', error);
     throw error;
   }
 }
@@ -326,8 +326,8 @@ async function getAllSalesClients(filters = {}) {
     // 1. Obtener todos los partners de ventas
     const salesPartners = await prisma.partner.findMany({
       where: {
-        code: { startsWith: "VENTAS-" },
-        type: "TECHNOLOGY",
+        code: { startsWith: 'VENTAS-' },
+        type: 'TECHNOLOGY',
       },
       select: { id: true, code: true, companyName: true, user: { select: { name: true } } },
     });
@@ -357,9 +357,9 @@ async function getAllSalesClients(filters = {}) {
     const enrichments = await prisma.establishmentEnrichment.findMany({
       where: {
         enrichedBy: partnerFilter,
-        level: "CLIENT",
+        level: 'CLIENT',
       },
-      orderBy: { updatedAt: "desc" },
+      orderBy: { updatedAt: 'desc' },
     });
 
     if (enrichments.length === 0) {
@@ -407,7 +407,7 @@ async function getAllSalesClients(filters = {}) {
       };
     });
   } catch (error) {
-    logger.error("Error obteniendo clientes de ventas:", error);
+    logger.error('Error obteniendo clientes de ventas:', error);
     throw error;
   }
 }
@@ -420,8 +420,8 @@ async function getSalesStats() {
     // 1. Obtener partners de ventas
     const salesPartners = await prisma.partner.findMany({
       where: {
-        code: { startsWith: "VENTAS-" },
-        type: "TECHNOLOGY",
+        code: { startsWith: 'VENTAS-' },
+        type: 'TECHNOLOGY',
       },
       select: { id: true, code: true, companyName: true, user: { select: { name: true } } },
     });
@@ -440,7 +440,7 @@ async function getSalesStats() {
 
     // 2. Estadísticas globales de enrichments
     const enrichmentStats = await prisma.establishmentEnrichment.groupBy({
-      by: ["level"],
+      by: ['level'],
       where: { enrichedBy: { in: salesPartnerIds } },
       _count: { id: true },
     });
@@ -449,7 +449,7 @@ async function getSalesStats() {
     const prospectCount = await prisma.leadProspect.count({
       where: {
         partnerId: { in: salesPartnerIds },
-        status: "ASSIGNED",
+        status: 'ASSIGNED',
       },
     });
 
@@ -458,10 +458,10 @@ async function getSalesStats() {
       salesPartners.map(async (partner) => {
         const [prospects, enrichments] = await Promise.all([
           prisma.leadProspect.count({
-            where: { partnerId: partner.id, status: "ASSIGNED" },
+            where: { partnerId: partner.id, status: 'ASSIGNED' },
           }),
           prisma.establishmentEnrichment.groupBy({
-            by: ["level"],
+            by: ['level'],
             where: { enrichedBy: partner.id },
             _count: { id: true },
           }),
@@ -503,7 +503,7 @@ async function getSalesStats() {
       byAgent,
     };
   } catch (error) {
-    logger.error("Error obteniendo estadísticas de ventas:", error);
+    logger.error('Error obteniendo estadísticas de ventas:', error);
     throw error;
   }
 }

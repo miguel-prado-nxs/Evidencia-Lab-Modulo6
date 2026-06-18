@@ -1,34 +1,10 @@
-const partnerService = require("../services/partnerService");
-const logger = require("../config/logger");
+const partnerService = require('../services/partnerService');
+const logger = require('../config/logger');
 
 // Crear partner (admin)
 const create = async (req, res, next) => {
   try {
-    const { 
-      email, 
-      password, 
-      name, 
-      type, 
-      companyName, 
-      phone, 
-      website, 
-      country, 
-      state, 
-      city,
-      status // opcional: ACTIVE para aprobar directamente
-    } = req.body;
-
-    // Validar campos requeridos
-    if (!email || !password || !name || !type) {
-      return res.status(400).json({
-        success: false,
-        error: "Campos requeridos: email, password, name, type",
-      });
-    }
-
-    // Crear partner con opción de auto-aprobar
-    const autoApprove = status === "ACTIVE";
-    const { user, partner } = await partnerService.createPartner({
+    const {
       email,
       password,
       name,
@@ -39,15 +15,42 @@ const create = async (req, res, next) => {
       country,
       state,
       city,
-    }, autoApprove);
+      status, // opcional: ACTIVE para aprobar directamente
+    } = req.body;
+
+    // Validar campos requeridos
+    if (!email || !password || !name || !type) {
+      return res.status(400).json({
+        success: false,
+        error: 'Campos requeridos: email, password, name, type',
+      });
+    }
+
+    // Crear partner con opción de auto-aprobar
+    const autoApprove = status === 'ACTIVE';
+    const { user, partner } = await partnerService.createPartner(
+      {
+        email,
+        password,
+        name,
+        type,
+        companyName,
+        phone,
+        website,
+        country,
+        state,
+        city,
+      },
+      autoApprove
+    );
 
     logger.info(`Partner creado por admin: ${email} (autoApprove: ${autoApprove})`);
 
     res.status(201).json({
       success: true,
-      message: autoApprove 
-        ? "Partner creado y activado exitosamente"
-        : "Partner creado exitosamente (pendiente de aprobación)",
+      message: autoApprove
+        ? 'Partner creado y activado exitosamente'
+        : 'Partner creado exitosamente (pendiente de aprobación)',
       data: {
         user: {
           id: user.id,
@@ -65,10 +68,10 @@ const create = async (req, res, next) => {
       },
     });
   } catch (error) {
-    if (error.code === "P2002") {
+    if (error.code === 'P2002') {
       return res.status(409).json({
         success: false,
-        error: "Ya existe un usuario con este email",
+        error: 'Ya existe un usuario con este email',
       });
     }
     next(error);
@@ -87,8 +90,8 @@ const list = async (req, res, next) => {
       search,
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 20,
-      sortBy: sortBy || "createdAt",
-      sortOrder: sortOrder || "desc",
+      sortBy: sortBy || 'createdAt',
+      sortOrder: sortOrder || 'desc',
     });
 
     res.json({
@@ -109,7 +112,7 @@ const getById = async (req, res, next) => {
     if (!partner) {
       return res.status(404).json({
         success: false,
-        error: "Partner no encontrado",
+        error: 'Partner no encontrado',
       });
     }
 
@@ -129,10 +132,10 @@ const update = async (req, res, next) => {
     const updateData = req.body;
 
     // Verificar permisos (admin puede actualizar cualquiera, partner solo el suyo)
-    if (req.user.role !== "ADMIN" && req.user.partner?.id !== id) {
+    if (req.user.role !== 'ADMIN' && req.user.partner?.id !== id) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para actualizar este partner",
+        error: 'No tienes permisos para actualizar este partner',
       });
     }
 
@@ -191,10 +194,10 @@ const getStats = async (req, res, next) => {
     const { id } = req.params;
 
     // Verificar permisos
-    if (req.user.role !== "ADMIN" && req.user.partner?.id !== id) {
+    if (req.user.role !== 'ADMIN' && req.user.partner?.id !== id) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para ver estas estadísticas",
+        error: 'No tienes permisos para ver estas estadísticas',
       });
     }
 
@@ -215,10 +218,10 @@ const validateCode = async (req, res, next) => {
     const { code } = req.params;
     const partner = await partnerService.getPartnerByCode(code);
 
-    if (!partner || partner.status !== "ACTIVE") {
+    if (!partner || partner.status !== 'ACTIVE') {
       return res.status(404).json({
         success: false,
-        error: "Código de partner no válido",
+        error: 'Código de partner no válido',
       });
     }
 
@@ -239,17 +242,17 @@ const getMyProfile = async (req, res, next) => {
   try {
     const partnerId = req.user.partner?.id;
     if (!partnerId) {
-      return res.status(403).json({ 
-        success: false, 
-        error: "No eres un partner" 
+      return res.status(403).json({
+        success: false,
+        error: 'No eres un partner',
       });
     }
     const partner = await partnerService.getPartnerById(partnerId);
-    
+
     if (!partner) {
       return res.status(404).json({
         success: false,
-        error: "Partner no encontrado",
+        error: 'Partner no encontrado',
       });
     }
 
@@ -264,16 +267,24 @@ const updateMyProfile = async (req, res, next) => {
   try {
     const partnerId = req.user.partner?.id;
     if (!partnerId) {
-      return res.status(403).json({ 
-        success: false, 
-        error: "No eres un partner" 
+      return res.status(403).json({
+        success: false,
+        error: 'No eres un partner',
       });
     }
 
     // Solo permitir campos editables por el partner
-    const allowedFields = ['companyName', 'phone', 'website', 'address', 'city', 'state', 'country'];
+    const allowedFields = [
+      'companyName',
+      'phone',
+      'website',
+      'address',
+      'city',
+      'state',
+      'country',
+    ];
     const updateData = {};
-    allowedFields.forEach(field => {
+    allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
       }
@@ -298,7 +309,7 @@ const updateMyUser = async (req, res, next) => {
     if (!name) {
       return res.status(400).json({
         success: false,
-        error: "El nombre es requerido",
+        error: 'El nombre es requerido',
       });
     }
 
@@ -306,13 +317,13 @@ const updateMyUser = async (req, res, next) => {
 
     logger.info(`Usuario ${userId} actualizó su nombre a: ${name}`);
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       data: {
         id: user.id,
         name: user.name,
         email: user.email,
-      }
+      },
     });
   } catch (error) {
     next(error);
@@ -332,4 +343,3 @@ module.exports = {
   updateMyProfile,
   updateMyUser,
 };
-

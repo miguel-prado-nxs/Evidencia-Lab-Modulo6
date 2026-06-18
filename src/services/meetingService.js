@@ -3,9 +3,9 @@
  * Servicio para manejar meetings de establecimientos
  */
 
-const { PrismaClient } = require("@prisma/client");
+const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const logger = require("../config/logger");
+const logger = require('../config/logger');
 
 /**
  * Obtener meeting de un establecimiento para un partner
@@ -23,7 +23,7 @@ async function getMeetingByEstablishment(establishmentId, partnerId) {
 
     return meeting;
   } catch (error) {
-    logger.error("Error en getMeetingByEstablishment:", error);
+    logger.error('Error en getMeetingByEstablishment:', error);
     throw error;
   }
 }
@@ -58,7 +58,7 @@ async function upsertMeeting(establishmentId, partnerId, data) {
 
     return meeting;
   } catch (error) {
-    logger.error("Error en upsertMeeting:", error);
+    logger.error('Error en upsertMeeting:', error);
     throw error;
   }
 }
@@ -78,13 +78,13 @@ async function getScheduledMeetings(partnerId, startDate, endDate) {
         },
       },
       orderBy: {
-        meetingDate: "asc",
+        meetingDate: 'asc',
       },
     });
 
     return meetings;
   } catch (error) {
-    logger.error("Error en getScheduledMeetings:", error);
+    logger.error('Error en getScheduledMeetings:', error);
     throw error;
   }
 }
@@ -102,13 +102,13 @@ async function getMeetingsByPartner(partnerId, onlyScheduled = false) {
     const meetings = await prisma.establishmentMeeting.findMany({
       where,
       orderBy: {
-        updatedAt: "desc",
+        updatedAt: 'desc',
       },
     });
 
     return meetings;
   } catch (error) {
-    logger.error("Error en getMeetingsByPartner:", error);
+    logger.error('Error en getMeetingsByPartner:', error);
     throw error;
   }
 }
@@ -129,11 +129,11 @@ async function deleteMeeting(establishmentId, partnerId) {
 
     return true;
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       // Record not found
       return false;
     }
-    logger.error("Error en deleteMeeting:", error);
+    logger.error('Error en deleteMeeting:', error);
     throw error;
   }
 }
@@ -166,7 +166,7 @@ async function getMeetingStats(partnerId) {
       past: scheduled - upcoming,
     };
   } catch (error) {
-    logger.error("Error en getMeetingStats:", error);
+    logger.error('Error en getMeetingStats:', error);
     throw error;
   }
 }
@@ -188,46 +188,48 @@ async function createMeetingWithCalendly(establishmentId, partnerId, meetingData
     });
 
     if (!enrichment || !enrichment.decisionMakerEmail) {
-      throw new Error("El establecimiento debe tener un email de contacto registrado");
+      throw new Error('El establecimiento debe tener un email de contacto registrado');
     }
 
     const { startTime, endTime, notes } = meetingData;
 
     // Token de Calendly
-    const calendlyToken = process.env.CALENDLY_API_TOKEN || "eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzY0OTY5MDkyLCJqdGkiOiJiZTZhNGUwZi1iYjk5LTQ1ZTAtODVjYS01NzJmMWMxZGVlNTkiLCJ1c2VyX3V1aWQiOiJjNmIyNTAwMC00ZTYyLTRiYjAtYWU1OS1lY2U4ZDgxZTljOTIifQ.X0RKR9VhbF_sFUgB5Qb1Icok5xJvsmcRlPmBRbJseRSAYdCS0-mWRYjXcVbmw4KMS6nJQNiNuQmy8GfiMUhsYQ";
+    const calendlyToken =
+      process.env.CALENDLY_API_TOKEN ||
+      'eyJraWQiOiIxY2UxZTEzNjE3ZGNmNzY2YjNjZWJjY2Y4ZGM1YmFmYThhNjVlNjg0MDIzZjdjMzJiZTgzNDliMjM4MDEzNWI0IiwidHlwIjoiUEFUIiwiYWxnIjoiRVMyNTYifQ.eyJpc3MiOiJodHRwczovL2F1dGguY2FsZW5kbHkuY29tIiwiaWF0IjoxNzY0OTY5MDkyLCJqdGkiOiJiZTZhNGUwZi1iYjk5LTQ1ZTAtODVjYS01NzJmMWMxZGVlNTkiLCJ1c2VyX3V1aWQiOiJjNmIyNTAwMC00ZTYyLTRiYjAtYWU1OS1lY2U4ZDgxZTljOTIifQ.X0RKR9VhbF_sFUgB5Qb1Icok5xJvsmcRlPmBRbJseRSAYdCS0-mWRYjXcVbmw4KMS6nJQNiNuQmy8GfiMUhsYQ';
 
     // 1. Crear invitee en Calendly (esto crea el evento y envía email)
     const calendlyPayload = {
-      event_type: "https://api.calendly.com/event_types/f68abb7b-2edf-40a9-b966-3b00da3152f9",
+      event_type: 'https://api.calendly.com/event_types/f68abb7b-2edf-40a9-b966-3b00da3152f9',
       start_time: startTime,
       end_time: endTime,
       invitee: {
         email: enrichment.decisionMakerEmail,
-        name: enrichment.decisionMakerName || "Cliente",
-        timezone: "America/Mazatlan",
+        name: enrichment.decisionMakerName || 'Cliente',
+        timezone: 'America/Mazatlan',
       },
       location: {
-        kind: "zoom_conference",
+        kind: 'zoom_conference',
       },
       questions_and_answers: [
         {
-          question: "Please share anything that will help prepare for our meeting.",
-          answer: notes || "Reunión programada desde EasyOrder",
+          question: 'Please share anything that will help prepare for our meeting.',
+          answer: notes || 'Reunión programada desde EasyOrder',
           position: 0,
         },
       ],
     };
 
-    logger.info("Creando invitee en Calendly:", {
+    logger.info('Creando invitee en Calendly:', {
       email: enrichment.decisionMakerEmail,
       name: enrichment.decisionMakerName,
       startTime,
     });
 
-    const createResponse = await fetch("https://api.calendly.com/invitees", {
-      method: "POST",
+    const createResponse = await fetch('https://api.calendly.com/invitees', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${calendlyToken}`,
       },
       body: JSON.stringify(calendlyPayload),
@@ -235,19 +237,22 @@ async function createMeetingWithCalendly(establishmentId, partnerId, meetingData
 
     if (!createResponse.ok) {
       const errorData = await createResponse.json().catch(() => ({}));
-      logger.error("Error de Calendly API:", errorData);
-      throw new Error(`Error al crear meeting en Calendly: ${createResponse.status} - ${JSON.stringify(errorData)}`);
+      logger.error('Error de Calendly API:', errorData);
+      throw new Error(
+        `Error al crear meeting en Calendly: ${createResponse.status} - ${JSON.stringify(errorData)}`
+      );
     }
 
     const calendlyData = await createResponse.json();
-    logger.info("Invitee creado en Calendly:", JSON.stringify(calendlyData, null, 2));
+    logger.info('Invitee creado en Calendly:', JSON.stringify(calendlyData, null, 2));
 
     // 2. Obtener el scheduled_event URI de la respuesta
     // La respuesta del POST /invitees devuelve el URI del evento creado
-    const scheduledEventUri = calendlyData.resource?.scheduled_event || calendlyData.resource?.event;
-    
+    const scheduledEventUri =
+      calendlyData.resource?.scheduled_event || calendlyData.resource?.event;
+
     if (!scheduledEventUri) {
-      logger.warn("No se encontró URI del evento en la respuesta de Calendly");
+      logger.warn('No se encontró URI del evento en la respuesta de Calendly');
     }
 
     // 3. Obtener detalles del evento para conseguir el link de Zoom
@@ -256,11 +261,11 @@ async function createMeetingWithCalendly(establishmentId, partnerId, meetingData
 
     if (scheduledEventUri) {
       // Esperar un momento para que Calendly procese el evento
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       try {
         const eventResponse = await fetch(scheduledEventUri, {
-          method: "GET",
+          method: 'GET',
           headers: {
             Authorization: `Bearer ${calendlyToken}`,
           },
@@ -268,18 +273,18 @@ async function createMeetingWithCalendly(establishmentId, partnerId, meetingData
 
         if (eventResponse.ok) {
           const eventData = await eventResponse.json();
-          logger.info("Detalles del evento Calendly:", JSON.stringify(eventData, null, 2));
+          logger.info('Detalles del evento Calendly:', JSON.stringify(eventData, null, 2));
 
           // Extraer link de Zoom
           if (eventData.resource?.location?.join_url) {
             zoomLink = eventData.resource.location.join_url;
-            logger.info("Link de Zoom encontrado:", zoomLink);
+            logger.info('Link de Zoom encontrado:', zoomLink);
           }
 
           eventUri = eventData.resource?.uri || scheduledEventUri;
         }
       } catch (eventError) {
-        logger.warn("No se pudieron obtener detalles del evento:", eventError.message);
+        logger.warn('No se pudieron obtener detalles del evento:', eventError.message);
       }
     }
 
@@ -296,14 +301,14 @@ async function createMeetingWithCalendly(establishmentId, partnerId, meetingData
         partnerId,
         meetingScheduled: true,
         meetingDate: new Date(startTime),
-        meetingLink: zoomLink || "Pendiente - revisar en Calendly",
+        meetingLink: zoomLink || 'Pendiente - revisar en Calendly',
         notes: notes || `Demo con ${enrichment.decisionMakerName || 'cliente'}`,
         calendlyEventUri: eventUri,
       },
       update: {
         meetingScheduled: true,
         meetingDate: new Date(startTime),
-        meetingLink: zoomLink || "Pendiente - revisar en Calendly",
+        meetingLink: zoomLink || 'Pendiente - revisar en Calendly',
         notes: notes || `Demo con ${enrichment.decisionMakerName || 'cliente'}`,
         calendlyEventUri: eventUri,
       },
@@ -315,10 +320,11 @@ async function createMeetingWithCalendly(establishmentId, partnerId, meetingData
       meeting,
       calendlyData,
       zoomLink,
-      message: "Meeting creado exitosamente. El cliente recibirá un email de Calendly con la invitación.",
+      message:
+        'Meeting creado exitosamente. El cliente recibirá un email de Calendly con la invitación.',
     };
   } catch (error) {
-    logger.error("Error en createMeetingWithCalendly:", error);
+    logger.error('Error en createMeetingWithCalendly:', error);
     throw error;
   }
 }

@@ -1,4 +1,4 @@
-const { z } = require("zod");
+const { z } = require('zod');
 
 // Factory para crear middleware de validación
 const validate = (schema) => (req, res, next) => {
@@ -13,9 +13,9 @@ const validate = (schema) => (req, res, next) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
-        error: "Error de validación",
+        error: 'Error de validación',
         details: error.errors.map((e) => ({
-          field: e.path.join("."),
+          field: e.path.join('.'),
           message: e.message,
         })),
       });
@@ -27,16 +27,22 @@ const validate = (schema) => (req, res, next) => {
 // Schemas comunes
 const paginationSchema = z.object({
   query: z.object({
-    page: z.string().optional().transform((val) => parseInt(val || "1", 10)),
-    limit: z.string().optional().transform((val) => parseInt(val || "20", 10)),
+    page: z
+      .string()
+      .optional()
+      .transform((val) => parseInt(val || '1', 10)),
+    limit: z
+      .string()
+      .optional()
+      .transform((val) => parseInt(val || '20', 10)),
     sortBy: z.string().optional(),
-    sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
+    sortOrder: z.enum(['asc', 'desc']).optional().default('desc'),
   }),
 });
 
 const idParamSchema = z.object({
   params: z.object({
-    id: z.string().uuid("ID inválido"),
+    id: z.string().uuid('ID inválido'),
   }),
 });
 
@@ -45,4 +51,3 @@ module.exports = {
   paginationSchema,
   idParamSchema,
 };
-

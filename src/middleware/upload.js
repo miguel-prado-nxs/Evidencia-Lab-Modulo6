@@ -3,10 +3,15 @@
  * Middleware multer para manejo de archivos subidos
  */
 
-const multer = require("multer");
-const path = require("path");
-const { v4: uuidv4 } = require("uuid");
-const { STORAGE_PATHS, LIMITS, isAllowedMimeType, getExtensionFromMime } = require("../config/storage");
+const multer = require('multer');
+const path = require('path');
+const { v4: uuidv4 } = require('uuid');
+const {
+  STORAGE_PATHS,
+  LIMITS,
+  isAllowedMimeType,
+  getExtensionFromMime,
+} = require('../config/storage');
 
 // Configurar almacenamiento
 const storage = multer.diskStorage({
@@ -39,17 +44,17 @@ const upload = multer({
 });
 
 // Middleware para un solo archivo
-const uploadSingle = upload.single("file");
+const uploadSingle = upload.single('file');
 
 // Middleware para múltiples archivos
-const uploadMultiple = upload.array("files", 10);
+const uploadMultiple = upload.array('files', 10);
 
 // Middleware wrapper para manejar errores
 const handleUpload = (uploadMiddleware) => {
   return (req, res, next) => {
     uploadMiddleware(req, res, (err) => {
       if (err instanceof multer.MulterError) {
-        if (err.code === "LIMIT_FILE_SIZE") {
+        if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
             success: false,
             error: `El archivo excede el tamaño máximo permitido (${LIMITS.maxFileSize / 1024 / 1024}MB)`,
@@ -76,12 +81,17 @@ const csvUpload = multer({
   storage: csvMemoryStorage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
   fileFilter: (req, file, cb) => {
-    const allowed = ["text/csv", "application/vnd.ms-excel", "text/plain", "application/octet-stream"];
+    const allowed = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'text/plain',
+      'application/octet-stream',
+    ];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowed.includes(file.mimetype) || ext === ".csv") {
+    if (allowed.includes(file.mimetype) || ext === '.csv') {
       cb(null, true);
     } else {
-      cb(new Error("Solo se permiten archivos CSV (.csv)"), false);
+      cb(new Error('Solo se permiten archivos CSV (.csv)'), false);
     }
   },
 });
@@ -90,6 +100,5 @@ module.exports = {
   uploadSingle: handleUpload(uploadSingle),
   uploadMultiple: handleUpload(uploadMultiple),
   upload,
-  uploadCsv: handleUpload(csvUpload.single("file")),
+  uploadCsv: handleUpload(csvUpload.single('file')),
 };
-

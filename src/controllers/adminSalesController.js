@@ -3,8 +3,8 @@
  * Controlador para endpoints de administrador de ventas
  */
 
-const adminSalesService = require("../services/adminSalesService");
-const logger = require("../config/logger");
+const adminSalesService = require('../services/adminSalesService');
+const logger = require('../config/logger');
 
 /**
  * GET /api/v1/geo/admin/sales-users
@@ -20,7 +20,7 @@ async function getSalesUsers(req, res, next) {
       count: salesUsers.length,
     });
   } catch (error) {
-    logger.error("Error en getSalesUsers:", error);
+    logger.error('Error en getSalesUsers:', error);
     next(error);
   }
 }
@@ -44,7 +44,7 @@ async function getAllProspects(req, res, next) {
       count: prospects.length,
     });
   } catch (error) {
-    logger.error("Error en getAllProspects:", error);
+    logger.error('Error en getAllProspects:', error);
     next(error);
   }
 }
@@ -67,7 +67,7 @@ async function getAllLeads(req, res, next) {
       count: leads.length,
     });
   } catch (error) {
-    logger.error("Error en getAllLeads:", error);
+    logger.error('Error en getAllLeads:', error);
     next(error);
   }
 }
@@ -90,7 +90,7 @@ async function getAllClients(req, res, next) {
       count: clients.length,
     });
   } catch (error) {
-    logger.error("Error en getAllClients:", error);
+    logger.error('Error en getAllClients:', error);
     next(error);
   }
 }
@@ -108,7 +108,7 @@ async function getSalesStats(req, res, next) {
       data: stats,
     });
   } catch (error) {
-    logger.error("Error en getSalesStats:", error);
+    logger.error('Error en getSalesStats:', error);
     next(error);
   }
 }

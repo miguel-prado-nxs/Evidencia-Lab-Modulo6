@@ -1,20 +1,20 @@
 /**
  * ElevenLabs Webhook Controller
- * 
+ *
  * Recibe notificaciones de los servicios elevenlabs-calificacion y elevenlabs-sdr
  * cuando una llamada finaliza. Actualiza el estado del contacto A/B y el
  * enrichment del establecimiento.
- * 
+ *
  * Esto reemplaza el polling que hacían los workers anteriores.
- * 
+ *
  * Endpoints:
  * - POST /api/v1/webhooks/elevenlabs/call-completed
  */
 
-const crypto = require("crypto");
-const { PrismaClient } = require("@prisma/client");
-const logger = require("../config/logger");
-const config = require("../config/env");
+const crypto = require('crypto');
+const { PrismaClient } = require('@prisma/client');
+const logger = require('../config/logger');
+const config = require('../config/env');
 
 const prisma = new PrismaClient();
 
@@ -22,17 +22,17 @@ const prisma = new PrismaClient();
  * Mapeo de estados ElevenLabs → estados internos del A/B testing
  */
 const STATUS_MAP = {
-  completed: "COMPLETED",
-  done: "COMPLETED",
-  success: "COMPLETED",
-  failed: "FAILED",
-  error: "FAILED",
-  no_answer: "FAILED",
-  'no-answer': "FAILED",
-  busy: "FAILED",
-  voicemail: "FAILED",
-  declined: "FAILED",
-  timeout: "FAILED",
+  completed: 'COMPLETED',
+  done: 'COMPLETED',
+  success: 'COMPLETED',
+  failed: 'FAILED',
+  error: 'FAILED',
+  no_answer: 'FAILED',
+  'no-answer': 'FAILED',
+  busy: 'FAILED',
+  voicemail: 'FAILED',
+  declined: 'FAILED',
+  timeout: 'FAILED',
 };
 
 /**
@@ -45,37 +45,31 @@ function validateWebhookSignature(req) {
     return true;
   }
 
-  const signature = req.headers["x-elevenlabs-signature"] || req.headers["x-webhook-signature"];
+  const signature = req.headers['x-elevenlabs-signature'] || req.headers['x-webhook-signature'];
   if (!signature) {
     return false;
   }
 
   try {
     const payload = JSON.stringify(req.body);
-    const expectedSignature = crypto
-      .createHmac("sha256", secret)
-      .update(payload)
-      .digest("hex");
+    const expectedSignature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
 
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
   } catch (error) {
-    logger.error("[ElevenLabs Webhook] Error validando firma:", error.message);
+    logger.error('[ElevenLabs Webhook] Error validando firma:', error.message);
     return false;
   }
 }
 
 /**
  * POST /api/v1/webhooks/elevenlabs/call-completed
- * 
+ *
  * Recibe notificación cuando una llamada de ElevenLabs finaliza.
  * Puede ser invocado por:
  * - elevenlabs-calificacion (via sus webhooks save-qualification-result / end-call)
  * - elevenlabs-sdr (via su webhook save-all-and-end-call)
  * - ElevenLabs directamente (post-call webhook si se configura)
- * 
+ *
  * Payload esperado:
  * {
  *   establishment_id: string,
@@ -92,13 +86,13 @@ function validateWebhookSignature(req) {
 async function handleCallCompleted(req, res) {
   try {
     // Validar firma en producción
-    if (config.server.nodeEnv === "production") {
+    if (config.server.nodeEnv === 'production') {
       if (!validateWebhookSignature(req)) {
-        logger.warn("[ElevenLabs Webhook] Firma inválida", {
+        logger.warn('[ElevenLabs Webhook] Firma inválida', {
           ip: req.ip,
           path: req.path,
         });
-        return res.status(401).json({ error: "Invalid signature" });
+        return res.status(401).json({ error: 'Invalid signature' });
       }
     }
 
@@ -108,14 +102,14 @@ async function handleCallCompleted(req, res) {
     const establishmentId = body.establishment_id || body.establishmentId;
     const abTestContactId = body.ab_test_contact_id || body.abTestContactId;
     const conversationId = body.conversation_id || body.conversationId;
-    const status = body.status || body.call_status || "completed";
+    const status = body.status || body.call_status || 'completed';
     const callDurationSeconds = body.call_duration_seconds || body.callDurationSeconds;
     const callSummary = body.call_summary || body.callSummary;
     const callTranscript = body.call_transcript || body.callTranscript;
     const recordingUrl = body.recording_url || body.recordingUrl;
     const qualificationResult = body.qualification_result || body.qualificationResult;
 
-    logger.info("[ElevenLabs Webhook] Recibido call-completed", {
+    logger.info('[ElevenLabs Webhook] Recibido call-completed', {
       establishmentId,
       abTestContactId,
       conversationId,
@@ -124,11 +118,14 @@ async function handleCallCompleted(req, res) {
     });
 
     if (!establishmentId && !abTestContactId && !conversationId) {
-      logger.warn("[ElevenLabs Webhook] No se puede identificar la llamada (sin IDs)");
-      return res.status(400).json({ error: "Missing identification data (establishment_id, ab_test_contact_id, or conversation_id)" });
+      logger.warn('[ElevenLabs Webhook] No se puede identificar la llamada (sin IDs)');
+      return res.status(400).json({
+        error:
+          'Missing identification data (establishment_id, ab_test_contact_id, or conversation_id)',
+      });
     }
 
-    const mappedStatus = STATUS_MAP[status?.toLowerCase()] || STATUS_MAP[status] || "COMPLETED";
+    const mappedStatus = STATUS_MAP[status?.toLowerCase()] || STATUS_MAP[status] || 'COMPLETED';
 
     // 1. Actualizar el contacto A/B Test si aplica
     if (abTestContactId) {
@@ -139,7 +136,7 @@ async function handleCallCompleted(req, res) {
 
         if (existingContact) {
           const resultData = {
-            success: mappedStatus === "COMPLETED",
+            success: mappedStatus === 'COMPLETED',
             status: mappedStatus.toLowerCase(),
             conversationId,
             callDuration: callDurationSeconds || null,
@@ -160,15 +157,15 @@ async function handleCallCompleted(req, res) {
             },
           });
 
-          logger.info("[ElevenLabs Webhook] abTestContact actualizado", {
+          logger.info('[ElevenLabs Webhook] abTestContact actualizado', {
             abTestContactId,
             status: mappedStatus,
           });
         } else {
-          logger.warn("[ElevenLabs Webhook] abTestContact no encontrado", { abTestContactId });
+          logger.warn('[ElevenLabs Webhook] abTestContact no encontrado', { abTestContactId });
         }
       } catch (error) {
-        logger.error("[ElevenLabs Webhook] Error actualizando abTestContact", {
+        logger.error('[ElevenLabs Webhook] Error actualizando abTestContact', {
           abTestContactId,
           error: error.message,
         });
@@ -194,14 +191,14 @@ async function handleCallCompleted(req, res) {
           // 2. callStatus es "completed" PERO hay evidencia de conversación en JSON
           //    (el agente escribió datos, recuperar su outcome real)
           // Dejar "completed" huérfano sin datos (webhook sin conversación real)
-          const preCallStates = new Set([null, undefined, "", "pending", "calling"]);
+          const preCallStates = new Set([null, undefined, '', 'pending', 'calling']);
           const hasConversationEvidence =
             enrichment.establishmentData &&
-            typeof enrichment.establishmentData === "object" &&
+            typeof enrichment.establishmentData === 'object' &&
             Object.keys(enrichment.establishmentData).length > 0;
           const shouldUpdate =
             preCallStates.has(enrichment.callStatus) ||
-            (enrichment.callStatus === "completed" && hasConversationEvidence);
+            (enrichment.callStatus === 'completed' && hasConversationEvidence);
 
           if (shouldUpdate) {
             updateData.callStatus = mappedStatus.toLowerCase();
@@ -214,12 +211,18 @@ async function handleCallCompleted(req, res) {
 
           // Guardar scores de calificación si vienen
           if (qualificationResult) {
-            if (qualificationResult.budget !== undefined) updateData.budgetScore = qualificationResult.budget;
-            if (qualificationResult.authority !== undefined) updateData.authorityScore = qualificationResult.authority;
-            if (qualificationResult.need !== undefined) updateData.needScore = qualificationResult.need;
-            if (qualificationResult.timeline !== undefined) updateData.timelineScore = qualificationResult.timeline;
-            if (qualificationResult.overall_score !== undefined) updateData.overallScore = qualificationResult.overall_score;
-            if (qualificationResult.notes) updateData.qualificationNotes = qualificationResult.notes;
+            if (qualificationResult.budget !== undefined)
+              updateData.budgetScore = qualificationResult.budget;
+            if (qualificationResult.authority !== undefined)
+              updateData.authorityScore = qualificationResult.authority;
+            if (qualificationResult.need !== undefined)
+              updateData.needScore = qualificationResult.need;
+            if (qualificationResult.timeline !== undefined)
+              updateData.timelineScore = qualificationResult.timeline;
+            if (qualificationResult.overall_score !== undefined)
+              updateData.overallScore = qualificationResult.overall_score;
+            if (qualificationResult.notes)
+              updateData.qualificationNotes = qualificationResult.notes;
           }
 
           await prisma.establishmentEnrichment.update({
@@ -227,13 +230,13 @@ async function handleCallCompleted(req, res) {
             data: updateData,
           });
 
-          logger.info("[ElevenLabs Webhook] Enrichment actualizado", {
+          logger.info('[ElevenLabs Webhook] Enrichment actualizado', {
             establishmentId,
             status: mappedStatus,
           });
         }
       } catch (error) {
-        logger.error("[ElevenLabs Webhook] Error actualizando enrichment", {
+        logger.error('[ElevenLabs Webhook] Error actualizando enrichment', {
           establishmentId,
           error: error.message,
         });
@@ -242,7 +245,7 @@ async function handleCallCompleted(req, res) {
 
     return res.status(200).json({ received: true, status: mappedStatus });
   } catch (error) {
-    logger.error("[ElevenLabs Webhook] Error general:", {
+    logger.error('[ElevenLabs Webhook] Error general:', {
       error: error.message,
       stack: error.stack,
     });
@@ -273,14 +276,14 @@ async function handleVoicemailDetected(req, res) {
     const conversationId = body.conversation_id || body.conversationId;
     const detectionReason = body.detection_reason || body.detectionReason;
 
-    logger.info("[Voicemail Webhook] Voicemail detectado", {
+    logger.info('[Voicemail Webhook] Voicemail detectado', {
       establishmentId,
       conversationId,
       reason: detectionReason,
     });
 
     if (!establishmentId) {
-      return res.status(400).json({ error: "Missing establishment_id" });
+      return res.status(400).json({ error: 'Missing establishment_id' });
     }
 
     // Actualizar enrichment inmediatamente
@@ -295,21 +298,21 @@ async function handleVoicemailDetected(req, res) {
       await prisma.establishmentEnrichment.update({
         where: { establishmentId },
         data: {
-          callStatus: "voicemail",
-          callSummary: detectionReason || "Voicemail detectado automáticamente",
+          callStatus: 'voicemail',
+          callSummary: detectionReason || 'Voicemail detectado automáticamente',
           updatedAt: new Date(),
         },
       });
 
-      logger.info("[Voicemail Webhook] Enrichment actualizado", {
+      logger.info('[Voicemail Webhook] Enrichment actualizado', {
         establishmentId,
-        status: "voicemail",
+        status: 'voicemail',
       });
     }
 
-    return res.status(200).json({ received: true, status: "voicemail" });
+    return res.status(200).json({ received: true, status: 'voicemail' });
   } catch (error) {
-    logger.error("[Voicemail Webhook] Error:", {
+    logger.error('[Voicemail Webhook] Error:', {
       error: error.message,
       stack: error.stack,
     });
@@ -336,16 +339,16 @@ async function handleHangUpCall(req, res) {
     const body = req.body;
     const establishmentId = body.establishment_id || body.establishmentId;
     const conversationId = body.conversation_id || body.conversationId;
-    const reason = body.reason || "Usuario colgó la llamada";
+    const reason = body.reason || 'Usuario colgó la llamada';
 
-    logger.info("[Hang Up Webhook] Solicitud de colgar recibida", {
+    logger.info('[Hang Up Webhook] Solicitud de colgar recibida', {
       establishmentId,
       conversationId,
       reason,
     });
 
     if (!establishmentId && !conversationId) {
-      return res.status(400).json({ error: "Missing establishment_id or conversation_id" });
+      return res.status(400).json({ error: 'Missing establishment_id or conversation_id' });
     }
 
     // PASO 1: Actualizar el enrichment para marcar que se colgó
@@ -354,18 +357,18 @@ async function handleHangUpCall(req, res) {
         await prisma.establishmentEnrichment.update({
           where: { establishmentId },
           data: {
-            callStatus: "completed",
+            callStatus: 'completed',
             callSummary: reason,
             updatedAt: new Date(),
           },
         });
 
-        logger.info("[Hang Up Webhook] Enrichment actualizado", {
+        logger.info('[Hang Up Webhook] Enrichment actualizado', {
           establishmentId,
-          callStatus: "hung_up",
+          callStatus: 'hung_up',
         });
       } catch (error) {
-        logger.error("[Hang Up Webhook] Error actualizando enrichment", {
+        logger.error('[Hang Up Webhook] Error actualizando enrichment', {
           establishmentId,
           error: error.message,
         });
@@ -374,7 +377,7 @@ async function handleHangUpCall(req, res) {
 
     return res.status(200).json({ received: true, hangUp: true });
   } catch (error) {
-    logger.error("[Hang Up Webhook] Error:", {
+    logger.error('[Hang Up Webhook] Error:', {
       error: error.message,
       stack: error.stack,
     });
@@ -388,12 +391,12 @@ async function handleHangUpCall(req, res) {
  */
 async function webhookHealth(req, res) {
   res.json({
-    status: "ok",
-    service: "elevenlabs-webhooks",
+    status: 'ok',
+    service: 'elevenlabs-webhooks',
     endpoints: [
-      "POST /api/v1/webhooks/elevenlabs/call-completed",
-      "POST /api/v1/webhooks/elevenlabs/voicemail-detected",
-      "POST /api/v1/webhooks/elevenlabs/hang-up-call",
+      'POST /api/v1/webhooks/elevenlabs/call-completed',
+      'POST /api/v1/webhooks/elevenlabs/voicemail-detected',
+      'POST /api/v1/webhooks/elevenlabs/hang-up-call',
     ],
     timestamp: new Date().toISOString(),
   });

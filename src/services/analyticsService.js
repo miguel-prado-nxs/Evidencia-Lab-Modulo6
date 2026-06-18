@@ -1,4 +1,4 @@
-const prisma = require("../config/database");
+const prisma = require('../config/database');
 
 // Dashboard global para admin
 const getAdminDashboard = async () => {
@@ -24,14 +24,14 @@ const getAdminDashboard = async () => {
     commissionsPending,
   ] = await Promise.all([
     prisma.partner.count(),
-    prisma.partner.count({ where: { status: "ACTIVE" } }),
-    prisma.partner.count({ where: { status: "PENDING" } }),
+    prisma.partner.count({ where: { status: 'ACTIVE' } }),
+    prisma.partner.count({ where: { status: 'PENDING' } }),
     prisma.partner.groupBy({
-      by: ["type"],
+      by: ['type'],
       _count: { type: true },
     }),
     prisma.partner.groupBy({
-      by: ["tier"],
+      by: ['tier'],
       _count: { tier: true },
     }),
     prisma.lead.count(),
@@ -42,7 +42,7 @@ const getAdminDashboard = async () => {
       where: { createdAt: { gte: startOfMonth } },
     }),
     prisma.lead.groupBy({
-      by: ["status"],
+      by: ['status'],
       _count: { status: true },
     }),
     prisma.deal.count(),
@@ -60,7 +60,7 @@ const getAdminDashboard = async () => {
       _sum: { amount: true },
     }),
     prisma.commission.aggregate({
-      where: { status: "PENDING" },
+      where: { status: 'PENDING' },
       _sum: { amount: true },
     }),
   ]);
@@ -82,13 +82,10 @@ const getAdminDashboard = async () => {
   });
 
   // Calcular tasas
-  const conversionRate = totalLeads > 0 
-    ? ((totalDeals / totalLeads) * 100).toFixed(1)
-    : 0;
+  const conversionRate = totalLeads > 0 ? ((totalDeals / totalLeads) * 100).toFixed(1) : 0;
 
-  const activationRate = totalPartners > 0
-    ? ((activePartners / totalPartners) * 100).toFixed(1)
-    : 0;
+  const activationRate =
+    totalPartners > 0 ? ((activePartners / totalPartners) * 100).toFixed(1) : 0;
 
   return {
     totalPartners,
@@ -124,7 +121,7 @@ const getCampaignAnalytics = async (filters = {}) => {
 
   // Agrupar leads por campaña
   const leadsByCampaign = await prisma.lead.groupBy({
-    by: ["utmCampaign", "utmSource", "utmMedium"],
+    by: ['utmCampaign', 'utmSource', 'utmMedium'],
     where: {
       ...where,
       utmCampaign: { not: null },
@@ -161,9 +158,8 @@ const getCampaignAnalytics = async (filters = {}) => {
         totalLeads: campaign._count.id,
         totalDeals: deals,
         totalRevenue: parseFloat(revenue._sum.totalValue || 0),
-        conversionRate: campaign._count.id > 0 
-          ? ((deals / campaign._count.id) * 100).toFixed(1)
-          : 0,
+        conversionRate:
+          campaign._count.id > 0 ? ((deals / campaign._count.id) * 100).toFixed(1) : 0,
       };
     })
   );
@@ -172,15 +168,16 @@ const getCampaignAnalytics = async (filters = {}) => {
 };
 
 // Top partners
-const getTopPartners = async (limit = 10, metric = "revenue") => {
-  const orderBy = metric === "revenue" 
-    ? { totalRevenue: "desc" }
-    : metric === "deals"
-    ? { totalDeals: "desc" }
-    : { totalLeads: "desc" };
+const getTopPartners = async (limit = 10, metric = 'revenue') => {
+  const orderBy =
+    metric === 'revenue'
+      ? { totalRevenue: 'desc' }
+      : metric === 'deals'
+        ? { totalDeals: 'desc' }
+        : { totalLeads: 'desc' };
 
   return prisma.partner.findMany({
-    where: { status: "ACTIVE" },
+    where: { status: 'ACTIVE' },
     include: {
       user: {
         select: {
@@ -195,13 +192,13 @@ const getTopPartners = async (limit = 10, metric = "revenue") => {
 };
 
 // Tendencias por período
-const getTrends = async (period = "week", weeks = 12) => {
+const getTrends = async (period = 'week', weeks = 12) => {
   const now = new Date();
   const trends = [];
 
   for (let i = weeks - 1; i >= 0; i--) {
     const weekStart = new Date(now);
-    weekStart.setDate(weekStart.getDate() - (i * 7) - weekStart.getDay());
+    weekStart.setDate(weekStart.getDate() - i * 7 - weekStart.getDay());
     weekStart.setHours(0, 0, 0, 0);
 
     const weekEnd = new Date(weekStart);
@@ -236,7 +233,7 @@ const getTrends = async (period = "week", weeks = 12) => {
     ]);
 
     trends.push({
-      period: weekStart.toISOString().split("T")[0],
+      period: weekStart.toISOString().split('T')[0],
       leads,
       deals,
       revenue: parseFloat(revenue._sum.totalValue || 0),
@@ -258,44 +255,41 @@ const getFunnel = async (filters = {}) => {
     if (dateTo) where.createdAt.lte = new Date(dateTo);
   }
 
-  const [
-    totalLeads,
-    contacted,
-    qualified,
-    negotiation,
-    won,
-    lost,
-  ] = await Promise.all([
+  const [totalLeads, contacted, qualified, negotiation, won, lost] = await Promise.all([
     prisma.lead.count({ where }),
-    prisma.lead.count({ where: { ...where, status: "CONTACTED" } }),
-    prisma.lead.count({ where: { ...where, status: "QUALIFIED" } }),
-    prisma.lead.count({ where: { ...where, status: "NEGOTIATION" } }),
-    prisma.lead.count({ where: { ...where, status: "WON" } }),
-    prisma.lead.count({ where: { ...where, status: "LOST" } }),
+    prisma.lead.count({ where: { ...where, status: 'CONTACTED' } }),
+    prisma.lead.count({ where: { ...where, status: 'QUALIFIED' } }),
+    prisma.lead.count({ where: { ...where, status: 'NEGOTIATION' } }),
+    prisma.lead.count({ where: { ...where, status: 'WON' } }),
+    prisma.lead.count({ where: { ...where, status: 'LOST' } }),
   ]);
 
   return {
     stages: [
-      { name: "Nuevos", count: totalLeads, percentage: 100 },
-      { 
-        name: "Contactados", 
-        count: contacted + qualified + negotiation + won, 
-        percentage: totalLeads > 0 ? (((contacted + qualified + negotiation + won) / totalLeads) * 100).toFixed(1) : 0 
+      { name: 'Nuevos', count: totalLeads, percentage: 100 },
+      {
+        name: 'Contactados',
+        count: contacted + qualified + negotiation + won,
+        percentage:
+          totalLeads > 0
+            ? (((contacted + qualified + negotiation + won) / totalLeads) * 100).toFixed(1)
+            : 0,
       },
-      { 
-        name: "Calificados", 
-        count: qualified + negotiation + won, 
-        percentage: totalLeads > 0 ? (((qualified + negotiation + won) / totalLeads) * 100).toFixed(1) : 0 
+      {
+        name: 'Calificados',
+        count: qualified + negotiation + won,
+        percentage:
+          totalLeads > 0 ? (((qualified + negotiation + won) / totalLeads) * 100).toFixed(1) : 0,
       },
-      { 
-        name: "Negociación", 
-        count: negotiation + won, 
-        percentage: totalLeads > 0 ? (((negotiation + won) / totalLeads) * 100).toFixed(1) : 0 
+      {
+        name: 'Negociación',
+        count: negotiation + won,
+        percentage: totalLeads > 0 ? (((negotiation + won) / totalLeads) * 100).toFixed(1) : 0,
       },
-      { 
-        name: "Ganados", 
-        count: won, 
-        percentage: totalLeads > 0 ? ((won / totalLeads) * 100).toFixed(1) : 0 
+      {
+        name: 'Ganados',
+        count: won,
+        percentage: totalLeads > 0 ? ((won / totalLeads) * 100).toFixed(1) : 0,
       },
     ],
     lost,
@@ -313,7 +307,7 @@ const getProgramKPIs = async () => {
   const recentPartners = await prisma.partner.findMany({
     where: {
       createdAt: { gte: ninetyDaysAgo },
-      status: "ACTIVE",
+      status: 'ACTIVE',
     },
     select: {
       id: true,
@@ -330,9 +324,10 @@ const getProgramKPIs = async () => {
     return daysSinceCreation <= 90;
   });
 
-  const activationRate = recentPartners.length > 0
-    ? ((activatedPartners.length / recentPartners.length) * 100).toFixed(1)
-    : 0;
+  const activationRate =
+    recentPartners.length > 0
+      ? ((activatedPartners.length / recentPartners.length) * 100).toFixed(1)
+      : 0;
 
   // Tiempo medio a primera venta
   const partnersWithSales = await prisma.partner.findMany({
@@ -345,13 +340,18 @@ const getProgramKPIs = async () => {
     },
   });
 
-  const avgTimeToFirstSale = partnersWithSales.length > 0
-    ? partnersWithSales.reduce((sum, p) => {
-        return sum + Math.floor(
-          (new Date(p.firstSaleAt).getTime() - new Date(p.createdAt).getTime()) / (1000 * 60 * 60 * 24)
-        );
-      }, 0) / partnersWithSales.length
-    : 0;
+  const avgTimeToFirstSale =
+    partnersWithSales.length > 0
+      ? partnersWithSales.reduce((sum, p) => {
+          return (
+            sum +
+            Math.floor(
+              (new Date(p.firstSaleAt).getTime() - new Date(p.createdAt).getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          );
+        }, 0) / partnersWithSales.length
+      : 0;
 
   // Revenue via partners vs total (asumiendo que todo viene de partners)
   const totalRevenue = await prisma.deal.aggregate({
@@ -376,4 +376,3 @@ module.exports = {
   getFunnel,
   getProgramKPIs,
 };
-
