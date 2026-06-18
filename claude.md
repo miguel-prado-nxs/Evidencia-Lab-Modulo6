@@ -230,3 +230,9 @@ Base: `/api/v1/`
 - Bull Dashboard disponible en `/admin/queues` para monitorear colas.
 - Los webhooks de ElevenLabs llegan a `/api/v1/campaigns/elevenlabs-webhook`.
 - Socket.io se usa para notificar al frontend cambios en enrichment en tiempo real.
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+at specs/001-crm-mejoras-marketing/plan.md
+<!-- SPECKIT END -->
