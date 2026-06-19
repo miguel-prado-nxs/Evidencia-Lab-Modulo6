@@ -85,6 +85,100 @@ Para verificar todo de una vez (equivalente a lo que corre en CI):
 npm run lint && npm run format:check && npm run secrets:check
 ```
 
+## Verificar que los gates funcionan
+
+Puedes probar cada gate manualmente con estos archivos de prueba. Recuerda limpiar después de cada uno.
+
+### Gate 1 — Lint
+
+```powershell
+# 1. Crea el archivo
+@"
+'use strict';
+
+var x = 1;
+console.log(x);
+"@ | Out-File src/_test_lint.js -Encoding utf8
+
+# 2. Stagea e intenta commitear — debe fallar con error no-var
+git add src/_test_lint.js
+git commit -m "test: lint gate"
+
+# 3. Limpia
+git restore --staged src/_test_lint.js
+Remove-Item src/_test_lint.js
+```
+
+Resultado esperado:
+```
+✖ eslint --no-fix:
+src/_test_lint.js
+  3:1  error  Unexpected var, use let or const instead  no-var
+husky - pre-commit script failed (code 1)
+```
+
+### Gate 2 — Formato
+
+```powershell
+# 1. Crea el archivo con 4 espacios de indentación (Prettier espera 2)
+@"
+'use strict';
+
+const x = 1;
+if (x) {
+    console.log(x);
+}
+"@ | Out-File src/_test_format.js -Encoding utf8
+
+# 2. Stagea e intenta commitear — debe fallar con error de Prettier
+git add src/_test_format.js
+git commit -m "test: format gate"
+
+# 3. Limpia
+git restore --staged src/_test_format.js
+Remove-Item src/_test_format.js
+```
+
+Resultado esperado:
+```
+✖ prettier --check:
+[warn] src/_test_format.js
+[warn] Code style issues found. Run Prettier with --write to fix.
+husky - pre-commit script failed (code 1)
+```
+
+### Gate 3 — Secrets
+
+```powershell
+# 1. Crea el archivo con un secret hardcodeado
+@"
+'use strict';
+
+const AWS_SECRET_ACCESS_KEY = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCD';
+console.log(AWS_SECRET_ACCESS_KEY);
+"@ | Out-File src/_test_secret.js -Encoding utf8
+
+# 2. Formatea primero (para que solo falle Secretlint y no Prettier)
+npx prettier --write src/_test_secret.js
+
+# 3. Stagea e intenta commitear — debe fallar con error de Secretlint
+git add src/_test_secret.js
+git commit -m "test: secrets gate"
+
+# 4. Limpia
+git restore --staged src/_test_secret.js
+Remove-Item src/_test_secret.js
+```
+
+Resultado esperado:
+```
+✖ secretlint:
+  error  [AWSSecretAccessKey] found AWS Secret Access Key
+husky - pre-commit script failed (code 1)
+```
+
+> **Nota:** El key de ejemplo oficial de AWS (`AKIAIOSFODNN7EXAMPLE`) está en la lista de ignorados de Secretlint. El test usa un key con el patrón `AWS_SECRET_ACCESS_KEY = '...'` que sí es detectado.
+
 ## Archivos de configuración
 
 | Archivo | Propósito |
@@ -118,6 +212,3 @@ Las más importantes que pueden causar fallos:
 | `no-unused-vars` | Variables declaradas pero nunca usadas |
 | `no-prototype-builtins` | Usar `Object.hasOwn()` en lugar de `.hasOwnProperty()` |
 | `preserve-caught-error` | Pasar el error capturado como `cause` al relanzar |
-
-
-AWS_SECRET_ACCESS_KEY=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCD
