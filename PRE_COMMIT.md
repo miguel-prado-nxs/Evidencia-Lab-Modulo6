@@ -120,4 +120,4 @@ Las más importantes que pueden causar fallos:
 | `preserve-caught-error` | Pasar el error capturado como `cause` al relanzar |
 
 
-AWSKEY=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCD
