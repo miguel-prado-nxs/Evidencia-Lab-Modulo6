@@ -172,10 +172,12 @@ const STAGE_CONFIG = {
 | Campo | Tipo | Valor |
 |---|---|---|
 | `title` | String | `Llamada {Etapa} — {OutcomeLabel} — {DD/MM/YYYY HH:mm}` |
-| `body` | String (markdown) | Ver plantilla abajo |
+| `bodyV2` | Object | `{ markdown: "string" }` — Twenty auto-convierte a blocknote |
 | Anclada a | Company | Vía `noteTargets` con `companyId` |
 
-**Plantilla body markdown**:
+**Nota**: El campo `body` (string plano) no existe en esta instancia. Usar `bodyV2: { markdown: "..." }`.
+
+**Plantilla body — `bodyV2.markdown`**:
 ```markdown
 **Campaña**: {campaignName}
 **Etapa**: {stageLabel}
@@ -183,6 +185,14 @@ const STAGE_CONFIG = {
 **Duración**: {callDuration}s
 **Resumen**: {callSummary || 'Sin resumen disponible'}
 **ID de conversación**: `{conversationId}`
+```
+
+**Ejemplo de llamada createNote**:
+```javascript
+await twentyService.client.post('/notes', {
+  title: `Llamada ${stageLabel} — ${outcomeLabel} — ${fecha}`,
+  bodyV2: { markdown: bodyMarkdown },
+});
 ```
 
 ---

@@ -20,7 +20,7 @@
 
 **Purpose**: Sin código nuevo — el proyecto ya existe. Verificar prerequisitos manuales antes de arrancar.
 
-- [ ] T001 Verificar que el spike CRM-861 esté completo antes de continuar con Fase 6 (US3). Documentar en research.md: endpoints de Notes disponibles, rate limits, soporte de Workflows HTTP_REQUEST, formato del body de Note (markdown vs blocknote)
+- [X] T001 Verificar que el spike CRM-861 esté completo antes de continuar con Fase 6 (US3). Documentar en research.md: endpoints de Notes disponibles, rate limits, soporte de Workflows HTTP_REQUEST, formato del body de Note (markdown vs blocknote)
 - [ ] T002 [P] Crear los campos custom en Twenty CRM UI/Admin (prerequisito duro de T018): `ultimaCampana` (text), `fechaUltimaLlamada` (dateTime), `totalLlamadasCampana` (number) en el objeto Company. Documentar los nombres de API resultantes en `specs/001-crm-mejoras-marketing/research.md`
 
 **Checkpoint**: T001 confirma que la API de Twenty soporta Notes. T002 asegura que los campos existen antes de cualquier deploy de código que los escriba.

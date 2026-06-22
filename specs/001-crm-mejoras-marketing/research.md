@@ -55,13 +55,33 @@ El worker respeta esta regla al procesar: si `attempts >= maxAttempts` y `maxAtt
 
 ---
 
-## Decisión 4: Note body en formato markdown vs blocknote
+## Decisión 4: Note body en formato markdown vs blocknote — CONFIRMADO
 
-**Decision**: Usar markdown plain en el body de la Note. Verificar en CRM-848 qué acepta la API REST de Twenty de la instancia desplegada.
+**Decision**: Usar `bodyV2: { markdown: "string" }` en el POST a `/notes`. El campo `body` (string plano) no existe en esta instancia.
 
-**Rationale**: Twenty internamente usa blocknote, pero la API REST de Twenty expone el campo `body` como string. La documentación y los tests de CRM-848 deben confirmar si el campo espera JSON blocknote o markdown. Por seguridad, el criterio de aceptación de CRM-848 incluye verificación visual en la UI de Twenty.
+**Rationale**: Verificado empíricamente con `prisma/scripts/verify-twenty-notes.js` contra la instancia `https://api.crm.development.easyorder.mx`. Twenty acepta markdown plano dentro del objeto `bodyV2.markdown` y lo convierte automáticamente a blocknote internamente. La respuesta devuelve `bodyV2` con dos campos: `markdown` (el input original) y `blocknote` (JSON auto-generado). Renderiza correctamente en la UI.
 
-**Alternatives considered**: JSON blocknote — posible alternativa si el markdown no se renderiza correctamente.
+**Formato de creación** (input al POST):
+```json
+{
+  "title": "Llamada Discovery — Sin respuesta — 19/06/2026 14:30",
+  "bodyV2": {
+    "markdown": "**Campaña**: NombreCampaña\n**Etapa**: Discovery\n**Resultado**: Sin respuesta\n**Duración**: 45s\n**ID conversación**: `conv-abc123`"
+  }
+}
+```
+
+**Formato de la respuesta** (bodyV2 devuelto):
+```json
+{
+  "bodyV2": {
+    "markdown": "...",
+    "blocknote": "[{ ... JSON blocknote auto-generado ... }]"
+  }
+}
+```
+
+**Alternatives considered**: `body` (string plano) — descartado, el campo no existe en esta instancia. JSON blocknote directo en `bodyV2` — descartado, la API solo acepta `{ markdown: string }` como input.
 
 ---
 
@@ -133,12 +153,91 @@ async function enqueueCampaignSync(stage, { conversationId, establishmentId, out
 
 ---
 
-## Pendiente de validación (CRM-862 — Spike)
+## Spike CRM-861/862 — Hallazgos (T001 completado)
 
-Antes de comprometer implementación de automatizaciones (Fase 6):
+**Fecha**: 2026-06-19 | **Fuente**: Documentación oficial Twenty + código fuente GitHub
 
-1. ¿La instancia de Twenty desplegada tiene Workflows habilitados? ¿Versión mínima con soporte de HTTP_REQUEST action?
-2. ¿La API REST de Twenty expone Notes con `POST /notes` + `POST /noteTargets` según la documentación oficial?
-3. ¿El campo `body` de Note acepta markdown plain o requiere blocknote JSON?
-4. ¿Existe rate limiting conocido en la API de Twenty? ¿Cuántas req/min?
-5. ¿Los campos custom de Company son filtrables en vistas nativas de Twenty?
+### 1. Workflows con HTTP_REQUEST — CONFIRMADO
+
+Twenty Workflows **soporta HTTP Request** como tipo de acción nativa (Integration Actions > HTTP Request).
+
+- Métodos soportados: GET, POST, PUT, PATCH, DELETE
+- Configuración: URL, método, headers, body personalizable
+- Las variables de pasos anteriores se pueden referenciar dinámicamente en URL y headers
+- **Implicación para Fase 6 (US3)**: El endpoint `/crm-hooks` puede ser invocado directamente desde un Workflow de Twenty sin middleware adicional.
+
+Triggers disponibles:
+- `Record is Created` / `Record is Updated` / `Record is Updated or Created`
+- `Record is Deleted`
+- Manual, Schedule, Webhook
+
+### 2. Endpoints REST de Notes — CONFIRMADOS
+
+La API REST de Twenty sigue el patrón estándar. Endpoints disponibles:
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `POST` | `/api/notes` | Crear una Note |
+| `GET` | `/api/notes` | Listar Notes (con paginación) |
+| `GET` | `/api/notes/{id}` | Obtener Note por ID |
+| `PATCH` | `/api/notes/{id}` | Actualizar Note |
+| `DELETE` | `/api/notes/{id}` | Eliminar Note |
+| `POST` | `/api/noteTargets` | Anclar Note a un objeto (Company, Person, etc.) |
+| `DELETE` | `/api/noteTargets/{id}` | Desanclar Note |
+
+Campos de Note (del código fuente de Twenty):
+- `title`: string
+- `bodyV2`: RichTextMetadata (ver hallazgo crítico abajo)
+- `position`: number
+
+Campos de NoteTarget:
+- `noteId`: UUID de la Note
+- `companyId`: UUID del Company (para anclar a establecimiento)
+
+### 3. Formato del body de Note — CONFIRMADO
+
+**Campo**: `bodyV2: { markdown: string }` — verificado empíricamente contra la instancia real.
+
+- `body` (string plano): **NO EXISTE** en esta instancia (`Field metadata for field "body" is missing`)
+- `bodyV2: { markdown: "..." }`: **FUNCIONA** — Twenty auto-convierte a blocknote internamente
+- La respuesta devuelve `bodyV2` con ambos campos: `markdown` (input) y `blocknote` (JSON auto-generado)
+
+**Formato definitivo para `createNote` en T005**:
+```javascript
+await this.client.post('/notes', {
+  title: 'Llamada Discovery — Sin respuesta — 19/06/2026 14:30',
+  bodyV2: {
+    markdown: '**Campaña**: NombreCampaña\n**Etapa**: Discovery\n**Resultado**: Sin respuesta\n**ID conversación**: `conv-abc123`',
+  },
+});
+```
+
+Campos de `noteTargets` confirmados en respuesta: `id, noteId, companyId, personId, opportunityId, prospectoId, contactoId, clienteId, contactInteractionId`
+
+### 4. Rate Limits — CONFIRMADOS
+
+| Límite | Valor |
+|--------|-------|
+| Requests por minuto | **100 req/min** |
+| Registros por batch | **60 records/call** |
+
+**Implicación para backfill (T023)**: El script de backfill debe respetar 100 req/min. Con 3 llamadas API por interaction (createNote + createNoteTarget + updateCompany), el throughput máximo es ~33 interactions/minuto. Para volumen histórico, usar delay entre lotes.
+
+**Implicación para operación normal**: Con 100-500 llamadas/día, la carga es mínima (~1-5 req/min en horario de campaña). Sin riesgo de throttling.
+
+### 5. Campos custom de Company — PENDIENTE DE VERIFICACION MANUAL
+
+Los campos custom (`ultimaCampana`, `fechaUltimaLlamada`, `totalLlamadasCampana`) deben crearse en la UI admin de Twenty (Settings > Data Model > Companies). Una vez creados, Twenty los expone automáticamente en la API REST y son filtrables en vistas de Companies.
+
+**Acción requerida (T002)**: Crear los campos en la UI de Twenty y documentar los nombres exactos de API en esta sección.
+
+---
+
+## Script de verificación (T001 — ejecutado)
+
+`prisma/scripts/verify-twenty-notes.js` — ejecutado contra `https://api.crm.development.easyorder.mx`.
+
+Resultados:
+- `POST /notes` con `body` (string plano): **FAIL** — campo no existe
+- `POST /notes` con `bodyV2: { markdown }`: **PASS** — noteId generado correctamente
+- `POST /noteTargets` con `{ noteId, companyId }`: **PASS** — noteTargetId generado correctamente
