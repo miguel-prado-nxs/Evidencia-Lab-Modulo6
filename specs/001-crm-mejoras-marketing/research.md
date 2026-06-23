@@ -225,11 +225,17 @@ Campos de `noteTargets` confirmados en respuesta: `id, noteId, companyId, person
 
 **Implicación para operación normal**: Con 100-500 llamadas/día, la carga es mínima (~1-5 req/min en horario de campaña). Sin riesgo de throttling.
 
-### 5. Campos custom de Company — PENDIENTE DE VERIFICACION MANUAL
+### 5. Campos custom de Establecimientos — CONFIRMADO (T002 completado)
 
-Los campos custom (`ultimaCampana`, `fechaUltimaLlamada`, `totalLlamadasCampana`) deben crearse en la UI admin de Twenty (Settings > Data Model > Companies). Una vez creados, Twenty los expone automáticamente en la API REST y son filtrables en vistas de Companies.
+Campos creados en Twenty UI (Settings > Data Model > Establecimientos) y verificados via API.
 
-**Acción requerida (T002)**: Crear los campos en la UI de Twenty y documentar los nombres exactos de API en esta sección.
+| Nombre en UI | API name real | Tipo |
+|---|---|---|
+| ultimaCampana | `ultimacampana` | Text |
+| fechaUltimaLlamada | `fechaultimallamada` | Date & Time |
+| totalLlamadasCampana | `totalllamadascampana` | Number |
+
+**Importante**: Twenty convierte los nombres de campos custom a todo minúsculas en la API — ignorar el camelCase del nombre en UI. Usar estos nombres exactos en `PATCH /companies/{id}`.
 
 ---
 

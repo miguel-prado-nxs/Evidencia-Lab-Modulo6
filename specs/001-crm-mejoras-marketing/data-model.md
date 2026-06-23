@@ -159,13 +159,13 @@ const STAGE_CONFIG = {
 
 ### Company — campos custom a crear
 
-| Campo API | Tipo | Descripción | Cuándo se actualiza |
+| Campo API (exacto) | Tipo | Descripción | Cuándo se actualiza |
 |---|---|---|---|
-| `ultimaCampana` | Text | Nombre de la última campaña que contactó el establecimiento | Cada job INTERACTION procesado |
-| `fechaUltimaLlamada` | DateTime | Timestamp de la llamada más reciente | Solo si más reciente que el valor actual |
-| `totalLlamadasCampana` | Number | Total de llamadas de campaña recibidas (todas las etapas) | Recalculado desde COUNT de jobs DONE por establecimiento |
+| `ultimacampana` | Text | Nombre de la última campaña que contactó el establecimiento | Cada job INTERACTION procesado |
+| `fechaultimallamada` | DateTime | Timestamp de la llamada más reciente | Solo si más reciente que el valor actual |
+| `totalllamadascampana` | Number | Total de llamadas de campaña recibidas (todas las etapas) | Recalculado desde COUNT de jobs DONE por establecimiento |
 
-**Prerequisito**: Estos campos deben crearse en la UI admin de Twenty ANTES del deploy del código. Los nombres de API devueltos por Twenty deben documentarse en `research.md` tras CRM-855.
+**Nota**: Twenty convierte los nombres de campos custom a minúsculas en la API. Usar estos nombres exactos en `PATCH /companies/{id}`. Campos ya creados en la instancia de desarrollo.
 
 ### Note (nativa de Twenty)
 
