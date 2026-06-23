@@ -254,6 +254,31 @@ class TwentyService {
     }
   }
 
+  /**
+   * Anclar una Note a un Company (establecimiento) en Twenty.
+   */
+  async createNoteTarget(noteId, { companyId }) {
+    try {
+      const response = await this.client.post('/noteTargets', {
+        noteId,
+        companyId,
+      });
+      const created = response.data.data?.createNoteTarget || response.data;
+      logger.info(`[TwentyService:createNoteTarget] Note vinculada a Company: ${created.id}`, {
+        noteId,
+        companyId,
+        twentyId: created.id,
+      });
+      return created;
+    } catch (error) {
+      logger.error('[TwentyService:createNoteTarget] Error vinculando Note a Company:', {
+        error: error.response?.data || error.message,
+        data: { noteId, companyId },
+      });
+      throw error;
+    }
+  }
+
   // ============================================================
   // CONTACTO
   // ============================================================
