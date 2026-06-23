@@ -752,7 +752,12 @@ model TwentySyncJob {
   completedAt     DateTime?           @map("completed_at")
   createdAt       DateTime            @default(now()) @map("created_at")
   updatedAt       DateTime            @updatedAt @map("updated_at")
+  type            TwentySyncJobType   @default(PIPELINE) @map("type")
+  payload         Json?               @map("payload")
+  dedupeKey       String?             @unique @map("dedupe_key")
+  maxAttempts     Int?                @map("max_attempts")
 
+  @@index([type, status, nextRunAt])
   @@index([status, nextRunAt])
   @@index([establishmentId])
   @@index([createdAt(sort: Desc)])
@@ -1198,6 +1203,11 @@ enum CouponStatus {
   VISITED
   CONVERTED
   EXPIRED
+}
+
+enum TwentySyncJobType {
+  PIPELINE
+  INTERACTION
 }
 
 model CampaignEnrichment {
