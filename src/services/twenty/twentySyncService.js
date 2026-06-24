@@ -15,6 +15,7 @@ const prisma = require('../../config/database');
 const { PrismaClient: PrismaClientGeo } = require('@prisma/client-geo');
 const logger = require('../../config/logger');
 const twentyService = require('./twentyService');
+const { processInteractionJob } = require('./twentyActivityService');
 
 const prismaGeo = new PrismaClientGeo();
 
@@ -58,10 +59,12 @@ async function enqueueSync({ establishmentId, partnerId, reason }) {
   }
 
   try {
-    // Verificar si ya existe un job pendiente para este establecimiento
+    // Verificar si ya existe un job PIPELINE pendiente para este establecimiento
+    // No colapsar jobs INTERACTION — cada llamada genera su propia Note
     const existingJob = await prisma.twentySyncJob.findFirst({
       where: {
         establishmentId,
+        type: 'PIPELINE',
         status: { in: ['PENDING', 'PROCESSING'] },
       },
     });
@@ -87,12 +90,13 @@ async function enqueueSync({ establishmentId, partnerId, reason }) {
       return existingJob.id;
     }
 
-    // Crear nuevo job
+    // Crear nuevo job PIPELINE
     const job = await prisma.twentySyncJob.create({
       data: {
         establishmentId,
         partnerId,
         reason,
+        type: 'PIPELINE',
         status: 'PENDING',
         nextRunAt: new Date(),
       },
@@ -158,8 +162,12 @@ async function processPendingJobs(limit = 10) {
           data: { status: 'PROCESSING' },
         });
 
-        // Ejecutar sincronizacion
-        await syncEstablishmentPipelineToTwenty(job.establishmentId, job.partnerId, job.reason);
+        // Despachar por tipo
+        if (job.type === 'INTERACTION') {
+          await processInteractionJob(job);
+        } else {
+          await syncEstablishmentPipelineToTwenty(job.establishmentId, job.partnerId, job.reason);
+        }
 
         // Marcar como completado
         await prisma.twentySyncJob.update({
@@ -174,17 +182,25 @@ async function processPendingJobs(limit = 10) {
         logger.info('[TwentySyncService] Job completado exitosamente', {
           jobId: job.id,
           establishmentId: job.establishmentId,
+          type: job.type,
         });
       } catch (error) {
         failed++;
         const newAttempts = job.attempts + 1;
-        const maxRetries = 5;
 
         // Calcular backoff: min(60s * 2^attempts, 1h)
         const backoffSeconds = Math.min(60 * Math.pow(2, newAttempts), 3600);
         const nextRunAt = new Date(Date.now() + backoffSeconds * 1000);
 
-        const newStatus = newAttempts >= maxRetries ? 'FAILED' : 'PENDING';
+        // INTERACTION conversacional (maxAttempts=null): reintentar indefinidamente
+        // INTERACTION no-conversacional (maxAttempts=5) y PIPELINE: fallar tras limite
+        let newStatus;
+        if (job.type === 'INTERACTION' && job.maxAttempts === null) {
+          newStatus = 'PENDING';
+        } else {
+          const maxRetries = job.maxAttempts ?? 5;
+          newStatus = newAttempts >= maxRetries ? 'FAILED' : 'PENDING';
+        }
 
         await prisma.twentySyncJob.update({
           where: { id: job.id },
@@ -200,6 +216,7 @@ async function processPendingJobs(limit = 10) {
         logger.error('[TwentySyncService] Error procesando job', {
           jobId: job.id,
           establishmentId: job.establishmentId,
+          type: job.type,
           error: error.message,
           attempts: newAttempts,
           nextRunAt: nextRunAt.toISOString(),
