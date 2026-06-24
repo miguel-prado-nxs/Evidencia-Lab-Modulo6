@@ -10,6 +10,7 @@ const prismaGeo = require('../config/database-geo');
 const logger = require('../config/logger');
 const { logEnrichmentEvent } = require('./enrichmentService');
 const whatsappService = require('./whatsappService');
+const { enqueueInteractionSync } = require('./twenty/twentyActivityService');
 
 const AGENT_PARTNER_ID = process.env.AGENT_SYSTEM_PARTNER_ID || 'AGENT_FUNNEL';
 
@@ -134,6 +135,7 @@ async function syncCampaignContactStatus({
         status: 'CALLING',
         campaign: { status: 'ACTIVE' },
       },
+      include: { campaign: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -211,7 +213,12 @@ async function syncCampaignContactStatus({
     // Recalcular métricas de la campaña (non-blocking)
     _recalculateCampaignMetrics(contact.campaignId).catch(() => {});
 
-    return { contactId: contact.id, campaignId: contact.campaignId, newStatus };
+    return {
+      contactId: contact.id,
+      campaignId: contact.campaignId,
+      campaignName: contact.campaign?.name || null,
+      newStatus,
+    };
   } catch (err) {
     logger.error('[syncCampaignContact] Error syncing contact status', {
       error: err.message,
@@ -500,13 +507,25 @@ async function endDiscoveryCall({
   });
 
   // Sincronizar CampaignContact
-  await syncCampaignContactStatus({
+  const discoverySyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
     agentStage: 'DISCOVERY',
     callSummary,
   });
+
+  // Registrar interaccion en Twenty (non-blocking)
+  enqueueInteractionSync({
+    establishmentId,
+    conversationId,
+    stage: 'discovery',
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration: callDuration || null,
+    campaignId: discoverySyncResult?.campaignId || null,
+    campaignName: discoverySyncResult?.campaignName || null,
+  }).catch(() => {});
 
   return { success: true, outcome };
 }
@@ -750,13 +769,25 @@ async function endActivationCall({
   });
 
   // Sincronizar CampaignContact
-  await syncCampaignContactStatus({
+  const activationSyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
     agentStage: 'ACTIVATION',
     callSummary,
   });
+
+  // Registrar interaccion en Twenty (non-blocking)
+  enqueueInteractionSync({
+    establishmentId,
+    conversationId,
+    stage: 'activation',
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration: null,
+    campaignId: activationSyncResult?.campaignId || null,
+    campaignName: activationSyncResult?.campaignName || null,
+  }).catch(() => {});
 
   return { success: true, outcome };
 }
@@ -1076,6 +1107,20 @@ async function sendCouponWhatsapp({
       success: result.success,
     });
 
+    // Registrar envio de cupon en Twenty (non-blocking, solo si fue exitoso)
+    if (result.success && establishmentId) {
+      enqueueInteractionSync({
+        establishmentId,
+        conversationId,
+        stage: 'coupon_sent',
+        outcome: 'SENT',
+        callSummary: null,
+        callDuration: null,
+        campaignId: resolvedCampaignId || null,
+        campaignName: null,
+      }).catch(() => {});
+    }
+
     return {
       success: result.success,
       couponCode: result.coupon?.code,
@@ -1351,13 +1396,25 @@ async function endQualificationCall({ conversationId, establishmentId, outcome, 
     outcome,
   });
 
-  await syncCampaignContactStatus({
+  const qualificationSyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
     agentStage: 'QUALIFICATION',
     callSummary,
   });
+
+  // Registrar interaccion en Twenty (non-blocking)
+  enqueueInteractionSync({
+    establishmentId,
+    conversationId,
+    stage: 'qualification',
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration: null,
+    campaignId: qualificationSyncResult?.campaignId || null,
+    campaignName: qualificationSyncResult?.campaignName || null,
+  }).catch(() => {});
 
   return { success: true, outcome };
 }
@@ -1695,13 +1752,25 @@ async function endConversionCall({
     planClosed,
   });
 
-  await syncCampaignContactStatus({
+  const conversionSyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
     agentStage: 'CONVERSION',
     callSummary,
   });
+
+  // Registrar interaccion en Twenty (non-blocking)
+  enqueueInteractionSync({
+    establishmentId,
+    conversationId,
+    stage: 'conversion',
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration: null,
+    campaignId: conversionSyncResult?.campaignId || null,
+    campaignName: conversionSyncResult?.campaignName || null,
+  }).catch(() => {});
 
   return { success: true, outcome };
 }
