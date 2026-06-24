@@ -11,6 +11,7 @@ const logger = require('../config/logger');
 const { logEnrichmentEvent } = require('./enrichmentService');
 const whatsappService = require('./whatsappService');
 const { enqueueInteractionSync } = require('./twenty/twentyActivityService');
+const { enqueueSync } = require('./twenty/twentySyncService');
 
 const AGENT_PARTNER_ID = process.env.AGENT_SYSTEM_PARTNER_ID || 'AGENT_FUNNEL';
 
@@ -317,6 +318,54 @@ async function sendWhatsappInfo({
 }
 
 // ============================================================
+// HELPER: Encolar sync de pipeline + nota de interaccion en Twenty
+// ============================================================
+
+/**
+ * Encola los dos jobs de Twenty al cerrar una llamada de campaña:
+ *   - PIPELINE: actualiza nivelPipeline del Company en Twenty
+ *   - INTERACTION: crea la Note de la llamada en Twenty
+ *
+ * Ambos son non-blocking. Los errores son absorbidos para no afectar el flujo principal.
+ *
+ * @param {string} stage - discovery | qualification | activation | conversion
+ * @param {Object} params
+ */
+function enqueueCampaignSync(
+  stage,
+  { establishmentId, conversationId, outcome, callSummary, callDuration, campaignId, campaignName }
+) {
+  enqueueSync({
+    establishmentId,
+    partnerId: null,
+    reason: `CALL_${stage.toUpperCase()}`,
+  }).catch((err) =>
+    logger.error('[FunnelWebhook:enqueueCampaignSync] Error encolando pipeline sync', {
+      error: err.message,
+      stage,
+      establishmentId,
+    })
+  );
+
+  enqueueInteractionSync({
+    establishmentId,
+    conversationId,
+    stage,
+    outcome,
+    callSummary,
+    callDuration: callDuration || null,
+    campaignId: campaignId || null,
+    campaignName: campaignName || null,
+  }).catch((err) =>
+    logger.error('[FunnelWebhook:enqueueCampaignSync] Error encolando interaction sync', {
+      error: err.message,
+      stage,
+      establishmentId,
+    })
+  );
+}
+
+// ============================================================
 // DISCOVERY
 // ============================================================
 
@@ -515,17 +564,15 @@ async function endDiscoveryCall({
     callSummary,
   });
 
-  // Registrar interaccion en Twenty (non-blocking)
-  enqueueInteractionSync({
+  enqueueCampaignSync('discovery', {
     establishmentId,
     conversationId,
-    stage: 'discovery',
     outcome: effectiveOutcome,
     callSummary,
-    callDuration: callDuration || null,
+    callDuration,
     campaignId: discoverySyncResult?.campaignId || null,
     campaignName: discoverySyncResult?.campaignName || null,
-  }).catch(() => {});
+  });
 
   return { success: true, outcome };
 }
@@ -777,17 +824,15 @@ async function endActivationCall({
     callSummary,
   });
 
-  // Registrar interaccion en Twenty (non-blocking)
-  enqueueInteractionSync({
+  enqueueCampaignSync('activation', {
     establishmentId,
     conversationId,
-    stage: 'activation',
     outcome: effectiveOutcome,
     callSummary,
     callDuration: null,
     campaignId: activationSyncResult?.campaignId || null,
     campaignName: activationSyncResult?.campaignName || null,
-  }).catch(() => {});
+  });
 
   return { success: true, outcome };
 }
@@ -1404,17 +1449,15 @@ async function endQualificationCall({ conversationId, establishmentId, outcome, 
     callSummary,
   });
 
-  // Registrar interaccion en Twenty (non-blocking)
-  enqueueInteractionSync({
+  enqueueCampaignSync('qualification', {
     establishmentId,
     conversationId,
-    stage: 'qualification',
     outcome: effectiveOutcome,
     callSummary,
     callDuration: null,
     campaignId: qualificationSyncResult?.campaignId || null,
     campaignName: qualificationSyncResult?.campaignName || null,
-  }).catch(() => {});
+  });
 
   return { success: true, outcome };
 }
@@ -1760,17 +1803,15 @@ async function endConversionCall({
     callSummary,
   });
 
-  // Registrar interaccion en Twenty (non-blocking)
-  enqueueInteractionSync({
+  enqueueCampaignSync('conversion', {
     establishmentId,
     conversationId,
-    stage: 'conversion',
     outcome: effectiveOutcome,
     callSummary,
     callDuration: null,
     campaignId: conversionSyncResult?.campaignId || null,
     campaignName: conversionSyncResult?.campaignName || null,
-  }).catch(() => {});
+  });
 
   return { success: true, outcome };
 }
