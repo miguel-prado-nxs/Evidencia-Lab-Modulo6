@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const prisma = require('../config/database');
 const logger = require('../config/logger');
+const { enqueueInteractionSync } = require('../services/twenty/twentyActivityService');
 
 const SUPPORTED_EVENT_TYPES = new Set([
   'post_call_transcription',
@@ -1090,7 +1091,7 @@ const handleElevenLabsWebhook = async (req, res, next) => {
     // Verificar estado de la campaña
     const campaignContext = await prisma.campaign.findUnique({
       where: { id: contact.campaignId },
-      select: { status: true },
+      select: { status: true, type: true },
     });
 
     // Manejo especial para fallos de iniciación de llamada
@@ -1240,6 +1241,35 @@ const handleElevenLabsWebhook = async (req, res, next) => {
       status: updatedContact.status,
       couponGenerated: webhookData.couponGenerated || null,
     });
+
+    // Fallback: Si la llamada fue no-conversacional y el agente MCP no disparo el hook,
+    // encolar aqui el INTERACTION. El dedupekey garantiza que si ya existe, se ignora.
+    const WEBHOOK_FALLBACK_OUTCOME = new Set(['FAILED', 'NO_ANSWER', 'VOICEMAIL']);
+    const campaignStage = campaignContext?.type?.toLowerCase() || null;
+    const fallbackConversationId = updatedContact.conversationId;
+
+    if (
+      WEBHOOK_FALLBACK_OUTCOME.has(updatedContact.status) &&
+      campaignStage &&
+      fallbackConversationId
+    ) {
+      enqueueInteractionSync({
+        establishmentId: contact.establishmentId,
+        conversationId: fallbackConversationId,
+        stage: campaignStage,
+        outcome: updatedContact.status, // Failed, No Answer, Voicemail
+        callSummary: webhookData.transcriptSummary || null,
+        callDuration: webhookData.callDuration || null,
+        campaignId: updatedContact.campaignId,
+        campaignName: null,
+      }).catch((error) =>
+        logger.error('[CampaignWebhook] Error encolando fallback interaction', {
+          error: error.message,
+          conversationId: fallbackConversationId,
+          stage: campaignStage,
+        })
+      );
+    }
 
     return res.status(200).json({
       success: true,

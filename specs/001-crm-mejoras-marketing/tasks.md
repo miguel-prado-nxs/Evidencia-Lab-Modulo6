@@ -55,11 +55,11 @@
 
 **Corresponde a**: CRM-850, CRM-851, CRM-852
 
-- [ ] T010 [US1] Crear helper `enqueueCampaignSync(stage, { conversationId, establishmentId, outcome, callSummary, callDuration, campaignId, campaignName })` en `src/services/funnelWebhookService.js` (o archivo utils separado): llama `enqueueSync` + `enqueueInteractionSync` de forma non-blocking (fire-and-forget con `.catch(logger.error)`) (CRM-851)
-- [ ] T011 [US1] Agregar hook non-blocking al final de `endDiscoveryCall` (línea ~398 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('discovery', { ... })` junto al `syncCampaignContactStatus` existente (CRM-851)
-- [ ] T012 [P] [US1] Agregar hook non-blocking al final de `endQualificationCall` (línea ~1239 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('qualification', { ... })` (CRM-851)
-- [ ] T013 [P] [US1] Agregar hook non-blocking al final de `endActivationCall` (línea ~664 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('activation', { ... })` (CRM-851)
-- [ ] T014 [P] [US1] Agregar hook non-blocking al final de `endConversionCall` (línea ~1558 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('conversion', { ... })` (CRM-851)
+- [X] T010 [US1] Crear helper `enqueueCampaignSync(stage, { conversationId, establishmentId, outcome, callSummary, callDuration, campaignId, campaignName })` en `src/services/funnelWebhookService.js` (o archivo utils separado): llama `enqueueSync` + `enqueueInteractionSync` de forma non-blocking (fire-and-forget con `.catch(logger.error)`) (CRM-851)
+- [X] T011 [US1] Agregar hook non-blocking al final de `endDiscoveryCall` (línea ~398 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('discovery', { ... })` junto al `syncCampaignContactStatus` existente (CRM-851)
+- [X] T012 [P] [US1] Agregar hook non-blocking al final de `endQualificationCall` (línea ~1239 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('qualification', { ... })` (CRM-851)
+- [X] T013 [P] [US1] Agregar hook non-blocking al final de `endActivationCall` (línea ~664 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('activation', { ... })` (CRM-851)
+- [X] T014 [P] [US1] Agregar hook non-blocking al final de `endConversionCall` (línea ~1558 en `src/services/funnelWebhookService.js`): llamar `enqueueCampaignSync('conversion', { ... })` (CRM-851)
 - [ ] T015 [US1] Agregar fallback en `src/controllers/campaignWebhookController.js` función `handleElevenLabsWebhook` (línea ~574): tras actualizar `CampaignContact`, si outcome es `FAILED`, `NO_ANSWER` o `VOICEMAIL`, llamar `enqueueInteractionSync` de forma non-blocking con `dedupeKey interaction:{conversationId}:{stage}` para que el duplicado del camino MCP sea ignorado automáticamente (CRM-852)
 - [ ] T016 [US1] **GAP-1**: Agregar manejo de Company inexistente en Twenty dentro de `processInteractionJob` en `src/services/twenty/twentyActivityService.js`: si `TwentySyncState` existe pero `twentyEstablecimientoId` es null (Company borrado en Twenty), log error con contexto suficiente + skip de la Note (no lanzar error no manejado); documentar el escenario en el criterio de aceptación de CRM-853
 
