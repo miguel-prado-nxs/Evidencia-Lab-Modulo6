@@ -293,6 +293,34 @@ async function processInteractionJob(job) {
   // 5. Anclar Note al Company del establecimiento
   await twentyService.createNoteTarget(note.id, { companyId: twentyCompanyId });
 
+  // 6. Actualizar campos custom del Company en Twenty
+  const totalLlamadasCampana = await prisma.twentySyncJob.count({
+    where: {
+      establishmentId,
+      type: 'INTERACTION',
+      status: 'DONE',
+    },
+  });
+
+  const callTimestamp = callDuration != null ? new Date() : null;
+
+  await twentyService
+    .updateCompanyFields(twentyCompanyId, {
+      ultimaCampana: campaignName || null,
+      fechaUltimaLlamada: callTimestamp,
+      totalLlamadasCampana,
+    })
+    .catch((error) =>
+      logger.error(
+        '[TwentyActivityService:processInteractionJob] Error actualizando campos custom',
+        {
+          error: error.message,
+          jobId: job.id,
+          twentyCompanyId,
+        }
+      )
+    );
+
   logger.info('[TwentyActivityService:processInteractionJob] Note creada y anclada', {
     jobId: job.id,
     noteId: note.id,

@@ -14,6 +14,9 @@ require('dotenv').config({ quiet: true });
 
 const prisma = require('../../../src/config/database');
 const twentyService = require('../../../src/services/twenty/twentyService');
+const { processInteractionJob } = require('../../../src/services/twenty/twentyActivityService');
+const config = require('../../../src/config/env');
+const axios = require('axios');
 
 let passed = 0;
 let failed = 0;
@@ -111,6 +114,100 @@ async function runT017(companyId) {
 }
 
 // ================================================================
+// T018 — processInteractionJob actualiza campos custom tras crear Note
+// ================================================================
+async function runT018(companyId) {
+  const TS = Date.now();
+  const ESTAB = `t018-estab-${TS}`;
+  const CONV = `t018-conv-${TS}`;
+  const CAMPAIGN_NAME = '[TEST] T018 Phase4';
+
+  // Setup: TwentySyncState apuntando al Company de prueba
+  await prisma.twentySyncState.create({
+    data: { establishmentId: ESTAB, twentyEstablecimientoId: companyId },
+  });
+
+  // Crear 2 jobs INTERACTION DONE previos para que el COUNT sea 2
+  const doneJobs = await Promise.all([
+    prisma.twentySyncJob.create({
+      data: {
+        establishmentId: ESTAB, type: 'INTERACTION', status: 'DONE',
+        reason: 'discovery:COMPLETED', dedupeKey: `interaction:${CONV}-prev1:discovery`,
+        payload: {}, nextRunAt: new Date(),
+      },
+    }),
+    prisma.twentySyncJob.create({
+      data: {
+        establishmentId: ESTAB, type: 'INTERACTION', status: 'DONE',
+        reason: 'discovery:NO_ANSWER', dedupeKey: `interaction:${CONV}-prev2:discovery`,
+        payload: {}, nextRunAt: new Date(),
+      },
+    }),
+  ]);
+
+  const job = {
+    id: `fake-t018-${TS}`,
+    establishmentId: ESTAB,
+    payload: {
+      conversationId: CONV,
+      stage: 'discovery',
+      outcome: 'COMPLETED',
+      callSummary: 'Prueba T018 - resumen de llamada',
+      callDuration: 95,
+      campaignName: CAMPAIGN_NAME,
+    },
+  };
+
+  // C1: processInteractionJob no lanza error con Company real
+  console.log('\nT018/C1: processInteractionJob completa sin error');
+  let threw = false;
+  try {
+    await processInteractionJob(job);
+  } catch (err) {
+    threw = true;
+    check('C1: no lanza error', false, err.message);
+  }
+  if (!threw) {
+    check('C1: no lanza error', true);
+  }
+
+  // C2: Verificar que el Company en Twenty tiene los campos actualizados
+  console.log('\nT018/C2: campos custom actualizados en Twenty');
+  const twentyClient = axios.create({
+    baseURL: `${config.twenty.baseUrl}/rest`,
+    headers: { Authorization: `Bearer ${config.twenty.apiKey}` },
+    timeout: 10000,
+  });
+  const companyRes = await twentyClient.get(`/companies/${companyId}`);
+  const company = companyRes.data.data?.company || companyRes.data;
+
+  check('C2: ultimacampana actualizado', company.ultimacampana === CAMPAIGN_NAME, company.ultimacampana);
+  check('C2: fechaultimallamada no es null', !!company.fechaultimallamada, String(company.fechaultimallamada));
+  // COUNT de DONE al momento de ejecutar: los 2 previos (el job actual aun no esta DONE)
+  check('C2: totalllamadascampana === 2', company.totalllamadascampana === 2, String(company.totalllamadascampana));
+
+  // C3: Note fue creada en Twenty (verificar via noteTargets del Company)
+  console.log('\nT018/C3: Note creada y anclada al Company en Twenty');
+  const noteTargetsRes = await twentyClient.get('/noteTargets', {
+    params: { limit: 10, filter: `companyId[eq]:${companyId}` },
+  });
+  const noteTargets = noteTargetsRes.data.data?.noteTargets || [];
+  const testNoteTarget = noteTargets.find((nt) => nt.companyId === companyId);
+  check('C3: NoteTarget creado y anclado al Company', !!testNoteTarget, `${noteTargets.length} noteTargets encontrados`);
+
+  // Obtener la Note para el cleanup
+  const testNoteId = testNoteTarget?.noteId;
+
+  // Cleanup: eliminar NoteTarget, Note de Twenty, TwentySyncState y jobs de prueba
+  if (testNoteId) {
+    await twentyClient.delete(`/notes/${testNoteId}`).catch(() => {});
+  }
+  await prisma.twentySyncJob.deleteMany({ where: { id: { in: doneJobs.map((j) => j.id) } } });
+  await prisma.twentySyncState.delete({ where: { establishmentId: ESTAB } });
+  console.log('  T018 cleanup: done.');
+}
+
+// ================================================================
 // Main
 // ================================================================
 async function run() {
@@ -144,6 +241,9 @@ async function run() {
 
   console.log('\n=== T017: updateCompanyFields ===');
   await runT017(companyId);
+
+  console.log('\n=== T018: processInteractionJob actualiza campos custom ===');
+  await runT018(companyId);
 
   console.log(`\n========================================`);
   console.log(`RESULTADO TOTAL: ${passed} PASS, ${failed} FAIL`);

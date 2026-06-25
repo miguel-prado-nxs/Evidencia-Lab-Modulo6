@@ -85,7 +85,7 @@
   "lint-staged": {
     "src/**/*.js": [
       "eslint --no-fix",
-      "prettier --check",
+      "prettier --write",
       "secretlint"
     ]
   }
