@@ -77,7 +77,7 @@
 
 **Corresponde a**: CRM-854, CRM-855, CRM-856
 
-- [ ] T017 [US2] Agregar método `async updateCompanyFields(companyId, { ultimaCampana, fechaUltimaLlamada, totalLlamadasCampana })` en `src/services/twenty/twentyService.js`: `PATCH /companies/{companyId}`, usando los nombres de API documentados en T002 (CRM-856)
+- [X] T017 [US2] Agregar método `async updateCompanyFields(companyId, { ultimaCampana, fechaUltimaLlamada, totalLlamadasCampana })` en `src/services/twenty/twentyService.js`: `PATCH /companies/{companyId}`, usando los nombres de API documentados en T002 (CRM-856)
 - [ ] T018 [US2] Modificar `processInteractionJob` en `src/services/twenty/twentyActivityService.js`: tras crear la Note y el NoteTarget, calcular `totalLlamadasCampana` como COUNT de jobs INTERACTION con status DONE para el `establishmentId` (no "+1 ciego"), actualizar `fechaUltimaLlamada` solo si el timestamp de la llamada actual es más reciente que el campo existente, llamar `updateCompanyFields` con los 3 valores (CRM-856)
 - [ ] T019 [US2] **GAP-2**: Agregar verificación de existencia de campos custom al arranque del worker o al primer intento de escritura en `twentyActivityService.js`: si los campos no existen en la respuesta de la API de Twenty, loggear error visible `[TwentyActivityService:updateCompanyFields] Campo custom inexistente en Twenty — verificar CRM-855` y continuar sin romper el flujo (smoke test de campos)
 
