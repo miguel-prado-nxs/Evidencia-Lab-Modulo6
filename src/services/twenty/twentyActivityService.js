@@ -245,11 +245,25 @@ async function processInteractionJob(job) {
 
   const twentyCompanyId = syncState?.twentyEstablecimientoId;
 
-  if (!twentyCompanyId) {
-    // El establecimiento aun no esta en Twenty — el pipeline PIPELINE sync lo creara despues
+  if (!syncState) {
+    // Establecimiento nunca sincronizado - el job PIPELINE lo creara despues
     throw new Error(
-      `Establecimiento sin twentyEstablecimientoId: ${establishmentId}. Esperar sync de pipeline.`
+      `Establecimiento sin TwentySyncState: ${establishmentId}. Esperar sync de pipeline.`
     );
+  }
+
+  if (!twentyCompanyId) {
+    // syncState existe pero el company fue borrado en Twenty - no hay a que anclar la Note
+    logger.error(
+      '[TwentyActivityService:processInteractionJob] Company inexistente en Twenty, saltando la Note',
+      {
+        jobId: job.id,
+        establishmentId,
+        stage,
+        outcome,
+      }
+    );
+    return;
   }
 
   // 2. Resolver config de la etapa y textos
