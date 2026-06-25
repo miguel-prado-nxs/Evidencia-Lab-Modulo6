@@ -87,6 +87,33 @@ class TwentyService {
     }
   }
 
+  async updateCompanyFields(
+    companyId,
+    { ultimaCampana, fechaUltimaLlamada, totalLlamadasCampana }
+  ) {
+    try {
+      const response = await this.client.patch(`/companies/${companyId}`, {
+        ultimacampana: ultimaCampana,
+        fechaultimallamada: fechaUltimaLlamada,
+        totalllamadascampana: totalLlamadasCampana,
+      });
+      const updated = response.data.data?.updateCompany || response.data;
+      logger.info('[TwentyService] Campos custom de Company actualizados', {
+        companyId,
+        ultimaCampana,
+        fechaUltimaLlamada,
+        totalLlamadasCampana,
+      });
+      return updated;
+    } catch (error) {
+      logger.error('[TwentyService] Error actualizando campos custom de Company:', {
+        error: error.response?.data || error.message,
+        companyId,
+      });
+      throw error;
+    }
+  }
+
   /**
    * Buscar establecimiento por email con paginacion
    */
