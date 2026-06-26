@@ -2,6 +2,7 @@ const prisma = require('../config/database');
 const logger = require('../config/logger');
 const crypto = require('crypto');
 const config = require('../config/env');
+const { enqueueInteractionSync } = require('./twenty/twentyActivityService');
 
 const URL_MICROSTRIPE = process.env.MICROSTRIPE || 'http://localhost:3002/api/stripe';
 
@@ -462,6 +463,31 @@ const redeemCoupon = async (code, userData = {}) => {
     couponId: coupon.id,
     userData,
   });
+
+  // Resolver establishmentId para el hook
+  const contactForHook = coupon.campaignContactId
+    ? await prisma.campaignContact.findUnique({
+        where: { id: coupon.campaignContactId },
+        select: { establishmentId: true },
+      })
+    : null;
+
+  // Hook non-blocking: Registrar redencion de cupon en Twenty
+  enqueueInteractionSync({
+    establishmentId: contactForHook?.establishmentId || null,
+    conversationId: coupon.id,
+    stage: 'coupon_redeemed',
+    outcome: 'REDEEMED',
+    callSummary: null,
+    callDuration: null,
+    campaignId: coupon.campaignId || null,
+    campaignName: null,
+  }).catch((err) =>
+    logger.error('[CouponGeneratorService] Error encolando hook coupon_redeemed', {
+      error: err.message,
+      couponId: coupon.id,
+    })
+  );
 
   // Retornar configuración para Stripe
   return {

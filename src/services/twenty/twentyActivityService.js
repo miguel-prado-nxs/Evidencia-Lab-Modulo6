@@ -331,26 +331,27 @@ async function processInteractionJob(job) {
   });
 
   const callTimestamp = callDuration != null ? new Date() : null;
+  const COUPON_STAGES = new Set(['coupon_sent', 'coupon_redeemed']);
 
-  await verifyCustomFields(twentyCompanyId);
-
-  await twentyService
-    .updateCompanyFields(twentyCompanyId, {
-      ultimaCampana: campaignName || null,
-      fechaUltimaLlamada: callTimestamp,
-      totalLlamadasCampana,
-    })
-    .catch((error) =>
-      logger.error(
-        '[TwentyActivityService:processInteractionJob] Error actualizando campos custom',
-        {
-          error: error.message,
-          jobId: job.id,
-          twentyCompanyId,
-        }
-      )
-    );
-
+  if (!COUPON_STAGES.has(stage)) {
+    await verifyCustomFields(twentyCompanyId);
+    await twentyService
+      .updateCompanyFields(twentyCompanyId, {
+        ultimaCampana: campaignName || null,
+        fechaUltimaLlamada: callTimestamp,
+        totalLlamadasCampana,
+      })
+      .catch((error) =>
+        logger.error(
+          '[TwentyActivityService:processInteractionJob] Error actualizando campos custom',
+          {
+            error: error.message,
+            jobId: job.id,
+            twentyCompanyId,
+          }
+        )
+      );
+  }
   logger.info('[TwentyActivityService:processInteractionJob] Note creada y anclada', {
     jobId: job.id,
     noteId: note.id,
