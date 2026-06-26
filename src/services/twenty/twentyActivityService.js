@@ -319,11 +319,14 @@ async function processInteractionJob(job) {
   await twentyService.createNoteTarget(note.id, { companyId: twentyCompanyId });
 
   // 6. Actualizar campos custom del Company en Twenty
+  // Excluir cupones del conteo — solo llamadas de campaña
+  const COUPON_REASONS = ['coupon_sent:SENT', 'coupon_redeemed:REDEEMED'];
   const totalLlamadasCampana = await prisma.twentySyncJob.count({
     where: {
       establishmentId,
       type: 'INTERACTION',
       status: 'DONE',
+      reason: { notIn: COUPON_REASONS },
     },
   });
 

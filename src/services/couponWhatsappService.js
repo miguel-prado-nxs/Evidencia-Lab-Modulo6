@@ -2,6 +2,7 @@ const prisma = require('../config/database');
 const logger = require('../config/logger');
 const whatsappService = require('./whatsappService');
 const couponGeneratorService = require('./couponGeneratorService');
+const { enqueueInteractionSync } = require('./twenty/twentyActivityService');
 const axios = require('axios');
 
 const BAILEYS_URL = process.env.BAILEYS_URL;
@@ -86,6 +87,31 @@ const sendCouponViaWhatsapp = async ({ couponId, phone, from }) => {
         phone,
         fromPhone,
         messageId: baileyResult.data?.data?.key?.id,
+      });
+
+      // Resolver establishmentId para el hook (fire-and-forget no puede tener await interno)
+      const contactForHook = coupon.campaignContactId
+        ? await prisma.campaignContact.findUnique({
+            where: { id: coupon.campaignContactId },
+            select: { establishmentId: true },
+          })
+        : null;
+
+      // Hook non-blocking: registrar envio de cupon en TWENTY
+      enqueueInteractionSync({
+        establishmentId: contactForHook?.establishmentId || null,
+        conversationId: couponId,
+        stage: 'coupon_sent',
+        outcome: 'SENT',
+        callSummary: null,
+        callDuration: null,
+        campaignId: coupon.campaignId || null,
+        campaignName: null,
+      }).catch((err) => {
+        logger.error('[Coupon WhatsApp Service] Error encolando hook coupon_sent', {
+          error: err.message,
+          couponId: couponId,
+        });
       });
 
       return {
