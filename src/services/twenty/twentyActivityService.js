@@ -12,6 +12,31 @@ const prisma = require('../../config/database');
 const logger = require('../../config/logger');
 const twentyService = require('./twentyService');
 
+// Flag de modulo: se verifica una sola vez por ciclo de vida del proceso
+let customFieldsVerified = false;
+
+async function verifyCustomFields(companyId) {
+  if (customFieldsVerified) return;
+  try {
+    const company = await twentyService.client.get(`/companies/${companyId}`);
+    const data = company.data.data?.company || company.data;
+    const REQUIRED = ['ultimacampana', 'fechaultimallamada', 'totalllamadascampana'];
+    const missing = REQUIRED.filter((f) => !(f in data));
+    if (missing.length > 0) {
+      logger.error(
+        '[TwentyActivityService:updateCompanyFields] Campo custom inexistente en Twenty — verificar CRM-855',
+        { missing }
+      );
+    } else {
+      customFieldsVerified = true;
+    }
+  } catch (error) {
+    logger.warn('[TwentyActivityService:verifyCustomFields] No se pudo verificar campos custom', {
+      error: error.message,
+    });
+  }
+}
+
 // Outcomes que no implican conversacion real — sin resumen, maxAttempts=5
 const NON_CONVERSATIONAL = new Set(['NO_ANSWER', 'VOICEMAIL', 'WRONG_NUMBER', 'FAILED']);
 
@@ -304,6 +329,8 @@ async function processInteractionJob(job) {
 
   const callTimestamp = callDuration != null ? new Date() : null;
 
+  await verifyCustomFields(twentyCompanyId);
+
   await twentyService
     .updateCompanyFields(twentyCompanyId, {
       ultimaCampana: campaignName || null,
@@ -334,4 +361,8 @@ module.exports = {
   STAGE_CONFIG,
   enqueueInteractionSync,
   processInteractionJob,
+  verifyCustomFields,
+  _resetCustomFieldsVerified: () => {
+    customFieldsVerified = false;
+  },
 };
