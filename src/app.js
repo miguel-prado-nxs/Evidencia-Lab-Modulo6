@@ -39,6 +39,7 @@ const couponWhatsappRoutes = require('./routes/couponWhatsapp');
 const campaignContextRoutes = require('./routes/campaignContext');
 const couponCallRoutes = require('./routes/couponCall');
 const mcpRoutes = require('./routes/mcpRoutes');
+const crmHooksRoutes = require('./routes/crmHooksRoutes');
 
 // Crear aplicación Express
 const app = express();
@@ -185,6 +186,7 @@ app.use('/api/v1/coupon-templates', couponTemplatesRoutes);
 app.use('/api/v1/coupons-whatsapp', couponWhatsappRoutes);
 app.use('/api/v1/campaign-context', campaignContextRoutes);
 app.use('/mcp', mcpRoutes);
+app.use('/api/v1/crm-hooks', crmHooksRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
