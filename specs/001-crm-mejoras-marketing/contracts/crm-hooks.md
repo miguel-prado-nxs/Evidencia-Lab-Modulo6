@@ -133,3 +133,41 @@ Encola el establecimiento en una campaña de llamadas específica.
 - Controller: `src/controllers/crmHooksController.js`
 - Las acciones son un mapa de configuración (pattern del proyecto) — agregar una nueva acción es agregar una entrada al mapa, no modificar el switch.
 - Relacionado con: CRM-863, CRM-864
+
+---
+
+## Ejemplos de prueba (PowerShell)
+
+**401 — sin API key:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:3004/api/v1/crm-hooks" -ContentType "application/json" -Body '{"action":"send-whatsapp","payload":{"establishmentId":"123"}}'
+```
+```
+Invoke-RestMethod : {"success":false,"error":"API Key requerida"}
+```
+
+**400 — falta establishmentId:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:3004/api/v1/crm-hooks" -ContentType "application/json" -Headers @{"x-api-key"="<API_KEY>"} -Body '{"action":"send-whatsapp","payload":{}}'
+```
+```
+Invoke-RestMethod : {"success":false,"error":"Required"}
+```
+
+**422 — acción desconocida:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:3004/api/v1/crm-hooks" -ContentType "application/json" -Headers @{"x-api-key"="<API_KEY>"} -Body '{"action":"accion-inventada","payload":{"establishmentId":"123"}}'
+```
+```
+Invoke-RestMethod : {"success":false,"error":"Accion no soportada: accion-inventada"}
+```
+
+**200 — request válido:**
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:3004/api/v1/crm-hooks" -ContentType "application/json" -Headers @{"x-api-key"="<API_KEY>"} -Body '{"action":"send-whatsapp","payload":{"establishmentId":"123"},"source":"twenty-workflow","correlationId":"test-001"}'
+```
+```
+success action        result
+------- ------        ------
+   True send-whatsapp @{message=Accion ejecutada correctamente}
+```

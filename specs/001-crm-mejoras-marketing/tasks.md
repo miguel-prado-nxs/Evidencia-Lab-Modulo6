@@ -112,9 +112,9 @@
 
 **Corresponde a**: CRM-860, CRM-861, CRM-862, CRM-863, CRM-864, CRM-865, CRM-866, CRM-867
 
-- [ ] T024 [US3] Crear `src/routes/crmHooksRoutes.js`: montar `POST /api/v1/crm-hooks` con middleware `authenticateApiKey`; registrar en `src/app.js` (CRM-863)
-- [ ] T025 [US3] Crear `src/controllers/crmHooksController.js`: validar body con Zod `z.object({ action: z.string(), payload: z.object({ establishmentId: z.string() }), source: z.string().optional(), correlationId: z.string().optional() })`; mapa de acciones `{ 'send-whatsapp': ..., 'requeue-campaign': ... }`, respuesta 422 para acciones desconocidas, respuesta asíncrona para acciones de larga duración; log estructurado con `source` y `correlationId` (CRM-864)
-- [ ] T026 [US3] **GAP-4**: Verificar que `authenticateApiKey` en `src/middleware/auth.js` rechaza con 401 cualquier request sin x-api-key válida al nuevo endpoint; documentar en `contracts/crm-hooks.md` el ejemplo curl de prueba
+- [X] T024 [US3] Crear `src/routes/crmHooksRoutes.js`: montar `POST /api/v1/crm-hooks` con middleware `authenticateApiKey`; registrar en `src/app.js` (CRM-863)
+- [X] T025 [US3] Crear `src/controllers/crmHooksController.js`: validar body con Zod `z.object({ action: z.string(), payload: z.object({ establishmentId: z.string() }), source: z.string().optional(), correlationId: z.string().optional() })`; mapa de acciones `{ 'send-whatsapp': ..., 'requeue-campaign': ... }`, respuesta 422 para acciones desconocidas, respuesta asíncrona para acciones de larga duración; log estructurado con `source` y `correlationId` (CRM-864)
+- [X] T026 [US3] **GAP-4**: Verificar que `authenticateApiKey` en `src/middleware/auth.js` rechaza con 401 cualquier request sin x-api-key válida al nuevo endpoint; documentar en `contracts/crm-hooks.md` el ejemplo curl de prueba
 - [ ] T027 [US3] Sesión con marketing (no técnica): definir y documentar las reglas de automatización concretas que se configurarán en Twenty (condiciones, acciones, frecuencia) — output: lista de reglas en `research.md` (CRM-866)
 - [ ] T028 [US3] Configurar en Twenty: Workflows según reglas definidas en T027, kanban de Opportunity, vistas compartidas para el equipo de ventas y marketing (CRM-867)
 
