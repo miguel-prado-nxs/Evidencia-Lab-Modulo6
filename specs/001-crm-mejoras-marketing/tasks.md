@@ -93,10 +93,10 @@
 
 **Corresponde a**: CRM-857, CRM-858, CRM-859
 
-- [ ] T020 [P] [US1] Agregar entradas `coupon_sent` y `coupon_redeemed` en `STAGE_CONFIG` dentro de `src/services/twenty/twentyActivityService.js` con sus `stageLabel`, `outcomeLabels` y `isConversational = () => false` (CRM-858)
-- [ ] T021 [P] [US1] Agregar hook non-blocking en `src/services/couponWhatsappService.js` en el punto de éxito de envío: llamar `enqueueInteractionSync` con `stage='coupon_sent'`, `conversationId=couponId`, `dedupeKey coupon:{couponId}:sent` (CRM-858)
-- [ ] T022 [P] [US1] Agregar hook non-blocking en `src/services/couponGeneratorService.js` en el punto de redención exitosa: llamar `enqueueInteractionSync` con `stage='coupon_redeemed'`, `dedupeKey coupon:{couponId}:redeemed` (CRM-858)
-- [ ] T023 [US1] Crear `prisma/scripts/backfill-interactions.js`: recorrer `CampaignContact` históricos con `conversationId` no nulo, encolar jobs INTERACTION con su dedupeKey natural; modo `--dry-run` que solo reporta sin encolar; procesamiento por lotes de 50 con delay configurable entre lotes; reporte final: encoladas / saltadas por duplicado / sin establecimiento mapeable (CRM-859)
+- [X] T020 [P] [US1] Agregar entradas `coupon_sent` y `coupon_redeemed` en `STAGE_CONFIG` dentro de `src/services/twenty/twentyActivityService.js` con sus `stageLabel`, `outcomeLabels` y `isConversational = () => false` (CRM-858)
+- [X] T021 [P] [US1] Agregar hook non-blocking en `src/services/couponWhatsappService.js` en el punto de éxito de envío: llamar `enqueueInteractionSync` con `stage='coupon_sent'`, `conversationId=couponId`, `dedupeKey coupon:{couponId}:sent` (CRM-858)
+- [X] T022 [P] [US1] Agregar hook non-blocking en `src/services/couponGeneratorService.js` en el punto de redención exitosa: llamar `enqueueInteractionSync` con `stage='coupon_redeemed'`, `dedupeKey coupon:{couponId}:redeemed` (CRM-858)
+- [X] T023 [US1] Crear `prisma/scripts/backfill-interactions.js`: recorrer `CampaignContact` históricos con `conversationId` no nulo, encolar jobs INTERACTION con su dedupeKey natural; modo `--dry-run` que solo reporta sin encolar; procesamiento por lotes de 50 con delay configurable entre lotes; reporte final: encoladas / saltadas por duplicado / sin establecimiento mapeable (CRM-859)
 
 **Checkpoint**: US1 extensión completa cuando: dry-run reporta volumen correcto, ejecución real encola sin duplicar, re-ejecución muestra 0 nuevas encoladas.
 
