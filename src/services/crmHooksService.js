@@ -152,4 +152,56 @@ const sendWhatsapp = async ({ establishmentId, templateName }) => {
   throw new Error(`Template de WhatsApp no implementado: ${templateName}`);
 };
 
-module.exports = { requeueCampaign, sendWhatsapp };
+const COUPON_REMINDER_HOURS = 24;
+
+/**
+ * Busca cupones enviados hace más de 24h sin redimir y antes de vencer, y envía recordatorio por WhatsApp.
+ * Se ejecuta como batch — pensado para ser disparado por un Workflow de Twenty sin payload.
+ */
+const checkCouponReminders = async () => {
+  const thresholdDate = new Date(Date.now() - COUPON_REMINDER_HOURS * 60 * 60 * 1000);
+
+  const coupons = await prisma.campaignCoupon.findMany({
+    where: {
+      status: 'SENT',
+      sentAt: { lt: thresholdDate },
+      expiresAt: { gt: new Date() },
+      assignedPhone: { not: null },
+    },
+    select: { id: true, assignedPhone: true, sentAt: true, expiresAt: true },
+  });
+
+  if (coupons.length === 0) {
+    logger.info('[CrmHooksService:checkCouponReminders] Sin cupones pendientes de recordatorio');
+    return { processed: 0 };
+  }
+
+  logger.info('[CrmHooksService:checkCouponReminders] Procesando recordatorios', {
+    total: coupons.length,
+  });
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const coupon of coupons) {
+    const result = await resendCoupon(coupon.id, coupon.assignedPhone);
+    if (result.success) {
+      sent++;
+    } else {
+      failed++;
+      logger.warn('[CrmHooksService:checkCouponReminders] Error enviando recordatorio', {
+        couponId: coupon.id,
+        error: result.error,
+      });
+    }
+  }
+
+  logger.info('[CrmHooksService:checkCouponReminders] Recordatorios completados', {
+    sent,
+    failed,
+  });
+
+  return { processed: coupons.length, sent, failed };
+};
+
+module.exports = { requeueCampaign, sendWhatsapp, checkCouponReminders };
