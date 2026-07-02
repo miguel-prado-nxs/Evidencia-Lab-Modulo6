@@ -239,6 +239,83 @@ Campos creados en Twenty UI (Settings > Data Model > Establecimientos) y verific
 
 ---
 
+## Decisión 7: Reglas de automatización CRM (T027 — definidas con marketing)
+
+**Fecha de definición**: 2026-07-02
+
+### Regla 1 — Prospecto sin respuesta
+
+| Campo | Valor |
+|---|---|
+| **Nombre** | Prospecto sin respuesta |
+| **Trigger** | Scheduled (diario) sobre Companies |
+| **Condición** | `fechaUltimaLlamada` hace más de 30 días **Y** etapa del establecimiento = `discovery_completed` |
+| **Acción** | `requeue-campaign` — reagendar en la campaña de Discovery activa |
+| **Endpoint** | `POST /api/v1/crm-hooks` con `action="requeue-campaign"` |
+
+**Payload esperado** (Twenty → Partners API):
+```json
+{
+  "action": "requeue-campaign",
+  "payload": {
+    "establishmentId": "{companyId}",
+    "campaignId": "{campaignId}",
+    "reason": "prospecto_sin_respuesta_30_dias"
+  },
+  "source": "twenty-workflow-prospectos-sin-respuesta"
+}
+```
+
+**Notas de implementación para T028**:
+- Usar trigger `Schedule` en Twenty (diario, ej. 9:00 AM) que filtre Companies con `fechaUltimaLlamada < now - 30d`
+- El `campaignId` de la campaña Discovery activa debe ser parametrizable en el Workflow (variable de entorno en Twenty o campo de configuración)
+- El handler `requeue-campaign` en `crmHooksController.js` debe agregar el establecimiento a `CampaignContact` de la campaña indicada, verificando que no exista ya con status PENDING
+
+---
+
+### Regla 2 — Cupón enviado sin redimir
+
+| Campo | Valor |
+|---|---|
+| **Nombre** | Cupón enviado sin redimir |
+| **Trigger** | Scheduled (cada hora o diario) sobre registros de cupón |
+| **Condición** | Cupón enviado hace más de 24 horas sin redención registrada |
+| **Acción** | `send-whatsapp` — recordatorio al establecimiento |
+| **Endpoint** | `POST /api/v1/crm-hooks` con `action="send-whatsapp"` |
+
+**Payload esperado** (Twenty → Partners API):
+```json
+{
+  "action": "send-whatsapp",
+  "payload": {
+    "establishmentId": "{companyId}",
+    "templateName": "recordatorio_cupon",
+    "variables": {
+      "nombre": "{companyName}"
+    }
+  },
+  "source": "twenty-workflow-cupon-sin-redimir"
+}
+```
+
+**Restricción crítica**: El cupón vence a las 48 horas del envío. El trigger a las 24 horas garantiza que el recordatorio llega cuando el cupón aún está activo. No disparar si el cupón ya fue redimido (`couponStatus = redeemed`) o ya venció.
+
+**Notas de implementación para T028**:
+- El Workflow de Twenty debe poder acceder al campo de fecha de envío del cupón. Evaluar si la Note de `coupon_sent` tiene metadata suficiente o si se requiere un campo custom en Twenty.
+- El handler `send-whatsapp` en `crmHooksController.js` debe llamar `couponWhatsappService` con el template `recordatorio_cupon` (crear template si no existe).
+- Verificar que el cupón no esté ya redimido antes de enviar — consultar `CampaignCoupon` por `establishmentId` con `status != redeemed`.
+
+---
+
+### Resumen de acciones requeridas por regla
+
+| Regla | Acción crm-hooks | Handler a implementar en T028 |
+|---|---|---|
+| Prospecto sin respuesta | `requeue-campaign` | Agregar a `CampaignContact` de campaña Discovery activa |
+| Cupón sin redimir | `send-whatsapp` | Llamar `couponWhatsappService` con template `recordatorio_cupon` |
+
+---
+
 ## Script de verificación (T001 — ejecutado)
 
 `prisma/scripts/verify-twenty-notes.js` — ejecutado contra `https://api.crm.development.easyorder.mx`.
