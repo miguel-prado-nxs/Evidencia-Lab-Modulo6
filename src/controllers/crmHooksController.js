@@ -4,7 +4,7 @@ const crmHooksService = require('../services/crmHooksService');
 
 const bodySchema = z.object({
   action: z.string(),
-  payload: z.object({ establishmentId: z.string() }).passthrough(),
+  payload: z.object({ establishmentId: z.string().optional() }).passthrough(),
   source: z.string().optional(),
   correlationId: z.string().optional(),
 });
@@ -24,6 +24,9 @@ const ACTION_HANDLERS = {
       reason: payload.reason,
       lastContactDate: payload.lastContactDate,
     });
+  },
+  'check-coupon-reminders': async () => {
+    return crmHooksService.checkCouponReminders();
   },
 };
 
