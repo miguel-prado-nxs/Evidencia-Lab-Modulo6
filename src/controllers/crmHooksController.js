@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const logger = require('../config/logger');
+const crmHooksService = require('../services/crmHooksService');
 
 const bodySchema = z.object({
   action: z.string(),
@@ -8,22 +9,21 @@ const bodySchema = z.object({
   correlationId: z.string().optional(),
 });
 
-// Mapa de acciones - agregar nuevas accion = nueva entrada aqui
+// Mapa de acciones — agregar nueva accion = nueva entrada aqui
 const ACTION_HANDLERS = {
   'send-whatsapp': async (payload) => {
-    // TODO T027: implementar cuando se definan las reglas con marketing
-    logger.info('[CrmHooksController] send-whatsapp recibido', {
+    return crmHooksService.sendWhatsapp({
       establishmentId: payload.establishmentId,
+      templateName: payload.templateName,
     });
-    return { message: 'Accion ejecutada correctamente' };
   },
   'requeue-campaign': async (payload) => {
-    // TODO T027: implementar cuando se definan las reglas con marketing
-    logger.info('[CrmHooksController] requeue-campaign recibido', {
+    return crmHooksService.requeueCampaign({
       establishmentId: payload.establishmentId,
       campaignId: payload.campaignId,
+      reason: payload.reason,
+      lastContactDate: payload.lastContactDate,
     });
-    return { message: 'Accion ejecutada correctamente' };
   },
 };
 
@@ -49,10 +49,9 @@ const handle = async (req, res, next) => {
       });
     }
 
-    // Responder inmediatamente - acciones largas corren en background
+    // Responder inmediatamente — acciones largas corren en background
     res.json({ success: true, action, result: { message: 'Accion ejecutada correctamente' } });
 
-    // Ejecutar la accion de forma asincrona tras responder
     handler(payload).catch((err) =>
       logger.error('[CrmHooksController] Error ejecutando accion', {
         action,
