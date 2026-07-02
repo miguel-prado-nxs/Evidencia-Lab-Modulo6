@@ -316,6 +316,25 @@ Campos creados en Twenty UI (Settings > Data Model > Establecimientos) y verific
 
 ---
 
+## Decisión 8: Convenciones de roles RBAC en Twenty (T029 — configurado 2026-07-02)
+
+| Rol en Twenty | Equivalente funcional | Ver | Editar | Eliminar | Destruir | Config |
+|---|---|---|---|---|---|---|
+| Marketing Ops | Marketing | ✅ | ✅ | ✗ | ✗ | Espacio de trabajo + Workflows |
+| SDR manager | Ventas | ✅ | ✅ | ✅ | ✗ | Ninguna |
+| miembro | Solo lectura | ✅ | ✗ | ✗ | ✗ | Ninguna |
+| Admin | Administrador | ✅ | ✅ | ✅ | ✅ | Total |
+
+**Criterios de diseño**:
+- Marketing Ops puede editar registros (agregar comentarios, etiquetas, actualizar etapa) pero no eliminar — evita pérdida accidental de historial.
+- SDR manager puede eliminar (para limpiar duplicados y contactos erróneos) pero no destruir — la destrucción es irreversible.
+- miembro es pura consulta — sin modificaciones. Útil para stakeholders externos, dirección, o integraciones de solo lectura.
+- Destruir solo para Admin — acción permanente que omite soft delete.
+- Config de Workflows solo para Marketing Ops — gestionar automatizaciones es parte de su trabajo.
+- El rol nativo "Member" de Twenty no se modifica — tiene revocaciones individuales por objeto que lo hacen inutilizable como solo lectura. Se usa el rol custom "miembro" en su lugar.
+
+---
+
 ## Script de verificación (T001 — ejecutado)
 
 `prisma/scripts/verify-twenty-notes.js` — ejecutado contra `https://api.crm.development.easyorder.mx`.

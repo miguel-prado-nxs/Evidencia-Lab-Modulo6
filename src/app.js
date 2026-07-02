@@ -44,6 +44,9 @@ const crmHooksRoutes = require('./routes/crmHooksRoutes');
 // Crear aplicación Express
 const app = express();
 
+// Necesario para rate-limit detrás de Railway/proxies (X-Forwarded-For)
+app.set('trust proxy', 1);
+
 // Crear servidor HTTP para Socket.io
 const server = http.createServer(app);
 

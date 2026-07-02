@@ -130,8 +130,8 @@
 
 **Corresponde a**: CRM-868, CRM-869
 
-- [ ] T029 [US4] Configurar roles RBAC en Twenty: crear roles `Administrador`, `Ventas`, `Marketing`, `Solo lectura`; definir permisos — Marketing: lectura total + edición de campos propios (comentarios, etiquetas); Ventas: edición completa; registrar convenciones en `research.md` (CRM-869)
-- [ ] T030 [P] [US4] Crear vistas compartidas en Twenty para el equipo de marketing: vista "Pipeline activo" filtrada por `totalLlamadasCampana > 0` y "Sin contacto reciente" filtrada por `fechaUltimaLlamada` hace más de 30 días (CRM-867 — vistas compartidas; complementa Workflows de T028)
+- [X] T029 [US4] Configurar roles RBAC en Twenty: crear roles `Administrador`, `Ventas`, `Marketing`, `Solo lectura`; definir permisos — Marketing: lectura total + edición de campos propios (comentarios, etiquetas); Ventas: edición completa; registrar convenciones en `research.md` (CRM-869). **Completado 2026-07-02**: Marketing Ops (Ver+Editar, config Espacio+Workflows), SDR manager (Ver+Editar+Eliminar, sin config), miembro (solo Ver). Documentado en research.md Decisión 8.
+- [X] T030 [P] [US4] Crear vistas compartidas en Twenty para el equipo de marketing: vista "Pipeline activo" filtrada por `totalLlamadasCampana > 0` y "Sin contacto reciente" filtrada por `fechaUltimaLlamada` hace más de 30 días (CRM-867 — vistas compartidas; complementa Workflows de T028). **Completado 2026-07-02**: ambas vistas creadas y verificadas en staging.
 - [ ] T031 [US4] Capacitación del equipo de marketing: sesión con guía de uso del pipeline, vistas compartidas, uso de comentarios y comprensión de permisos; verificar adopción autónoma a los 15 días (CRM-869)
 
 **Checkpoint**: US4 completa cuando el equipo de marketing puede operar el pipeline sin asistencia técnica.
