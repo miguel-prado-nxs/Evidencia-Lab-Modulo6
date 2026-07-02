@@ -3,8 +3,8 @@
  * Controladores para la API de meetings de establecimientos
  */
 
-const meetingService = require("../services/meetingService");
-const logger = require("../config/logger");
+const meetingService = require('../services/meetingService');
+const logger = require('../config/logger');
 
 /**
  * GET /api/v1/geo/meetings/:establishmentId
@@ -18,7 +18,7 @@ async function getMeeting(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver meetings",
+        error: 'Solo partners pueden ver meetings',
       });
     }
 
@@ -29,7 +29,7 @@ async function getMeeting(req, res, next) {
       data: meeting,
     });
   } catch (error) {
-    logger.error("Error en getMeeting:", error);
+    logger.error('Error en getMeeting:', error);
     next(error);
   }
 }
@@ -46,7 +46,7 @@ async function updateMeeting(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden gestionar meetings",
+        error: 'Solo partners pueden gestionar meetings',
       });
     }
 
@@ -62,10 +62,10 @@ async function updateMeeting(req, res, next) {
     res.json({
       success: true,
       data: meeting,
-      message: meetingScheduled ? "Meeting agendado correctamente" : "Meeting cancelado",
+      message: meetingScheduled ? 'Meeting agendado correctamente' : 'Meeting cancelado',
     });
   } catch (error) {
-    logger.error("Error en updateMeeting:", error);
+    logger.error('Error en updateMeeting:', error);
     next(error);
   }
 }
@@ -81,7 +81,7 @@ async function getScheduledMeetings(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver sus meetings",
+        error: 'Solo partners pueden ver sus meetings',
       });
     }
 
@@ -90,7 +90,7 @@ async function getScheduledMeetings(req, res, next) {
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren startDate y endDate",
+        error: 'Se requieren startDate y endDate',
       });
     }
 
@@ -101,7 +101,7 @@ async function getScheduledMeetings(req, res, next) {
       data: meetings,
     });
   } catch (error) {
-    logger.error("Error en getScheduledMeetings:", error);
+    logger.error('Error en getScheduledMeetings:', error);
     next(error);
   }
 }
@@ -117,16 +117,13 @@ async function getMyMeetings(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver sus meetings",
+        error: 'Solo partners pueden ver sus meetings',
       });
     }
 
     const { onlyScheduled } = req.query;
 
-    const meetings = await meetingService.getMeetingsByPartner(
-      partnerId,
-      onlyScheduled === "true"
-    );
+    const meetings = await meetingService.getMeetingsByPartner(partnerId, onlyScheduled === 'true');
 
     res.json({
       success: true,
@@ -134,7 +131,7 @@ async function getMyMeetings(req, res, next) {
       count: meetings.length,
     });
   } catch (error) {
-    logger.error("Error en getMyMeetings:", error);
+    logger.error('Error en getMyMeetings:', error);
     next(error);
   }
 }
@@ -150,7 +147,7 @@ async function getMeetingStats(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver sus estadísticas",
+        error: 'Solo partners pueden ver sus estadísticas',
       });
     }
 
@@ -161,7 +158,7 @@ async function getMeetingStats(req, res, next) {
       data: stats,
     });
   } catch (error) {
-    logger.error("Error en getMeetingStats:", error);
+    logger.error('Error en getMeetingStats:', error);
     next(error);
   }
 }
@@ -178,7 +175,7 @@ async function deleteMeeting(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden eliminar meetings",
+        error: 'Solo partners pueden eliminar meetings',
       });
     }
 
@@ -187,16 +184,16 @@ async function deleteMeeting(req, res, next) {
     if (!deleted) {
       return res.status(404).json({
         success: false,
-        error: "Meeting no encontrado",
+        error: 'Meeting no encontrado',
       });
     }
 
     res.json({
       success: true,
-      message: "Meeting eliminado correctamente",
+      message: 'Meeting eliminado correctamente',
     });
   } catch (error) {
-    logger.error("Error en deleteMeeting:", error);
+    logger.error('Error en deleteMeeting:', error);
     next(error);
   }
 }
@@ -214,7 +211,7 @@ async function createMeetingWithCalendly(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden crear meetings",
+        error: 'Solo partners pueden crear meetings',
       });
     }
 
@@ -224,27 +221,27 @@ async function createMeetingWithCalendly(req, res, next) {
     if (!startTime || !endTime) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren startTime y endTime en formato ISO 8601",
+        error: 'Se requieren startTime y endTime en formato ISO 8601',
       });
     }
 
-    const result = await meetingService.createMeetingWithCalendly(
-      establishmentId,
-      partnerId,
-      { startTime, endTime, notes }
-    );
+    const result = await meetingService.createMeetingWithCalendly(establishmentId, partnerId, {
+      startTime,
+      endTime,
+      notes,
+    });
 
     res.json({
       success: true,
       data: result.meeting,
       calendly: result.calendlyData,
-      message: "Meeting creado exitosamente y enviada invitación al cliente",
+      message: 'Meeting creado exitosamente y enviada invitación al cliente',
     });
   } catch (error) {
-    logger.error("Error en createMeetingWithCalendly:", error);
-    
+    logger.error('Error en createMeetingWithCalendly:', error);
+
     // Devolver error más específico si es por falta de email
-    if (error.message.includes("email")) {
+    if (error.message.includes('email')) {
       return res.status(400).json({
         success: false,
         error: error.message,

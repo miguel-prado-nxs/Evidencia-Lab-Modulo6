@@ -1,5 +1,5 @@
-const settingsService = require("../services/settingsService");
-const logger = require("../config/logger");
+const settingsService = require('../services/settingsService');
+const logger = require('../config/logger');
 
 // ========================================
 // Configuraciones del Programa
@@ -105,7 +105,7 @@ const getEmailTemplate = async (req, res, next) => {
     if (!template) {
       return res.status(404).json({
         success: false,
-        error: "Plantilla no encontrada",
+        error: 'Plantilla no encontrada',
       });
     }
 
@@ -128,7 +128,7 @@ const createEmailTemplate = async (req, res, next) => {
     if (!name || !subject || !htmlBody || !textBody) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren los campos: name, subject, htmlBody, textBody",
+        error: 'Se requieren los campos: name, subject, htmlBody, textBody',
       });
     }
 
@@ -145,13 +145,13 @@ const createEmailTemplate = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: template,
-      message: "Plantilla creada correctamente",
+      message: 'Plantilla creada correctamente',
     });
   } catch (error) {
-    if (error.code === "P2002") {
+    if (error.code === 'P2002') {
       return res.status(400).json({
         success: false,
-        error: "Ya existe una plantilla con ese nombre",
+        error: 'Ya existe una plantilla con ese nombre',
       });
     }
     next(error);
@@ -180,13 +180,13 @@ const updateEmailTemplate = async (req, res, next) => {
     res.json({
       success: true,
       data: template,
-      message: "Plantilla actualizada correctamente",
+      message: 'Plantilla actualizada correctamente',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Plantilla no encontrada",
+        error: 'Plantilla no encontrada',
       });
     }
     next(error);
@@ -206,13 +206,13 @@ const deleteEmailTemplate = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Plantilla eliminada correctamente",
+      message: 'Plantilla eliminada correctamente',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Plantilla no encontrada",
+        error: 'Plantilla no encontrada',
       });
     }
     next(error);
@@ -264,7 +264,7 @@ const createApiKey = async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: apiKey,
-      message: "API key creada correctamente. Guarda la key, no se mostrará de nuevo.",
+      message: 'API key creada correctamente. Guarda la key, no se mostrará de nuevo.',
     });
   } catch (error) {
     next(error);
@@ -284,13 +284,13 @@ const revokeApiKey = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "API key revocada correctamente",
+      message: 'API key revocada correctamente',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "API key no encontrada",
+        error: 'API key no encontrada',
       });
     }
     next(error);
@@ -310,13 +310,13 @@ const deleteApiKey = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "API key eliminada correctamente",
+      message: 'API key eliminada correctamente',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "API key no encontrada",
+        error: 'API key no encontrada',
       });
     }
     next(error);
@@ -337,16 +337,16 @@ const deleteApiKey = async (req, res, next) => {
  */
 const getPublicProgramInfo = async (req, res, next) => {
   try {
-    const programInfo = await settingsService.getConfig("program_info");
+    const programInfo = await settingsService.getConfig('program_info');
 
     // Valores por defecto si no hay configuración
     const defaultInfo = {
-      name: "EasyOrder Partners",
-      logoUrl: "/EasyOrder.png",
-      supportEmail: "partners@easyorder.mx",
-      referralBaseUrl: "https://easyorder.mx/?ref=",
-      termsUrl: "https://easyorder.mx/terminos",
-      privacyUrl: "https://easyorder.mx/privacidad",
+      name: 'EasyOrder Partners',
+      logoUrl: '/EasyOrder.png',
+      supportEmail: 'partners@easyorder.mx',
+      referralBaseUrl: 'https://easyorder.mx/?ref=',
+      termsUrl: 'https://easyorder.mx/terminos',
+      privacyUrl: 'https://easyorder.mx/privacidad',
     };
 
     res.json({
@@ -377,4 +377,3 @@ module.exports = {
   // Públicos
   getPublicProgramInfo,
 };
-

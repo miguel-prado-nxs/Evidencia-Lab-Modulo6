@@ -8,10 +8,10 @@
  * Ruta de acceso: /admin/queues
  */
 
-const { createBullBoard } = require("@bull-board/api");
-const { BullAdapter } = require("@bull-board/api/bullAdapter");
-const { ExpressAdapter } = require("@bull-board/express");
-const logger = require("../config/logger");
+const { createBullBoard } = require('@bull-board/api');
+const { BullAdapter } = require('@bull-board/api/bullAdapter');
+const { ExpressAdapter } = require('@bull-board/express');
+const logger = require('../config/logger');
 
 /**
  * Monta el dashboard de Bull Board como middleware en la app Express.
@@ -20,18 +20,16 @@ const logger = require("../config/logger");
  */
 function setupBullBoard(app) {
   const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath("/admin/queues");
+  serverAdapter.setBasePath('/admin/queues');
 
   createBullBoard({
     queues: [],
     serverAdapter,
   });
 
-  app.use("/admin/queues", serverAdapter.getRouter());
+  app.use('/admin/queues', serverAdapter.getRouter());
 
-  logger.info(
-    "[Bull Board] Dashboard de colas disponible en /admin/queues"
-  );
+  logger.info('[Bull Board] Dashboard de colas disponible en /admin/queues');
 }
 
 module.exports = { setupBullBoard };

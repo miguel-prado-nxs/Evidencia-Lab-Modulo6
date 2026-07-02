@@ -1,32 +1,60 @@
-"use strict";
+'use strict';
 
-const { parse } = require("csv-parse/sync");
-const { randomUUID } = require("crypto");
+const { parse } = require('csv-parse/sync');
+const { randomUUID } = require('crypto');
 
 const MAX_ROWS = 500;
 
 // Sinónimos aceptados para cada campo (primer match por columna gana)
 const COLUMN_ALIASES = {
-  phone: ["phone_number", "phoneNumber", "phone", "telefono", "teléfono", "tel", "mobile", "celular", "numero", "número"],
-  name: ["business_name", "businessName", "name", "nombre", "negocio", "empresa", "establecimiento", "restaurante"],
-  email: ["email", "correo", "mail", "e-mail"],
-  decisionMaker: ["decision_maker", "contacto", "responsable", "encargado", "dueno", "dueño", "owner"],
-  address: ["address", "direccion", "dirección", "domicilio", "city"],
-  notes: ["notes", "notas", "observaciones", "comentarios"],
+  phone: [
+    'phone_number',
+    'phoneNumber',
+    'phone',
+    'telefono',
+    'teléfono',
+    'tel',
+    'mobile',
+    'celular',
+    'numero',
+    'número',
+  ],
+  name: [
+    'business_name',
+    'businessName',
+    'name',
+    'nombre',
+    'negocio',
+    'empresa',
+    'establecimiento',
+    'restaurante',
+  ],
+  email: ['email', 'correo', 'mail', 'e-mail'],
+  decisionMaker: [
+    'decision_maker',
+    'contacto',
+    'responsable',
+    'encargado',
+    'dueno',
+    'dueño',
+    'owner',
+  ],
+  address: ['address', 'direccion', 'dirección', 'domicilio', 'city'],
+  notes: ['notes', 'notas', 'observaciones', 'comentarios'],
 };
 
 // Normaliza teléfono a E.164 con default México (+52)
 const normalizePhoneNumber = (value) => {
-  if (!value || typeof value !== "string") return null;
+  if (!value || typeof value !== 'string') return null;
 
   const trimmed = value.trim();
-  const hasPlus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D/g, "");
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
 
   if (!digits) return null;
   if (hasPlus) return `+${digits}`;
   if (digits.length === 10) return `+52${digits}`;
-  if (digits.length === 12 && digits.startsWith("52")) return `+${digits}`;
+  if (digits.length === 12 && digits.startsWith('52')) return `+${digits}`;
   if (digits.length >= 11 && digits.length <= 15) return `+${digits}`;
 
   return null;
@@ -39,9 +67,9 @@ const normalizeHeader = (header) =>
   header
     .trim()
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // quita acentos
-    .replace(/[^a-z0-9_]/g, "_");
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // quita acentos
+    .replace(/[^a-z0-9_]/g, '_');
 
 // Construye un mapa { fieldKey -> columnIndex } a partir de los headers del CSV
 const buildColumnMap = (headers) => {
@@ -74,7 +102,7 @@ const buildColumnMap = (headers) => {
  *   rejectedCount: number
  * }}
  */
-const parseCSV = (buffer, originalName = "archivo.csv") => {
+const parseCSV = (buffer, originalName = 'archivo.csv') => {
   let records;
 
   try {
@@ -85,7 +113,9 @@ const parseCSV = (buffer, originalName = "archivo.csv") => {
       bom: true, // strip UTF-8 BOM generado por Excel al guardar CSV
     });
   } catch (err) {
-    throw new Error(`El archivo "${originalName}" no es un CSV válido: ${err.message}`);
+    throw new Error(`El archivo "${originalName}" no es un CSV válido: ${err.message}`, {
+      cause: err,
+    });
   }
 
   if (!records || records.length === 0) {
@@ -108,9 +138,9 @@ const parseCSV = (buffer, originalName = "archivo.csv") => {
 
   const columnMap = buildColumnMap(headers);
 
-  if (!("phone" in columnMap)) {
+  if (!('phone' in columnMap)) {
     throw new Error(
-      `No se encontró columna de teléfono. Usa uno de estos nombres en el encabezado: ${COLUMN_ALIASES.phone.join(", ")}.`
+      `No se encontró columna de teléfono. Usa uno de estos nombres en el encabezado: ${COLUMN_ALIASES.phone.join(', ')}.`
     );
   }
 
@@ -128,13 +158,13 @@ const parseCSV = (buffer, originalName = "archivo.csv") => {
       return val !== undefined ? String(val).trim() : undefined;
     };
 
-    const rawPhone = get("phone");
+    const rawPhone = get('phone');
     const phone = normalizePhoneNumber(rawPhone);
 
     if (!phone) {
       rejectedRows.push({
         rowIndex,
-        reason: `Teléfono inválido o vacío: "${rawPhone || ""}"`,
+        reason: `Teléfono inválido o vacío: "${rawPhone || ''}"`,
         raw: row,
       });
       continue;
@@ -149,10 +179,10 @@ const parseCSV = (buffer, originalName = "archivo.csv") => {
       continue;
     }
 
-    const rawName = get("name");
-    const name = rawName && rawName.length > 0 ? rawName : "Contacto sin nombre";
+    const rawName = get('name');
+    const name = rawName && rawName.length > 0 ? rawName : 'Contacto sin nombre';
 
-    const rawEmail = get("email");
+    const rawEmail = get('email');
     let email;
     if (rawEmail && rawEmail.length > 0) {
       if (!SIMPLE_EMAIL_RE.test(rawEmail)) {
@@ -172,9 +202,9 @@ const parseCSV = (buffer, originalName = "archivo.csv") => {
       phone,
       name,
       ...(email && { email }),
-      ...(get("decisionMaker") && { decisionMaker: get("decisionMaker") }),
-      ...(get("address") && { address: get("address") }),
-      ...(get("notes") && { notes: get("notes") }),
+      ...(get('decisionMaker') && { decisionMaker: get('decisionMaker') }),
+      ...(get('address') && { address: get('address') }),
+      ...(get('notes') && { notes: get('notes') }),
     });
   }
 

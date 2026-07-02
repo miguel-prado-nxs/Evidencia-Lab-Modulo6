@@ -1,13 +1,16 @@
-const axios = require("axios");
-const prisma = require("../config/database");
-const logger = require("../config/logger");
+const axios = require('axios');
+const prisma = require('../config/database');
+const logger = require('../config/logger');
 
 const ELEVENLABS_BATCH_SUBMIT_URL =
-  process.env.ELEVENLABS_BATCH_SUBMIT_URL || "https://api.elevenlabs.io/v1/convai/batch-calling/submit";
+  process.env.ELEVENLABS_BATCH_SUBMIT_URL ||
+  'https://api.elevenlabs.io/v1/convai/batch-calling/submit';
 const ELEVENLABS_BATCH_CANCEL_URL = (batchId) =>
   `https://api.elevenlabs.io/v1/convai/batch-calling/${batchId}/cancel`;
-const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
-const ELEVENLABS_AGENT_DETAILS_URL = (agentId) => `https://api.elevenlabs.io/v1/convai/agents/${agentId}`;
+const ELEVENLABS_AGENTS_URL =
+  process.env.ELEVENLABS_AGENTS_URL || 'https://api.elevenlabs.io/v1/convai/agents';
+const ELEVENLABS_AGENT_DETAILS_URL = (agentId) =>
+  `https://api.elevenlabs.io/v1/convai/agents/${agentId}`;
 
 const extractVoiceIdFromAgent = (agent = {}) => {
   return (
@@ -27,28 +30,28 @@ const fetchAgentProfile = async (agentId) => {
 
   try {
     const detailsUrl = ELEVENLABS_AGENT_DETAILS_URL(agentId);
-    logger.info("[fetchAgentProfile] Fetching agent details", { agentId, url: detailsUrl });
+    logger.info('[fetchAgentProfile] Fetching agent details', { agentId, url: detailsUrl });
 
     const response = await axios.get(detailsUrl, {
       headers: {
-        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
       },
       timeout: 10000,
     });
 
-    logger.info("[fetchAgentProfile] Agent details received", {
+    logger.info('[fetchAgentProfile] Agent details received', {
       agentId,
       status: response.status,
       responseKeys: Object.keys(response.data),
     });
 
-    logger.info("[fetchAgentProfile] FULL RESPONSE", {
+    logger.info('[fetchAgentProfile] FULL RESPONSE', {
       agentId,
       fullResponse: JSON.stringify(response.data, null, 2),
     });
 
     const voiceId = extractVoiceIdFromAgent(response.data);
-    logger.info("[fetchAgentProfile] Voice extracted", {
+    logger.info('[fetchAgentProfile] Voice extracted', {
       agentId,
       voiceId,
       agentName: response.data.name,
@@ -56,7 +59,7 @@ const fetchAgentProfile = async (agentId) => {
 
     return { voiceId };
   } catch (error) {
-    logger.warn("Failed to fetch ElevenLabs agent profile for voice", {
+    logger.warn('Failed to fetch ElevenLabs agent profile for voice', {
       agentId,
       error: error.message,
     });
@@ -64,13 +67,13 @@ const fetchAgentProfile = async (agentId) => {
   }
 };
 
-const DEFAULT_TIMEOUT_MS = parseInt(process.env.ELEVENLABS_BATCH_TIMEOUT_MS || "15000", 10);
+const DEFAULT_TIMEOUT_MS = parseInt(process.env.ELEVENLABS_BATCH_TIMEOUT_MS || '15000', 10);
 const DEFAULT_MAX_RECIPIENTS = parseInt(
-  process.env.ELEVENLABS_BATCH_MAX_RECIPIENTS_PER_REQUEST || "100",
+  process.env.ELEVENLABS_BATCH_MAX_RECIPIENTS_PER_REQUEST || '100',
   10
 );
 const DEFAULT_TARGET_CONCURRENCY = parseInt(
-  process.env.ELEVENLABS_BATCH_TARGET_CONCURRENCY || "10",
+  process.env.ELEVENLABS_BATCH_TARGET_CONCURRENCY || '10',
   10
 );
 
@@ -96,13 +99,13 @@ const chunkArray = (array, size) => {
 };
 
 const normalizePhoneNumber = (value) => {
-  if (!value || typeof value !== "string") {
+  if (!value || typeof value !== 'string') {
     return null;
   }
 
   const trimmed = value.trim();
-  const hasPlus = trimmed.startsWith("+");
-  const digits = trimmed.replace(/\D/g, "");
+  const hasPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
 
   if (!digits) {
     return null;
@@ -116,7 +119,7 @@ const normalizePhoneNumber = (value) => {
     return `+52${digits}`;
   }
 
-  if (digits.length === 12 && digits.startsWith("52")) {
+  if (digits.length === 12 && digits.startsWith('52')) {
     return `+${digits}`;
   }
 
@@ -144,11 +147,11 @@ const toReadableErrorDetail = (value) => {
     return null;
   }
 
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return value;
   }
 
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }
 
@@ -161,7 +164,7 @@ const toReadableErrorDetail = (value) => {
 
 const pickFirstNonEmptyString = (...values) => {
   for (const value of values) {
-    if (typeof value === "string") {
+    if (typeof value === 'string') {
       const trimmed = value.trim();
       if (trimmed) {
         return trimmed;
@@ -174,25 +177,27 @@ const pickFirstNonEmptyString = (...values) => {
 
 const removeDuplicateAliases = (dynamicVariables = {}) => {
   const cleaned = { ...dynamicVariables };
-  const keepBothAliases = new Set(["establishmentId"]);
+  const keepBothAliases = new Set(['establishmentId']);
 
   const aliasPairs = [
-    ["establishmentName", "establishment_name"],
-    ["decisionMakerName", "decision_maker_name"],
-    ["agentName", "agent_name"],
-    ["companyName", "company_name"],
-    ["contactName", "contact_name"],
-    ["leadName", "lead_name"],
-    ["personalityName", "personality_name"],
-    ["sessionId", "session_id"],
-    ["establishmentId", "establishment_id"],
-    ["voiceName", "voice_name"],
-    ["voiceId", "voice_id"],
+    ['establishmentName', 'establishment_name'],
+    ['decisionMakerName', 'decision_maker_name'],
+    ['agentName', 'agent_name'],
+    ['companyName', 'company_name'],
+    ['contactName', 'contact_name'],
+    ['leadName', 'lead_name'],
+    ['personalityName', 'personality_name'],
+    ['sessionId', 'session_id'],
+    ['establishmentId', 'establishment_id'],
+    ['voiceName', 'voice_name'],
+    ['voiceId', 'voice_id'],
   ];
 
   for (const [camelKey, snakeKey] of aliasPairs) {
-    const hasCamel = cleaned[camelKey] !== undefined && cleaned[camelKey] !== null && cleaned[camelKey] !== "";
-    const hasSnake = cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== "";
+    const hasCamel =
+      cleaned[camelKey] !== undefined && cleaned[camelKey] !== null && cleaned[camelKey] !== '';
+    const hasSnake =
+      cleaned[snakeKey] !== undefined && cleaned[snakeKey] !== null && cleaned[snakeKey] !== '';
 
     if (keepBothAliases.has(camelKey)) {
       continue;
@@ -207,7 +212,12 @@ const removeDuplicateAliases = (dynamicVariables = {}) => {
 };
 
 const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => {
-  const { campaignContactId, campaignId, establishmentId: establishmentIdFromOptions, agentConfigName } = options;
+  const {
+    campaignContactId,
+    campaignId,
+    establishmentId: establishmentIdFromOptions,
+    agentConfigName,
+  } = options;
 
   const establishmentName =
     pickFirstNonEmptyString(
@@ -217,7 +227,7 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       dynamicVariables.business_name,
       dynamicVariables.companyName,
       dynamicVariables.company_name
-    ) || "Establecimiento";
+    ) || 'Establecimiento';
 
   const decisionMakerName =
     pickFirstNonEmptyString(
@@ -229,13 +239,11 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       dynamicVariables.contact_name,
       dynamicVariables.leadName,
       dynamicVariables.lead_name
-    ) || "Prospecto";
+    ) || 'Prospecto';
 
   const agentName =
-    pickFirstNonEmptyString(
-      dynamicVariables.agentName,
-      dynamicVariables.agent_name
-    ) || "Asesor EasyOrder";
+    pickFirstNonEmptyString(dynamicVariables.agentName, dynamicVariables.agent_name) ||
+    'Asesor EasyOrder';
 
   const personalityName =
     pickFirstNonEmptyString(
@@ -249,7 +257,7 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       dynamicVariables.agentName,
       agentName,
       agentConfigName
-    ) || "Asesor EasyOrder";
+    ) || 'Asesor EasyOrder';
 
   const sessionId =
     pickFirstNonEmptyString(
@@ -257,7 +265,7 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       dynamicVariables.sessionId,
       campaignContactId,
       dynamicVariables.campaignContactId
-    ) || `${campaignId || "campaign"}-session`;
+    ) || `${campaignId || 'campaign'}-session`;
 
   const establishmentId =
     pickFirstNonEmptyString(
@@ -266,7 +274,7 @@ const ensureRequiredDynamicVariables = (dynamicVariables = {}, options = {}) => 
       establishmentIdFromOptions,
       campaignContactId,
       dynamicVariables.campaignContactId
-    ) || `${campaignId || "campaign"}-establishment`;
+    ) || `${campaignId || 'campaign'}-establishment`;
 
   const normalized = {
     ...dynamicVariables,
@@ -304,19 +312,22 @@ const sanitizeRecipient = (recipient = {}, campaignId, agentConfigName) => {
     campaignId,
   };
 
-  const dynamicVariables = Object.entries(rawDynamicVariables).reduce((accumulator, [key, value]) => {
-    if (value === null || value === undefined) {
-      return accumulator;
-    }
+  const dynamicVariables = Object.entries(rawDynamicVariables).reduce(
+    (accumulator, [key, value]) => {
+      if (value === null || value === undefined) {
+        return accumulator;
+      }
 
-    if (["string", "number", "boolean"].includes(typeof value)) {
-      accumulator[key] = value;
-      return accumulator;
-    }
+      if (['string', 'number', 'boolean'].includes(typeof value)) {
+        accumulator[key] = value;
+        return accumulator;
+      }
 
-    accumulator[key] = String(value);
-    return accumulator;
-  }, {});
+      accumulator[key] = String(value);
+      return accumulator;
+    },
+    {}
+  );
 
   const campaignContactId =
     dynamicVariables.campaignContactId ||
@@ -332,7 +343,7 @@ const sanitizeRecipient = (recipient = {}, campaignId, agentConfigName) => {
     null;
 
   if (!establishmentId) {
-    logger.warn("[BatchDispatcher] Contacto sin establishment_id valido", {
+    logger.warn('[BatchDispatcher] Contacto sin establishment_id valido', {
       campaignContactId,
       recipientKeys: Object.keys(recipient),
       dynamicVarKeys: Object.keys(dynamicVariables),
@@ -369,8 +380,8 @@ const buildRecipientsPayload = (recipients = [], campaignId, agentConfigName) =>
       invalidRecipients.push({
         recipient,
         reason: !sanitized.phoneNumber
-          ? "Invalid or missing phone number"
-          : "Missing campaignContactId",
+          ? 'Invalid or missing phone number'
+          : 'Missing campaignContactId',
       });
       continue;
     }
@@ -386,14 +397,14 @@ const persistBatchDispatchResult = async ({
   providerBatchId,
   rawProviderResponse,
   recipients,
-  scheduledTimeUnix
+  scheduledTimeUnix,
 }) => {
   const campaignContactIds = recipients
     .map((recipient) => recipient.campaignContactId)
     .filter(Boolean);
 
   if (campaignContactIds.length === 0) {
-    logger.warn("No campaign contacts to persist batch dispatch result", {
+    logger.warn('No campaign contacts to persist batch dispatch result', {
       campaignId,
       providerBatchId,
     });
@@ -418,14 +429,14 @@ const persistBatchDispatchResult = async ({
   await prisma.$transaction(
     contacts.map((contact) => {
       const previousEstablishmentData =
-        contact.establishmentData && typeof contact.establishmentData === "object"
+        contact.establishmentData && typeof contact.establishmentData === 'object'
           ? contact.establishmentData
           : {};
 
       const establishmentData = {
         ...previousEstablishmentData,
         batchDispatch: {
-          provider: "elevenlabs",
+          provider: 'elevenlabs',
           providerBatchId,
           submittedAt,
           rawProviderResponse,
@@ -435,7 +446,7 @@ const persistBatchDispatchResult = async ({
       return prisma.campaignContact.update({
         where: { id: contact.id },
         data: {
-          status: isScheduled ? "SCHEDULED" : "CALLING",
+          status: isScheduled ? 'SCHEDULED' : 'CALLING',
           providerBatchId,
           sentAt: new Date(),
           establishmentData,
@@ -459,7 +470,7 @@ const submitChunkToProvider = async ({
   if (elevenlabsAgentId) {
     const agentProfile = await fetchAgentProfile(elevenlabsAgentId);
     realtimeVoiceId = agentProfile.voiceId;
-    logger.info("[BatchDispatcher] Voice fetched from ElevenLabs agent", {
+    logger.info('[BatchDispatcher] Voice fetched from ElevenLabs agent', {
       agentId: elevenlabsAgentId,
       voiceId: realtimeVoiceId,
       campaignId,
@@ -479,14 +490,14 @@ const submitChunkToProvider = async ({
         metadata: {
           campaignId,
           campaignContactId: recipient.campaignContactId,
-          ...recipient.dynamicVariables
+          ...recipient.dynamicVariables,
         },
         conversation_initiation_client_data: {
           dynamic_variables: recipient.dynamicVariables,
         },
       };
 
-      // Si hay un voice_id específico, incluirlo en múltiples lugares (Shotgun approach) 
+      // Si hay un voice_id específico, incluirlo en múltiples lugares (Shotgun approach)
       // para asegurar que ElevenLabs lo tome independientemente de la versión de la API
       if (voiceId) {
         // 1. Root level
@@ -496,15 +507,15 @@ const submitChunkToProvider = async ({
         recipientData.conversation_initiation_client_data.voice_id = voiceId;
         recipientData.conversation_initiation_client_data.conversation_config_override = {
           tts: {
-            voice_id: voiceId
-          }
+            voice_id: voiceId,
+          },
         };
 
         // 3. Outside conversation_initiation_client_data (Batch API root level style)
         recipientData.conversation_config_override = {
           tts: {
-            voice_id: voiceId
-          }
+            voice_id: voiceId,
+          },
         };
       }
 
@@ -521,7 +532,7 @@ const submitChunkToProvider = async ({
   }
 
   try {
-    logger.info("[BatchDispatcher] About to submit batch to ElevenLabs", {
+    logger.info('[BatchDispatcher] About to submit batch to ElevenLabs', {
       campaignId,
       agentId,
       recipientCount: chunk.length,
@@ -529,24 +540,26 @@ const submitChunkToProvider = async ({
       scheduledTimeUnix: scheduledTimeUnix || null,
       payloadScheduledTimeUnix: payload.scheduled_time_unix || null,
       agentPhoneNumberId,
-      firstRecipient: payload.recipients[0] ? {
-        phoneNumber: payload.recipients[0].phone_number,
-        dynamicVariables: payload.recipients[0].dynamic_variables,
-        voiceId: payload.recipients[0].voice_id,
-        configOverride: payload.recipients[0].conversation_config_override,
-        clientData: payload.recipients[0].conversation_initiation_client_data,
-      } : null,
+      firstRecipient: payload.recipients[0]
+        ? {
+            phoneNumber: payload.recipients[0].phone_number,
+            dynamicVariables: payload.recipients[0].dynamic_variables,
+            voiceId: payload.recipients[0].voice_id,
+            configOverride: payload.recipients[0].conversation_config_override,
+            clientData: payload.recipients[0].conversation_initiation_client_data,
+          }
+        : null,
     });
 
     const response = await axios.post(ELEVENLABS_BATCH_SUBMIT_URL, payload, {
       headers: {
-        "xi-api-key": process.env.ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
       },
       timeout: DEFAULT_TIMEOUT_MS,
     });
 
-    logger.info("[BatchDispatcher] Batch submitted successfully", {
+    logger.info('[BatchDispatcher] Batch submitted successfully', {
       campaignId,
       status: response.status,
       batchId: extractProviderBatchId(response.data),
@@ -555,7 +568,7 @@ const submitChunkToProvider = async ({
 
     const providerBatchId = extractProviderBatchId(response.data);
     if (!providerBatchId) {
-      throw new Error("Provider response does not contain batch id");
+      throw new Error('Provider response does not contain batch id');
     }
 
     await persistBatchDispatchResult({
@@ -574,7 +587,7 @@ const submitChunkToProvider = async ({
     };
   } catch (error) {
     const status = error.response?.status;
-    const isTimeout = error.code === "ECONNABORTED";
+    const isTimeout = error.code === 'ECONNABORTED';
 
     const errorPayload = {
       campaignId,
@@ -585,13 +598,13 @@ const submitChunkToProvider = async ({
     };
 
     if (status === 422) {
-      logger.error("Batch dispatch rejected by provider (422)", errorPayload);
+      logger.error('Batch dispatch rejected by provider (422)', errorPayload);
     } else if (status === 429) {
-      logger.error("Batch dispatch rate limited by provider (429)", errorPayload);
+      logger.error('Batch dispatch rate limited by provider (429)', errorPayload);
     } else if (isTimeout) {
-      logger.error("Batch dispatch timeout", errorPayload);
+      logger.error('Batch dispatch timeout', errorPayload);
     } else {
-      logger.error("Batch dispatch failed", errorPayload);
+      logger.error('Batch dispatch failed', errorPayload);
     }
 
     const providerDetail =
@@ -605,8 +618,8 @@ const submitChunkToProvider = async ({
 
     const dispatchError = new Error(
       providerDetailText
-        ? `Batch dispatch failed (${status || error.code || "UNKNOWN"}): ${providerDetailText}`
-        : `Batch dispatch failed (${status || error.code || "UNKNOWN"})`
+        ? `Batch dispatch failed (${status || error.code || 'UNKNOWN'}): ${providerDetailText}`
+        : `Batch dispatch failed (${status || error.code || 'UNKNOWN'})`
     );
     dispatchError.statusCode = status || 500;
     dispatchError.details = error.response?.data || { message: error.message };
@@ -627,28 +640,35 @@ const submitCampaignBatch = async ({
   agentConfigName,
 }) => {
   if (!campaignId) {
-    throw new Error("campaignId is required");
+    throw new Error('campaignId is required');
   }
 
   if (!agentId) {
-    throw new Error("agentId is required");
+    throw new Error('agentId is required');
   }
 
   if (!process.env.ELEVENLABS_API_KEY) {
-    throw new Error("ELEVENLABS_API_KEY is required");
+    throw new Error('ELEVENLABS_API_KEY is required');
   }
 
   if (!Array.isArray(recipients) || recipients.length === 0) {
-    throw new Error("recipients must be a non-empty array");
+    throw new Error('recipients must be a non-empty array');
   }
 
-  const { validRecipients, invalidRecipients } = buildRecipientsPayload(recipients, campaignId, agentConfigName);
+  const { validRecipients, invalidRecipients } = buildRecipientsPayload(
+    recipients,
+    campaignId,
+    agentConfigName
+  );
 
   if (validRecipients.length === 0) {
-    throw new Error("No valid recipients found for batch dispatch");
+    throw new Error('No valid recipients found for batch dispatch');
   }
 
-  const safeMaxRecipientsPerRequest = ensurePositiveInt(maxRecipientsPerRequest, DEFAULT_MAX_RECIPIENTS);
+  const safeMaxRecipientsPerRequest = ensurePositiveInt(
+    maxRecipientsPerRequest,
+    DEFAULT_MAX_RECIPIENTS
+  );
   const safeTargetConcurrencyLimit = ensurePositiveInt(
     targetConcurrencyLimit,
     DEFAULT_TARGET_CONCURRENCY
@@ -657,7 +677,7 @@ const submitCampaignBatch = async ({
   const chunks = chunkArray(validRecipients, safeMaxRecipientsPerRequest);
   const chunkResults = [];
 
-  logger.info("Submitting campaign batch", {
+  logger.info('Submitting campaign batch', {
     campaignId,
     totalRecipients: recipients.length,
     validRecipients: validRecipients.length,
@@ -667,7 +687,7 @@ const submitCampaignBatch = async ({
   });
 
   for (const [index, chunk] of chunks.entries()) {
-    logger.info("Submitting campaign batch chunk", {
+    logger.info('Submitting campaign batch chunk', {
       campaignId,
       chunkIndex: index + 1,
       chunkSize: chunk.length,
@@ -675,13 +695,16 @@ const submitCampaignBatch = async ({
     });
 
     // Check if campaign was paused or cancelled mid-batch
-    const currentCampaign = await prisma.campaign.findUnique({ 
+    const currentCampaign = await prisma.campaign.findUnique({
       where: { id: campaignId },
-      select: { status: true }
+      select: { status: true },
     });
 
-    if (currentCampaign && (currentCampaign.status === "PAUSED" || currentCampaign.status === "CANCELLED")) {
-      logger.info("[BatchDispatcher] Campaign was paused or cancelled. Stopping chunk dispatch.", {
+    if (
+      currentCampaign &&
+      (currentCampaign.status === 'PAUSED' || currentCampaign.status === 'CANCELLED')
+    ) {
+      logger.info('[BatchDispatcher] Campaign was paused or cancelled. Stopping chunk dispatch.', {
         campaignId,
         status: currentCampaign.status,
         chunksSent: index,
@@ -718,50 +741,46 @@ const submitCampaignBatch = async ({
 
 const getCampaignBatchDispatchStats = async (campaignId) => {
   if (!campaignId) {
-    throw new Error("campaignId is required");
+    throw new Error('campaignId is required');
   }
 
-  const [
-    totalContacts,
-    dispatchedContacts,
-    pendingContacts,
-    batchGroups,
-    statusBreakdown,
-  ] = await Promise.all([
-    prisma.campaignContact.count({ where: { campaignId } }),
-    prisma.campaignContact.count({
-      where: {
-        campaignId,
-        providerBatchId: { not: null },
-      },
-    }),
-    prisma.campaignContact.count({
-      where: {
-        campaignId,
-        providerBatchId: null,
-      },
-    }),
-    prisma.campaignContact.groupBy({
-      by: ["providerBatchId"],
-      where: {
-        campaignId,
-        providerBatchId: { not: null },
-      },
-      _count: { _all: true },
-    }),
-    prisma.campaignContact.groupBy({
-      by: ["status"],
-      where: { campaignId },
-      _count: { _all: true },
-    }),
-  ]);
+  const [totalContacts, dispatchedContacts, pendingContacts, batchGroups, statusBreakdown] =
+    await Promise.all([
+      prisma.campaignContact.count({ where: { campaignId } }),
+      prisma.campaignContact.count({
+        where: {
+          campaignId,
+          providerBatchId: { not: null },
+        },
+      }),
+      prisma.campaignContact.count({
+        where: {
+          campaignId,
+          providerBatchId: null,
+        },
+      }),
+      prisma.campaignContact.groupBy({
+        by: ['providerBatchId'],
+        where: {
+          campaignId,
+          providerBatchId: { not: null },
+        },
+        _count: { _all: true },
+      }),
+      prisma.campaignContact.groupBy({
+        by: ['status'],
+        where: { campaignId },
+        _count: { _all: true },
+      }),
+    ]);
 
   return {
     campaignId,
     totalContacts,
     dispatchedContacts,
     pendingContacts,
-    dispatchRate: totalContacts > 0 ? ((dispatchedContacts / totalContacts) * 100).toFixed(2) : "0.00",
+    dispatchRate:
+      totalContacts > 0 ? ((dispatchedContacts / totalContacts) * 100).toFixed(2) : '0.00',
     totalBatches: batchGroups.length,
     batches: batchGroups.map((group) => ({
       providerBatchId: group.providerBatchId,
@@ -780,26 +799,30 @@ const getCampaignBatchDispatchStats = async (campaignId) => {
  */
 const cancelProviderBatch = async (providerBatchId) => {
   if (!providerBatchId) {
-    throw new Error("providerBatchId is required to cancel a batch");
+    throw new Error('providerBatchId is required to cancel a batch');
   }
 
   if (!process.env.ELEVENLABS_API_KEY) {
-    throw new Error("ELEVENLABS_API_KEY is required");
+    throw new Error('ELEVENLABS_API_KEY is required');
   }
 
   const url = ELEVENLABS_BATCH_CANCEL_URL(providerBatchId);
-  logger.info("[BatchDispatcher] Cancelling provider batch", { providerBatchId });
+  logger.info('[BatchDispatcher] Cancelling provider batch', { providerBatchId });
 
   try {
-    const response = await axios.post(url, {}, {
-      headers: {
-        "xi-api-key": process.env.ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
-      },
-      timeout: DEFAULT_TIMEOUT_MS,
-    });
+    const response = await axios.post(
+      url,
+      {},
+      {
+        headers: {
+          'xi-api-key': process.env.ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        timeout: DEFAULT_TIMEOUT_MS,
+      }
+    );
 
-    logger.info("[BatchDispatcher] Provider batch cancelled successfully", {
+    logger.info('[BatchDispatcher] Provider batch cancelled successfully', {
       providerBatchId,
       status: response.status,
     });
@@ -810,11 +833,13 @@ const cancelProviderBatch = async (providerBatchId) => {
 
     // 404 = batch not found or already cancelled — treat as success
     if (status === 404) {
-      logger.warn("[BatchDispatcher] Batch not found in provider (may already be cancelled)", { providerBatchId });
+      logger.warn('[BatchDispatcher] Batch not found in provider (may already be cancelled)', {
+        providerBatchId,
+      });
       return { success: true, providerBatchId, alreadyCancelled: true };
     }
 
-    logger.error("[BatchDispatcher] Failed to cancel provider batch", {
+    logger.error('[BatchDispatcher] Failed to cancel provider batch', {
       providerBatchId,
       status,
       error: error.message,

@@ -3,54 +3,54 @@
  * Maneja la creación, envío y gestión de notificaciones
  */
 
-const prisma = require("../config/database");
-const { emitToUser, emitToAdmins, isUserConnected } = require("../config/socket");
-const emailService = require("./emailService");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const { emitToUser, emitToAdmins, isUserConnected } = require('../config/socket');
+const emailService = require('./emailService');
+const logger = require('../config/logger');
 
 // Configuración de notificaciones por tipo
 const NOTIFICATION_CONFIG = {
   LEAD_NEW: {
-    title: "Nuevo Lead",
+    title: 'Nuevo Lead',
     sendEmail: true,
-    emailTemplate: "new_lead",
+    emailTemplate: 'new_lead',
   },
   LEAD_STATUS_CHANGED: {
-    title: "Lead Actualizado",
+    title: 'Lead Actualizado',
     sendEmail: false,
   },
   DEAL_CLOSED: {
-    title: "¡Venta Cerrada!",
+    title: '¡Venta Cerrada!',
     sendEmail: true,
-    emailTemplate: "deal_closed",
+    emailTemplate: 'deal_closed',
   },
   COMMISSION_APPROVED: {
-    title: "Comisión Aprobada",
+    title: 'Comisión Aprobada',
     sendEmail: true,
-    emailTemplate: "commission_approved",
+    emailTemplate: 'commission_approved',
   },
   COMMISSION_PAID: {
-    title: "Comisión Pagada",
+    title: 'Comisión Pagada',
     sendEmail: true,
-    emailTemplate: "commission_paid",
+    emailTemplate: 'commission_paid',
   },
   PARTNER_REGISTERED: {
-    title: "¡Bienvenido a EasyOrder Partners!",
+    title: '¡Bienvenido a EasyOrder Partners!',
     sendEmail: true,
-    emailTemplate: "welcome",
+    emailTemplate: 'welcome',
   },
   PARTNER_APPROVED: {
-    title: "¡Bienvenido al Programa!",
+    title: '¡Bienvenido al Programa!',
     sendEmail: true,
-    emailTemplate: "partner_approved",
+    emailTemplate: 'partner_approved',
   },
   PARTNER_TIER_UPGRADE: {
-    title: "¡Subiste de Nivel!",
+    title: '¡Subiste de Nivel!',
     sendEmail: true,
-    emailTemplate: "tier_upgrade",
+    emailTemplate: 'tier_upgrade',
   },
   SYSTEM: {
-    title: "Notificación del Sistema",
+    title: 'Notificación del Sistema',
     sendEmail: false,
   },
 };
@@ -87,7 +87,7 @@ async function createNotification({
     });
 
     // Emitir via WebSocket si el usuario está conectado
-    emitToUser(userId, "notification:new", {
+    emitToUser(userId, 'notification:new', {
       id: notification.id,
       type: notification.type,
       title: notification.title,
@@ -107,13 +107,13 @@ async function createNotification({
           message,
           ...data,
         })
-        .catch((err) => logger.error("Error sending notification email:", err));
+        .catch((err) => logger.error('Error sending notification email:', err));
     }
 
     logger.info(`Notification created: ${type} for user ${userId}`);
     return notification;
   } catch (error) {
-    logger.error("Error creating notification:", error);
+    logger.error('Error creating notification:', error);
     throw error;
   }
 }
@@ -124,7 +124,7 @@ async function createNotification({
 async function notifyAdmins({ type, message, data = null, customTitle = null }) {
   try {
     const admins = await prisma.user.findMany({
-      where: { role: "ADMIN" },
+      where: { role: 'ADMIN' },
       select: { id: true },
     });
 
@@ -143,7 +143,7 @@ async function notifyAdmins({ type, message, data = null, customTitle = null }) 
 
     // Emitir a todos los admins conectados
     const config = NOTIFICATION_CONFIG[type] || NOTIFICATION_CONFIG.SYSTEM;
-    emitToAdmins("notification:new", {
+    emitToAdmins('notification:new', {
       type,
       title: customTitle || config.title,
       message,
@@ -153,7 +153,7 @@ async function notifyAdmins({ type, message, data = null, customTitle = null }) 
 
     return notifications;
   } catch (error) {
-    logger.error("Error notifying admins:", error);
+    logger.error('Error notifying admins:', error);
     throw error;
   }
 }
@@ -170,7 +170,7 @@ async function getUserNotifications(userId, { page = 1, limit = 20, unreadOnly =
   const [notifications, total] = await Promise.all([
     prisma.notification.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
     }),
@@ -258,7 +258,7 @@ async function notifyNewLead(partnerId, lead) {
   if (partner) {
     await createNotification({
       userId: partner.userId,
-      type: "LEAD_NEW",
+      type: 'LEAD_NEW',
       message: `Nuevo lead: ${lead.businessName}`,
       data: {
         leadId: lead.id,
@@ -281,7 +281,7 @@ async function notifyLeadStatusChange(partnerId, lead, oldStatus, newStatus) {
   if (partner) {
     await createNotification({
       userId: partner.userId,
-      type: "LEAD_STATUS_CHANGED",
+      type: 'LEAD_STATUS_CHANGED',
       message: `El lead "${lead.businessName}" cambió de ${oldStatus} a ${newStatus}`,
       data: {
         leadId: lead.id,
@@ -305,7 +305,7 @@ async function notifyDealClosed(partnerId, deal) {
   if (partner) {
     await createNotification({
       userId: partner.userId,
-      type: "DEAL_CLOSED",
+      type: 'DEAL_CLOSED',
       message: `¡Felicidades! Cerraste la venta de ${deal.businessName}`,
       data: {
         dealId: deal.id,
@@ -317,7 +317,7 @@ async function notifyDealClosed(partnerId, deal) {
 
     // También notificar a admins
     await notifyAdmins({
-      type: "DEAL_CLOSED",
+      type: 'DEAL_CLOSED',
       message: `Nuevo deal cerrado: ${deal.businessName}`,
       data: {
         dealId: deal.id,
@@ -341,7 +341,7 @@ async function notifyCommissionApproved(partnerId, commission) {
   if (partner) {
     await createNotification({
       userId: partner.userId,
-      type: "COMMISSION_APPROVED",
+      type: 'COMMISSION_APPROVED',
       message: `Tu comisión de $${commission.amount} ha sido aprobada`,
       data: {
         commissionId: commission.id,
@@ -364,7 +364,7 @@ async function notifyCommissionPaid(partnerId, commission) {
   if (partner) {
     await createNotification({
       userId: partner.userId,
-      type: "COMMISSION_PAID",
+      type: 'COMMISSION_PAID',
       message: `Se ha depositado tu comisión de $${commission.amount}`,
       data: {
         commissionId: commission.id,
@@ -406,7 +406,7 @@ async function notifyPartnerRegistered(userId, partner) {
 async function notifyPartnerApproved(userId, partner) {
   await createNotification({
     userId,
-    type: "PARTNER_APPROVED",
+    type: 'PARTNER_APPROVED',
     message: `¡Tu solicitud ha sido aprobada! Ya puedes comenzar a generar leads.`,
     data: {
       partnerId: partner.id,
@@ -422,7 +422,7 @@ async function notifyPartnerApproved(userId, partner) {
 async function notifyTierUpgrade(userId, partner, oldTier, newTier) {
   await createNotification({
     userId,
-    type: "PARTNER_TIER_UPGRADE",
+    type: 'PARTNER_TIER_UPGRADE',
     message: `¡Felicidades! Has subido de ${oldTier} a ${newTier}`,
     data: {
       partnerId: partner.id,
@@ -452,4 +452,3 @@ module.exports = {
   notifyPartnerApproved,
   notifyTierUpgrade,
 };
-

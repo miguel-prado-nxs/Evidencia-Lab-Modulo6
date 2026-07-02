@@ -1,5 +1,5 @@
-const couponWhatsappService = require("../services/couponWhatsappService");
-const logger = require("../config/logger");
+const couponWhatsappService = require('../services/couponWhatsappService');
+const logger = require('../config/logger');
 
 /**
  * Envía un cupón existente via WhatsApp
@@ -12,20 +12,20 @@ const sendCoupon = async (req, res, next) => {
     if (!phone) {
       return res.status(400).json({
         success: false,
-        error: "Phone number is required"
+        error: 'Phone number is required',
       });
     }
 
     const result = await couponWhatsappService.sendCouponViaWhatsapp({
       couponId,
       phone,
-      from
+      from,
     });
 
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        error: result.error
+        error: result.error,
       });
     }
 
@@ -34,8 +34,8 @@ const sendCoupon = async (req, res, next) => {
       data: {
         couponId,
         phone,
-        messageId: result.messageId
-      }
+        messageId: result.messageId,
+      },
     });
   } catch (error) {
     next(error);
@@ -53,14 +53,14 @@ const sendCouponsToCampaignContact = async (req, res, next) => {
     if (!Array.isArray(couponIds) || couponIds.length === 0) {
       return res.status(400).json({
         success: false,
-        error: "couponIds must be a non-empty array"
+        error: 'couponIds must be a non-empty array',
       });
     }
 
     const result = await couponWhatsappService.sendCouponsToCampaignContact({
       campaignContactId,
       couponIds,
-      from
+      from,
     });
 
     res.json({
@@ -69,9 +69,9 @@ const sendCouponsToCampaignContact = async (req, res, next) => {
         campaignContactId,
         sent: result.sent,
         failed: result.failed,
-        results: result.results
+        results: result.results,
       },
-      error: result.error
+      error: result.error,
     });
   } catch (error) {
     next(error);
@@ -93,13 +93,13 @@ const generateAndSendCoupon = async (req, res, next) => {
       campaignId,
       campaignContactId,
       couponType,
-      from
+      from,
     } = req.body;
 
     if (!phone || !prospectName || !businessName || !agentId || !callId || !couponType) {
       return res.status(400).json({
         success: false,
-        error: "phone, prospectName, businessName, agentId, callId, and couponType are required"
+        error: 'phone, prospectName, businessName, agentId, callId, and couponType are required',
       });
     }
 
@@ -113,13 +113,13 @@ const generateAndSendCoupon = async (req, res, next) => {
       campaignId,
       campaignContactId,
       couponType,
-      from
+      from,
     });
 
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        error: result.error
+        error: result.error,
       });
     }
 
@@ -127,8 +127,8 @@ const generateAndSendCoupon = async (req, res, next) => {
       success: true,
       data: {
         coupon: result.coupon,
-        messageId: result.messageId
-      }
+        messageId: result.messageId,
+      },
     });
   } catch (error) {
     next(error);
@@ -146,7 +146,7 @@ const resendCoupon = async (req, res, next) => {
     if (!phone) {
       return res.status(400).json({
         success: false,
-        error: "Phone number is required"
+        error: 'Phone number is required',
       });
     }
 
@@ -155,7 +155,7 @@ const resendCoupon = async (req, res, next) => {
     if (!result.success) {
       return res.status(400).json({
         success: false,
-        error: result.error
+        error: result.error,
       });
     }
 
@@ -164,8 +164,8 @@ const resendCoupon = async (req, res, next) => {
       data: {
         couponId,
         phone,
-        messageId: result.messageId
-      }
+        messageId: result.messageId,
+      },
     });
   } catch (error) {
     next(error);
@@ -176,5 +176,5 @@ module.exports = {
   sendCoupon,
   sendCouponsToCampaignContact,
   generateAndSendCoupon,
-  resendCoupon
+  resendCoupon,
 };

@@ -11,28 +11,28 @@ const listVoices = async (req, res) => {
   try {
     const voices = await prisma.elevenLabsPersonality.findMany({
       where: {
-        isActive: true
+        isActive: true,
       },
       select: {
         id: true,
         name: true,
         voiceId: true,
-        agentId: true
+        agentId: true,
       },
       orderBy: {
-        name: 'asc'
-      }
+        name: 'asc',
+      },
     });
 
     res.json({
       success: true,
-      data: voices
+      data: voices,
     });
   } catch (error) {
     logger.error('Error listing voices:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener las voces'
+      error: 'Error al obtener las voces',
     });
   }
 };
@@ -52,31 +52,31 @@ const getVoiceById = async (req, res) => {
         name: true,
         voiceId: true,
         agentId: true,
-        isActive: true
-      }
+        isActive: true,
+      },
     });
 
     if (!voice) {
       return res.status(404).json({
         success: false,
-        error: 'Voz no encontrada'
+        error: 'Voz no encontrada',
       });
     }
 
     res.json({
       success: true,
-      data: voice
+      data: voice,
     });
   } catch (error) {
     logger.error('Error getting voice:', error);
     res.status(500).json({
       success: false,
-      error: 'Error al obtener la voz'
+      error: 'Error al obtener la voz',
     });
   }
 };
 
 module.exports = {
   listVoices,
-  getVoiceById
+  getVoiceById,
 };

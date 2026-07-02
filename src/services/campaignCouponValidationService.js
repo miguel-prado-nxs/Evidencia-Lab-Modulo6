@@ -1,5 +1,5 @@
-const prisma = require("../config/database");
-const logger = require("../config/logger");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
 
 /**
  * Carga y valida los templates de cupones seleccionados para una campaña
@@ -14,65 +14,69 @@ const loadAndValidateCouponTemplates = async (couponTemplateIds = []) => {
         isValid: true,
         warnings: [],
         errors: [],
-        summary: "No templates selected"
-      }
+        summary: 'No templates selected',
+      },
     };
   }
 
   const templates = await prisma.couponTemplate.findMany({
     where: {
       id: { in: couponTemplateIds },
-      active: true
-    }
+      active: true,
+    },
   });
 
   const validation = {
     isValid: true,
     warnings: [],
     errors: [],
-    summary: ""
+    summary: '',
   };
 
   // Validar que todos los templates existan
   if (templates.length !== couponTemplateIds.length) {
-    const foundIds = new Set(templates.map(t => t.id));
-    const missingIds = couponTemplateIds.filter(id => !foundIds.has(id));
-    validation.errors.push(`Templates no encontrados: ${missingIds.join(", ")}`);
+    const foundIds = new Set(templates.map((t) => t.id));
+    const missingIds = couponTemplateIds.filter((id) => !foundIds.has(id));
+    validation.errors.push(`Templates no encontrados: ${missingIds.join(', ')}`);
     validation.isValid = false;
   }
 
   // Validar que no haya templates duplicados
-  const uniqueTypes = new Set(templates.map(t => t.couponType));
+  const uniqueTypes = new Set(templates.map((t) => t.couponType));
   if (uniqueTypes.size !== templates.length) {
-    validation.warnings.push("Hay templates con el mismo couponType");
+    validation.warnings.push('Hay templates con el mismo couponType');
   }
 
   // Validar configuración de cada template
   templates.forEach((template, index) => {
     if (!template.messageTemplate) {
-      validation.errors.push(`Template ${index + 1} (${template.couponType}): messageTemplate vacío`);
+      validation.errors.push(
+        `Template ${index + 1} (${template.couponType}): messageTemplate vacío`
+      );
       validation.isValid = false;
     }
     if (!template.percentOff && !template.trialDays) {
       validation.warnings.push(`Template ${template.couponType}: Sin descuento ni días de trial`);
     }
     if (template.expiresHours < 1) {
-      validation.warnings.push(`Template ${template.couponType}: Expira muy rápido (${template.expiresHours}h)`);
+      validation.warnings.push(
+        `Template ${template.couponType}: Expira muy rápido (${template.expiresHours}h)`
+      );
     }
   });
 
   validation.summary = `${templates.length} template(s) cargado(s). ${validation.errors.length} error(es), ${validation.warnings.length} advertencia(s)`;
 
-  logger.info("Coupon templates validated", {
+  logger.info('Coupon templates validated', {
     templateCount: templates.length,
     isValid: validation.isValid,
     errors: validation.errors.length,
-    warnings: validation.warnings.length
+    warnings: validation.warnings.length,
   });
 
   return {
     templates,
-    validation
+    validation,
   };
 };
 
@@ -88,14 +92,14 @@ const getCampaignSendPreview = async (campaignId) => {
       _count: {
         select: {
           contacts: true,
-          coupons: true
-        }
-      }
-    }
+          coupons: true,
+        },
+      },
+    },
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
   // Cargar templates
@@ -111,34 +115,38 @@ const getCampaignSendPreview = async (campaignId) => {
       id: true,
       establishmentName: true,
       establishmentPhone: true,
-      establishmentData: true
-    }
+      establishmentData: true,
+    },
   });
 
   // Generar vista previa de mensajes
-  const messagePreview = sampleContacts.map(contact => {
+  const messagePreview = sampleContacts.map((contact) => {
     const contactData = contact.establishmentData || {};
-    const prospectName = contactData.decisionMakerName || contactData.contactName || contact.establishmentName || "Prospecto";
-    const businessName = contact.establishmentName || "Establecimiento";
+    const prospectName =
+      contactData.decisionMakerName ||
+      contactData.contactName ||
+      contact.establishmentName ||
+      'Prospecto';
+    const businessName = contact.establishmentName || 'Establecimiento';
 
-    const messages = templates.map(template => {
+    const messages = templates.map((template) => {
       const message = template.messageTemplate
         .replace(/{{nombre}}/g, prospectName)
         .replace(/{{negocio}}/g, businessName)
-        .replace(/{{codigo}}/g, "EASY-XXXX-XXXX");
+        .replace(/{{codigo}}/g, 'EASY-XXXX-XXXX');
 
       return {
         templateId: template.id,
         couponType: template.couponType,
         templateName: template.name,
-        preview: message.substring(0, 100) + (message.length > 100 ? "..." : ""),
+        preview: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
         fullMessage: message,
         offer: template.description || template.name,
         percentOff: template.percentOff,
         durationMonths: template.durationMonths,
         trialDays: template.trialDays,
         expiresHours: template.expiresHours,
-        mediaUrl: template.mediaUrl
+        mediaUrl: template.mediaUrl,
       };
     });
 
@@ -147,7 +155,7 @@ const getCampaignSendPreview = async (campaignId) => {
       phone: contact.establishmentPhone,
       businessName,
       prospectName,
-      messages
+      messages,
     };
   });
 
@@ -157,11 +165,11 @@ const getCampaignSendPreview = async (campaignId) => {
       name: campaign.name,
       status: campaign.status,
       totalContacts: campaign._count.contacts,
-      totalCoupons: campaign._count.coupons
+      totalCoupons: campaign._count.coupons,
     },
     templates: {
       selected: templates.length,
-      list: templates.map(t => ({
+      list: templates.map((t) => ({
         id: t.id,
         couponType: t.couponType,
         name: t.name,
@@ -170,21 +178,21 @@ const getCampaignSendPreview = async (campaignId) => {
         durationMonths: t.durationMonths,
         trialDays: t.trialDays,
         expiresHours: t.expiresHours,
-        priority: t.priority
+        priority: t.priority,
       })),
-      validation
+      validation,
     },
     messagePreview: {
       sampleSize: sampleContacts.length,
-      samples: messagePreview
+      samples: messagePreview,
     },
     summary: {
       totalContactsToReceive: campaign._count.contacts,
       totalTemplates: templates.length,
       totalMessagesPerContact: templates.length,
       estimatedTotalMessages: campaign._count.contacts * templates.length,
-      isReadyToSend: validation.isValid && templates.length > 0 && campaign._count.contacts > 0
-    }
+      isReadyToSend: validation.isValid && templates.length > 0 && campaign._count.contacts > 0,
+    },
   };
 };
 
@@ -201,15 +209,15 @@ const validateCampaignBeforeStart = async (campaignId) => {
       couponTemplateIds: true,
       couponPrefix: true,
       _count: {
-        select: { contacts: true }
-      }
-    }
+        select: { contacts: true },
+      },
+    },
   });
 
   if (!campaign) {
     return {
       isValid: false,
-      errors: ["Campaign not found"]
+      errors: ['Campaign not found'],
     };
   }
 
@@ -217,15 +225,16 @@ const validateCampaignBeforeStart = async (campaignId) => {
 
   // Validar que tenga contactos
   if (campaign._count.contacts === 0) {
-    errors.push("Campaign has no contacts assigned");
+    errors.push('Campaign has no contacts assigned');
   }
 
   // Validar que tenga templates o couponPrefix
-  const hasTemplates = Array.isArray(campaign.couponTemplateIds) && campaign.couponTemplateIds.length > 0;
+  const hasTemplates =
+    Array.isArray(campaign.couponTemplateIds) && campaign.couponTemplateIds.length > 0;
   const hasPrefix = !!campaign.couponPrefix;
 
   if (!hasTemplates && !hasPrefix) {
-    errors.push("Campaign must have coupon templates or coupon prefix selected");
+    errors.push('Campaign must have coupon templates or coupon prefix selected');
   }
 
   // Si tiene templates, validarlos
@@ -238,12 +247,12 @@ const validateCampaignBeforeStart = async (campaignId) => {
 
   return {
     isValid: errors.length === 0,
-    errors
+    errors,
   };
 };
 
 module.exports = {
   loadAndValidateCouponTemplates,
   getCampaignSendPreview,
-  validateCampaignBeforeStart
+  validateCampaignBeforeStart,
 };

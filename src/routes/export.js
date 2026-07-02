@@ -3,31 +3,30 @@
  * Rutas para la exportación de datos
  */
 
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const exportController = require("../controllers/exportController");
-const { authenticateJWT, requireAdmin } = require("../middleware/auth");
+const exportController = require('../controllers/exportController');
+const { authenticateJWT, requireAdmin } = require('../middleware/auth');
 
 // Todas las rutas requieren autenticación
 router.use(authenticateJWT);
 
 // Exportar leads (partner ve los suyos, admin ve todos)
-router.get("/leads", exportController.exportLeads);
+router.get('/leads', exportController.exportLeads);
 
 // Exportar deals
-router.get("/deals", exportController.exportDeals);
+router.get('/deals', exportController.exportDeals);
 
 // Exportar comisiones
-router.get("/commissions", exportController.exportCommissions);
+router.get('/commissions', exportController.exportCommissions);
 
 // Exportar partners (admin only)
-router.get("/partners", requireAdmin, exportController.exportPartners);
+router.get('/partners', requireAdmin, exportController.exportPartners);
 
 // Generar reporte de partner
-router.get("/report/:partnerId", exportController.generatePartnerReport);
+router.get('/report/:partnerId', exportController.generatePartnerReport);
 
 // Exportar para ElevenLabs Batch (NUEVO)
-router.get("/elevenlabs", exportController.exportLeadsForElevenLabs);
+router.get('/elevenlabs', exportController.exportLeadsForElevenLabs);
 
 module.exports = router;
-

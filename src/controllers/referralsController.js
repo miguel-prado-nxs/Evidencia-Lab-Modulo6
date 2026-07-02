@@ -1,5 +1,5 @@
-const referralService = require("../services/referralService");
-const logger = require("../config/logger");
+const referralService = require('../services/referralService');
+const logger = require('../config/logger');
 
 /**
  * Obtener información de referido del partner (código y link base)
@@ -12,7 +12,7 @@ const getInfo = async (req, res, next) => {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes acceso a esta funcionalidad",
+        error: 'No tienes acceso a esta funcionalidad',
       });
     }
 
@@ -23,7 +23,7 @@ const getInfo = async (req, res, next) => {
       data: info,
     });
   } catch (error) {
-    logger.error("Error getting referral info:", error);
+    logger.error('Error getting referral info:', error);
     next(error);
   }
 };
@@ -39,7 +39,7 @@ const getStats = async (req, res, next) => {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes acceso a esta funcionalidad",
+        error: 'No tienes acceso a esta funcionalidad',
       });
     }
 
@@ -50,7 +50,7 @@ const getStats = async (req, res, next) => {
       data: stats,
     });
   } catch (error) {
-    logger.error("Error getting referral stats:", error);
+    logger.error('Error getting referral stats:', error);
     next(error);
   }
 };
@@ -66,7 +66,7 @@ const listCampaigns = async (req, res, next) => {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes acceso a esta funcionalidad",
+        error: 'No tienes acceso a esta funcionalidad',
       });
     }
 
@@ -77,7 +77,7 @@ const listCampaigns = async (req, res, next) => {
       data: campaigns,
     });
   } catch (error) {
-    logger.error("Error listing campaigns:", error);
+    logger.error('Error listing campaigns:', error);
     next(error);
   }
 };
@@ -93,7 +93,7 @@ const createCampaign = async (req, res, next) => {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes acceso a esta funcionalidad",
+        error: 'No tienes acceso a esta funcionalidad',
       });
     }
 
@@ -103,7 +103,7 @@ const createCampaign = async (req, res, next) => {
     if (!name || !utmSource || !utmMedium || !utmCampaign) {
       return res.status(400).json({
         success: false,
-        error: "Nombre, utm_source, utm_medium y utm_campaign son requeridos",
+        error: 'Nombre, utm_source, utm_medium y utm_campaign son requeridos',
       });
     }
 
@@ -121,16 +121,16 @@ const createCampaign = async (req, res, next) => {
       data: campaign,
     });
   } catch (error) {
-    logger.error("Error creating campaign:", error);
-    
+    logger.error('Error creating campaign:', error);
+
     // Error de constraint único (campaña duplicada)
-    if (error.code === "P2002") {
+    if (error.code === 'P2002') {
       return res.status(400).json({
         success: false,
-        error: "Ya existe una campaña con ese nombre de campaña (utm_campaign)",
+        error: 'Ya existe una campaña con ese nombre de campaña (utm_campaign)',
       });
     }
-    
+
     next(error);
   }
 };
@@ -147,7 +147,7 @@ const getCampaign = async (req, res, next) => {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes acceso a esta funcionalidad",
+        error: 'No tienes acceso a esta funcionalidad',
       });
     }
 
@@ -156,7 +156,7 @@ const getCampaign = async (req, res, next) => {
     if (!campaign) {
       return res.status(404).json({
         success: false,
-        error: "Campaña no encontrada",
+        error: 'Campaña no encontrada',
       });
     }
 
@@ -165,7 +165,7 @@ const getCampaign = async (req, res, next) => {
       data: campaign,
     });
   } catch (error) {
-    logger.error("Error getting campaign:", error);
+    logger.error('Error getting campaign:', error);
     next(error);
   }
 };
@@ -182,7 +182,7 @@ const deleteCampaign = async (req, res, next) => {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes acceso a esta funcionalidad",
+        error: 'No tienes acceso a esta funcionalidad',
       });
     }
 
@@ -190,18 +190,18 @@ const deleteCampaign = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Campaña eliminada correctamente",
+      message: 'Campaña eliminada correctamente',
     });
   } catch (error) {
-    logger.error("Error deleting campaign:", error);
-    
-    if (error.message === "Campaña no encontrada") {
+    logger.error('Error deleting campaign:', error);
+
+    if (error.message === 'Campaña no encontrada') {
       return res.status(404).json({
         success: false,
         error: error.message,
       });
     }
-    
+
     next(error);
   }
 };
@@ -214,4 +214,3 @@ module.exports = {
   getCampaign,
   deleteCampaign,
 };
-

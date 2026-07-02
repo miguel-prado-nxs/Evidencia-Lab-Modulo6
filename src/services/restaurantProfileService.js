@@ -1,14 +1,10 @@
-const axios = require("axios");
-const FormData = require("form-data");
-const prisma = require("../config/database");
-const logger = require("../config/logger");
+const axios = require('axios');
+const FormData = require('form-data');
+const prisma = require('../config/database');
+const logger = require('../config/logger');
 
-const POS_API_BASE_URL =
-  process.env.POS_API_BASE_URL ||
-  "";
-const POS_API_TOKEN =
-  process.env.POS_API_TOKEN ||
-  "";
+const POS_API_BASE_URL = process.env.POS_API_BASE_URL || '';
+const POS_API_TOKEN = process.env.POS_API_TOKEN || '';
 
 const hasPosIntegration = Boolean(POS_API_BASE_URL && POS_API_TOKEN);
 
@@ -37,7 +33,7 @@ async function upsertDireccion(addressPayload, existingDireccionId) {
     ? `${POS_API_BASE_URL}/api/direccion/v1/${existingDireccionId}`
     : `${POS_API_BASE_URL}/api/direccion/v1`;
 
-  const method = existingDireccionId ? "put" : "post";
+  const method = existingDireccionId ? 'put' : 'post';
 
   try {
     const { data } = await axios({
@@ -50,18 +46,22 @@ async function upsertDireccion(addressPayload, existingDireccionId) {
     const direccion = data?.direccion || data;
     return { direccionId: direccion?.id ?? existingDireccionId ?? null };
   } catch (error) {
-    logger.error(`[upsertDireccion] Error ${method.toUpperCase()} ${url}:`, error.response?.data || error.message);
+    logger.error(
+      `[upsertDireccion] Error ${method.toUpperCase()} ${url}:`,
+      error.response?.data || error.message
+    );
     throw error;
   }
 }
 
 async function upsertRestaurante(payload, existingRestaurantId) {
-  if (!hasPosIntegration) return { restauranteId: existingRestaurantId || null, logoUrl: null, skipped: true };
+  if (!hasPosIntegration)
+    return { restauranteId: existingRestaurantId || null, logoUrl: null, skipped: true };
 
   const url = existingRestaurantId
     ? `${POS_API_BASE_URL}/api/restaurantes/v1/${existingRestaurantId}`
     : `${POS_API_BASE_URL}/api/restaurantes/v1`;
-  const method = existingRestaurantId ? "put" : "post";
+  const method = existingRestaurantId ? 'put' : 'post';
 
   try {
     const { data } = await axios({
@@ -77,7 +77,10 @@ async function upsertRestaurante(payload, existingRestaurantId) {
       logoUrl: restaurante?.logo_url ?? null,
     };
   } catch (error) {
-    logger.error(`[upsertRestaurante] Error ${method.toUpperCase()} ${url}:`, error.response?.data || error.message);
+    logger.error(
+      `[upsertRestaurante] Error ${method.toUpperCase()} ${url}:`,
+      error.response?.data || error.message
+    );
     throw error;
   }
 }
@@ -85,9 +88,9 @@ async function upsertRestaurante(payload, existingRestaurantId) {
 async function uploadLogo(restauranteId, file) {
   if (!hasPosIntegration || !file) return null;
   const form = new FormData();
-  form.append("file", file.buffer, {
-    filename: file.originalname || "logo.jpg",
-    contentType: file.mimetype || "image/jpeg",
+  form.append('file', file.buffer, {
+    filename: file.originalname || 'logo.jpg',
+    contentType: file.mimetype || 'image/jpeg',
   });
 
   const { data } = await axios.post(
@@ -107,9 +110,7 @@ async function uploadLogo(restauranteId, file) {
 function computeStep1Completed(input, logoUrlFromPos, existingProfile) {
   // Paso 1 se considera completo con: nombre, algún contacto y logo
   const hasName = Boolean(input.businessName);
-  const hasContact = Boolean(
-    input.contactPhone || input.contactEmail || input.contactWhatsapp
-  );
+  const hasContact = Boolean(input.contactPhone || input.contactEmail || input.contactWhatsapp);
   const hasLogo = Boolean(logoUrlFromPos || existingProfile?.logoUrl);
   return hasName && hasContact && hasLogo;
 }
@@ -151,24 +152,26 @@ async function upsertProfile(input) {
       }
     }
   } catch (error) {
-    logger.error("[RestaurantProfile] Error sync POS:", error?.response?.data || error?.message || error);
+    logger.error(
+      '[RestaurantProfile] Error sync POS:',
+      error?.response?.data || error?.message || error
+    );
     posSyncError = error?.response?.data || { message: error?.message || String(error) };
   }
 
   const step1Completed = computeStep1Completed(input, logoUrlFromPos, existing);
   const step2Completed =
-    (input?.step2Completed === true || input?.step2Completed === 'true')
+    input?.step2Completed === true || input?.step2Completed === 'true'
       ? true
-      : (existing?.step2Completed || false);
+      : existing?.step2Completed || false;
   const step3Completed =
-    (input?.step3Completed === true || input?.step3Completed === 'true')
+    input?.step3Completed === true || input?.step3Completed === 'true'
       ? true
-      : (existing?.step3Completed || false);
+      : existing?.step3Completed || false;
 
-  const provisionStatus = restaurantId ? "provisioned" : "pending";
-  const provisionedAt = restaurantId && !existing?.restaurantId 
-    ? new Date() 
-    : existing?.provisionedAt || null;
+  const provisionStatus = restaurantId ? 'provisioned' : 'pending';
+  const provisionedAt =
+    restaurantId && !existing?.restaurantId ? new Date() : existing?.provisionedAt || null;
 
   const dataToSave = {
     establishmentId: input.establishmentId,

@@ -1,5 +1,5 @@
-const commissionService = require("../services/commissionService");
-const logger = require("../config/logger");
+const commissionService = require('../services/commissionService');
+const logger = require('../config/logger');
 
 // Listar comisiones
 const list = async (req, res, next) => {
@@ -7,9 +7,7 @@ const list = async (req, res, next) => {
     const { partnerId, status, type, dateFrom, dateTo, page, limit, sortBy, sortOrder } = req.query;
 
     // Si no es admin, filtrar solo por su partnerId
-    const filterPartnerId = req.user.role === "ADMIN" 
-      ? partnerId 
-      : req.user.partner?.id;
+    const filterPartnerId = req.user.role === 'ADMIN' ? partnerId : req.user.partner?.id;
 
     const result = await commissionService.listCommissions({
       partnerId: filterPartnerId,
@@ -19,8 +17,8 @@ const list = async (req, res, next) => {
       dateTo,
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 20,
-      sortBy: sortBy || "createdAt",
-      sortOrder: sortOrder || "desc",
+      sortBy: sortBy || 'createdAt',
+      sortOrder: sortOrder || 'desc',
     });
 
     res.json({
@@ -54,7 +52,7 @@ const approve = async (req, res, next) => {
     if (!commissionIds || !Array.isArray(commissionIds) || commissionIds.length === 0) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere un array de IDs de comisiones",
+        error: 'Se requiere un array de IDs de comisiones',
       });
     }
 
@@ -79,13 +77,13 @@ const markPaid = async (req, res, next) => {
     if (!commissionIds || !Array.isArray(commissionIds) || commissionIds.length === 0) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere un array de IDs de comisiones",
+        error: 'Se requiere un array de IDs de comisiones',
       });
     }
 
     const result = await commissionService.markCommissionsAsPaid(commissionIds, paymentRef);
 
-    logger.info(`${result.count} comisiones marcadas como pagadas. Ref: ${paymentRef || "N/A"}`);
+    logger.info(`${result.count} comisiones marcadas como pagadas. Ref: ${paymentRef || 'N/A'}`);
 
     res.json({
       success: true,
@@ -99,14 +97,12 @@ const markPaid = async (req, res, next) => {
 // Obtener resumen de comisiones del partner
 const getSummary = async (req, res, next) => {
   try {
-    const partnerId = req.user.role === "ADMIN" 
-      ? req.query.partnerId 
-      : req.user.partner?.id;
+    const partnerId = req.user.role === 'ADMIN' ? req.query.partnerId : req.user.partner?.id;
 
     if (!partnerId) {
       return res.status(400).json({
         success: false,
-        error: "Partner ID requerido",
+        error: 'Partner ID requerido',
       });
     }
 
@@ -149,19 +145,19 @@ const exportCommissions = async (req, res, next) => {
 
     // Generar CSV
     const headers = [
-      "ID",
-      "Partner Code",
-      "Partner Name",
-      "Partner Email",
-      "Business Name",
-      "Plan Type",
-      "Type",
-      "Amount",
-      "Currency",
-      "Status",
-      "Created At",
-      "Paid At",
-      "Payment Ref",
+      'ID',
+      'Partner Code',
+      'Partner Name',
+      'Partner Email',
+      'Business Name',
+      'Plan Type',
+      'Type',
+      'Amount',
+      'Currency',
+      'Status',
+      'Created At',
+      'Paid At',
+      'Payment Ref',
     ];
 
     const rows = commissions.map((c) => [
@@ -176,14 +172,14 @@ const exportCommissions = async (req, res, next) => {
       c.currency,
       c.status,
       c.createdAt.toISOString(),
-      c.paidAt ? c.paidAt.toISOString() : "",
-      c.paymentRef || "",
+      c.paidAt ? c.paidAt.toISOString() : '',
+      c.paymentRef || '',
     ]);
 
-    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
 
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", `attachment; filename=commissions-${Date.now()}.csv`);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=commissions-${Date.now()}.csv`);
     res.send(csv);
   } catch (error) {
     next(error);
@@ -199,4 +195,3 @@ module.exports = {
   getGlobalStats,
   exportCommissions,
 };
-

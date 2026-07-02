@@ -1,44 +1,45 @@
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-const http = require("http");
-const config = require("./config/env");
-const logger = require("./config/logger");
-const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
-const { initSocket } = require("./config/socket");
-const twentySyncWorker = require("./workers/twentySyncWorker");
-const { setupBullBoard } = require("./queues/dashboard");
-const { getHealthClient } = require("./queues/config");
-const campaignBatchReconciliationWorker = require("./workers/campaignBatchReconciliationWorker");
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const http = require('http');
+const config = require('./config/env');
+const logger = require('./config/logger');
+const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { initSocket } = require('./config/socket');
+const twentySyncWorker = require('./workers/twentySyncWorker');
+const { setupBullBoard } = require('./queues/dashboard');
+const { getHealthClient } = require('./queues/config');
+const campaignBatchReconciliationWorker = require('./workers/campaignBatchReconciliationWorker');
 
 // Importar rutas
-const authRoutes = require("./routes/auth");
-const partnersRoutes = require("./routes/partners");
-const leadsRoutes = require("./routes/leads");
-const dealsRoutes = require("./routes/deals");
-const commissionsRoutes = require("./routes/commissions");
-const analyticsRoutes = require("./routes/analytics");
-const geoRoutes = require("./routes/geo");
-const notificationsRoutes = require("./routes/notifications");
-const exportRoutes = require("./routes/export");
-const resourcesRoutes = require("./routes/resources");
-const trainingRoutes = require("./routes/training");
-const referralsRoutes = require("./routes/referrals");
-const settingsRoutes = require("./routes/settings");
-const eventsRoutes = require("./routes/events");
-const easyorderRoutes = require("./routes/easyorder");
-const agentMetricsRoutes = require("./routes/agentMetrics");
-const testCallRoutes = require("./routes/testCall");
-const webhooksRoutes = require("./routes/webhooks");
-const voicesRoutes = require("./routes/voices");
-const campaignsRoutes = require("./routes/campaigns");
-const couponsRoutes = require("./routes/coupons");
-const couponTemplatesRoutes = require("./routes/couponTemplates");
-const couponWhatsappRoutes = require("./routes/couponWhatsapp");
-const campaignContextRoutes = require("./routes/campaignContext");
-const couponCallRoutes = require("./routes/couponCall");
-const mcpRoutes = require("./routes/mcpRoutes");
+const authRoutes = require('./routes/auth');
+const partnersRoutes = require('./routes/partners');
+const leadsRoutes = require('./routes/leads');
+const dealsRoutes = require('./routes/deals');
+const commissionsRoutes = require('./routes/commissions');
+const analyticsRoutes = require('./routes/analytics');
+const geoRoutes = require('./routes/geo');
+const notificationsRoutes = require('./routes/notifications');
+const exportRoutes = require('./routes/export');
+const resourcesRoutes = require('./routes/resources');
+const trainingRoutes = require('./routes/training');
+const referralsRoutes = require('./routes/referrals');
+const settingsRoutes = require('./routes/settings');
+const eventsRoutes = require('./routes/events');
+const easyorderRoutes = require('./routes/easyorder');
+const agentMetricsRoutes = require('./routes/agentMetrics');
+const testCallRoutes = require('./routes/testCall');
+const webhooksRoutes = require('./routes/webhooks');
+const voicesRoutes = require('./routes/voices');
+const campaignsRoutes = require('./routes/campaigns');
+const couponsRoutes = require('./routes/coupons');
+const couponTemplatesRoutes = require('./routes/couponTemplates');
+const couponWhatsappRoutes = require('./routes/couponWhatsapp');
+const campaignContextRoutes = require('./routes/campaignContext');
+const couponCallRoutes = require('./routes/couponCall');
+const mcpRoutes = require('./routes/mcpRoutes');
+const crmHooksRoutes = require('./routes/crmHooksRoutes');
 
 // Crear aplicación Express
 const app = express();
@@ -67,15 +68,15 @@ app.use(
 // Parse JSON
 app.use(
   express.json({
-    limit: "10mb",
+    limit: '10mb',
     verify: (req, res, buffer) => {
-      if (req.originalUrl && req.originalUrl.includes("/campaigns/elevenlabs-webhook")) {
-        req.rawBody = buffer.toString("utf8");
+      if (req.originalUrl && req.originalUrl.includes('/campaigns/elevenlabs-webhook')) {
+        req.rawBody = buffer.toString('utf8');
       }
     },
   })
 );
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -83,19 +84,19 @@ const limiter = rateLimit({
   max: config.rateLimit.maxRequests,
   message: {
     success: false,
-    error: "Demasiadas solicitudes, intenta de nuevo más tarde",
+    error: 'Demasiadas solicitudes, intenta de nuevo más tarde',
   },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-app.use("/api/", limiter);
+app.use('/api/', limiter);
 
 // Logging de requests
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path}`, {
     ip: req.ip,
-    userAgent: req.get("user-agent"),
+    userAgent: req.get('user-agent'),
   });
   next();
 });
@@ -110,21 +111,21 @@ setupBullBoard(app);
 // ===========================================
 
 // Health check
-app.get("/health", async (req, res) => {
-  let redisStatus = "disconnected";
+app.get('/health', async (req, res) => {
+  let redisStatus = 'disconnected';
   try {
     const redisClient = getHealthClient();
     const pong = await redisClient.ping();
-    if (pong === "PONG") {
-      redisStatus = "connected";
+    if (pong === 'PONG') {
+      redisStatus = 'connected';
     }
   } catch {
-    redisStatus = "disconnected";
+    redisStatus = 'disconnected';
   }
 
   res.json({
     success: true,
-    message: "EasyOrder Partners API está funcionando correctamente",
+    message: 'EasyOrder Partners API está funcionando correctamente',
     timestamp: new Date().toISOString(),
     environment: config.server.nodeEnv,
     redis: redisStatus,
@@ -132,26 +133,26 @@ app.get("/health", async (req, res) => {
 });
 
 // Info de la API
-app.get("/api/v1", (req, res) => {
+app.get('/api/v1', (req, res) => {
   res.json({
     success: true,
-    name: "EasyOrder Partners API",
-    version: "1.0.0",
-    description: "API para el sistema de partners de EasyOrder",
+    name: 'EasyOrder Partners API',
+    version: '1.0.0',
+    description: 'API para el sistema de partners de EasyOrder',
     endpoints: {
-      auth: "/api/v1/auth",
-      partners: "/api/v1/partners",
-      leads: "/api/v1/leads",
-      deals: "/api/v1/deals",
-      commissions: "/api/v1/commissions",
-      analytics: "/api/v1/analytics",
-      geo: "/api/v1/geo",
-      referrals: "/api/v1/referrals",
-      campaigns: "/api/v1/campaigns",
-      coupons: "/api/v1/coupons",
+      auth: '/api/v1/auth',
+      partners: '/api/v1/partners',
+      leads: '/api/v1/leads',
+      deals: '/api/v1/deals',
+      commissions: '/api/v1/commissions',
+      analytics: '/api/v1/analytics',
+      geo: '/api/v1/geo',
+      referrals: '/api/v1/referrals',
+      campaigns: '/api/v1/campaigns',
+      coupons: '/api/v1/coupons',
     },
-    authentication: "JWT Bearer token en header Authorization",
-    documentation: "Ver README.md",
+    authentication: 'JWT Bearer token en header Authorization',
+    documentation: 'Ver README.md',
   });
 });
 
@@ -159,32 +160,33 @@ app.get("/api/v1", (req, res) => {
 // RUTAS DE LA API
 // ===========================================
 
-app.use("/api/v1/auth", authRoutes);
-app.use("/api/v1/partners", partnersRoutes);
-app.use("/api/v1/leads", leadsRoutes);
-app.use("/api/v1/deals", dealsRoutes);
-app.use("/api/v1/commissions", commissionsRoutes);
-app.use("/api/v1/analytics", analyticsRoutes);
-app.use("/api/v1/geo", geoRoutes);
-app.use("/api/v1/notifications", notificationsRoutes);
-app.use("/api/v1/export", exportRoutes);
-app.use("/api/v1/resources", resourcesRoutes);
-app.use("/api/v1/training", trainingRoutes);
-app.use("/api/v1/referrals", referralsRoutes);
-app.use("/api/v1/settings", settingsRoutes);
-app.use("/api/v1/events", eventsRoutes);
-app.use("/api/v1/easyorder", easyorderRoutes);
-app.use("/api/v1/agent-metrics", agentMetricsRoutes);
-app.use("/api/v1/test-call", testCallRoutes);
-app.use("/api/v1/webhooks", webhooksRoutes);
-app.use("/api/v1/voices", voicesRoutes);
-app.use("/api/v1/campaigns", campaignsRoutes);
-app.use("/api/v1/webhooks/coupons", couponCallRoutes);
-app.use("/api/v1/coupons", couponsRoutes);
-app.use("/api/v1/coupon-templates", couponTemplatesRoutes);
-app.use("/api/v1/coupons-whatsapp", couponWhatsappRoutes);
-app.use("/api/v1/campaign-context", campaignContextRoutes);
-app.use("/mcp", mcpRoutes);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/partners', partnersRoutes);
+app.use('/api/v1/leads', leadsRoutes);
+app.use('/api/v1/deals', dealsRoutes);
+app.use('/api/v1/commissions', commissionsRoutes);
+app.use('/api/v1/analytics', analyticsRoutes);
+app.use('/api/v1/geo', geoRoutes);
+app.use('/api/v1/notifications', notificationsRoutes);
+app.use('/api/v1/export', exportRoutes);
+app.use('/api/v1/resources', resourcesRoutes);
+app.use('/api/v1/training', trainingRoutes);
+app.use('/api/v1/referrals', referralsRoutes);
+app.use('/api/v1/settings', settingsRoutes);
+app.use('/api/v1/events', eventsRoutes);
+app.use('/api/v1/easyorder', easyorderRoutes);
+app.use('/api/v1/agent-metrics', agentMetricsRoutes);
+app.use('/api/v1/test-call', testCallRoutes);
+app.use('/api/v1/webhooks', webhooksRoutes);
+app.use('/api/v1/voices', voicesRoutes);
+app.use('/api/v1/campaigns', campaignsRoutes);
+app.use('/api/v1/webhooks/coupons', couponCallRoutes);
+app.use('/api/v1/coupons', couponsRoutes);
+app.use('/api/v1/coupon-templates', couponTemplatesRoutes);
+app.use('/api/v1/coupons-whatsapp', couponWhatsappRoutes);
+app.use('/api/v1/campaign-context', campaignContextRoutes);
+app.use('/mcp', mcpRoutes);
+app.use('/api/v1/crm-hooks', crmHooksRoutes);
 
 // ===========================================
 // MANEJO DE ERRORES
@@ -219,32 +221,29 @@ const stopWorkers = () => {
   try {
     twentySyncWorker.stop();
   } catch (error) {
-    logger.error("Error stopping twentySyncWorker", { error: error.message });
+    logger.error('Error stopping twentySyncWorker', { error: error.message });
   }
 
   try {
     campaignBatchReconciliationWorker.stop();
   } catch (error) {
-    logger.error("Error stopping campaignBatchReconciliationWorker", {
+    logger.error('Error stopping campaignBatchReconciliationWorker', {
       error: error.message,
     });
   }
 };
 
 // Manejo de errores no capturados
-process.on("unhandledRejection", (err) => {
-  logger.error("Unhandled Rejection:", err);
+process.on('unhandledRejection', (err) => {
+  logger.error('Unhandled Rejection:', err);
   stopWorkers();
   process.exit(1);
 });
 
-process.on("uncaughtException", (err) => {
-  logger.error("Uncaught Exception:", err);
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception:', err);
   stopWorkers();
   process.exit(1);
 });
 
 module.exports = { app, server };
-
-
-

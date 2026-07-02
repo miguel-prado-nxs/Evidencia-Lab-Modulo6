@@ -3,8 +3,8 @@
  * Controlador para la API de notificaciones
  */
 
-const notificationService = require("../services/notificationService");
-const logger = require("../config/logger");
+const notificationService = require('../services/notificationService');
+const logger = require('../config/logger');
 
 /**
  * GET /notifications
@@ -18,7 +18,7 @@ async function list(req, res, next) {
     const result = await notificationService.getUserNotifications(userId, {
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 20,
-      unreadOnly: unreadOnly === "true",
+      unreadOnly: unreadOnly === 'true',
     });
 
     res.json({
@@ -26,7 +26,7 @@ async function list(req, res, next) {
       ...result,
     });
   } catch (error) {
-    logger.error("Error listing notifications:", error);
+    logger.error('Error listing notifications:', error);
     next(error);
   }
 }
@@ -45,7 +45,7 @@ async function getUnreadCount(req, res, next) {
       data: { count },
     });
   } catch (error) {
-    logger.error("Error getting unread count:", error);
+    logger.error('Error getting unread count:', error);
     next(error);
   }
 }
@@ -66,13 +66,13 @@ async function markAsRead(req, res, next) {
       data: notification,
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Notificación no encontrada",
+        error: 'Notificación no encontrada',
       });
     }
-    logger.error("Error marking notification as read:", error);
+    logger.error('Error marking notification as read:', error);
     next(error);
   }
 }
@@ -92,7 +92,7 @@ async function markAllAsRead(req, res, next) {
       data: { count: result.count },
     });
   } catch (error) {
-    logger.error("Error marking all notifications as read:", error);
+    logger.error('Error marking all notifications as read:', error);
     next(error);
   }
 }
@@ -110,16 +110,16 @@ async function remove(req, res, next) {
 
     res.json({
       success: true,
-      message: "Notificación eliminada",
+      message: 'Notificación eliminada',
     });
   } catch (error) {
-    if (error.code === "P2025") {
+    if (error.code === 'P2025') {
       return res.status(404).json({
         success: false,
-        error: "Notificación no encontrada",
+        error: 'Notificación no encontrada',
       });
     }
-    logger.error("Error deleting notification:", error);
+    logger.error('Error deleting notification:', error);
     next(error);
   }
 }
@@ -135,13 +135,13 @@ async function sendTest(req, res, next) {
     if (!userId || !message) {
       return res.status(400).json({
         success: false,
-        error: "userId y message son requeridos",
+        error: 'userId y message son requeridos',
       });
     }
 
     const notification = await notificationService.createNotification({
       userId,
-      type: type || "SYSTEM",
+      type: type || 'SYSTEM',
       message,
     });
 
@@ -150,7 +150,7 @@ async function sendTest(req, res, next) {
       data: notification,
     });
   } catch (error) {
-    logger.error("Error sending test notification:", error);
+    logger.error('Error sending test notification:', error);
     next(error);
   }
 }
@@ -163,4 +163,3 @@ module.exports = {
   remove,
   sendTest,
 };
-

@@ -1,19 +1,20 @@
-const { randomUUID } = require("crypto");
-const prisma = require("../config/database");
-const prismaGeo = require("../config/database-geo");
-const logger = require("../config/logger");
-const axios = require("axios");
-const geoService = require("./geoService");
-const campaignBatchDispatcherService = require("./campaignBatchDispatcherService");
-const campaignContextService = require("./campaignContextService");
+const { randomUUID } = require('crypto');
+const prisma = require('../config/database');
+const prismaGeo = require('../config/database-geo');
+const logger = require('../config/logger');
+const axios = require('axios');
+const geoService = require('./geoService');
+const campaignBatchDispatcherService = require('./campaignBatchDispatcherService');
+const campaignContextService = require('./campaignContextService');
 
-const ELEVENLABS_AGENTS_URL = process.env.ELEVENLABS_AGENTS_URL || "https://api.elevenlabs.io/v1/convai/agents";
+const ELEVENLABS_AGENTS_URL =
+  process.env.ELEVENLABS_AGENTS_URL || 'https://api.elevenlabs.io/v1/convai/agents';
 
 const AGENT_TO_CAMPAIGN_TYPE_MAP = {
-  'agent_5101kn32vm9gevjaqrrhx2hh537h': 'DISCOVERY',
-  'agent_6701kn5n423cemxv9n9pwvs5nj2t': 'QUALIFICATION',
-  'agent_3901kn500d46f9bvce4w254zcfw7': 'ACTIVATION',
-  'agent_4701kn5nyqwaf2ntj1cgsnxsv31p': 'CONVERSION',
+  agent_5101kn32vm9gevjaqrrhx2hh537h: 'DISCOVERY',
+  agent_6701kn5n423cemxv9n9pwvs5nj2t: 'QUALIFICATION',
+  agent_3901kn500d46f9bvce4w254zcfw7: 'ACTIVATION',
+  agent_4701kn5nyqwaf2ntj1cgsnxsv31p: 'CONVERSION',
 };
 /**
  * Obtiene el tipo de campaña basado en el ID del agente
@@ -31,8 +32,6 @@ function getCampaignTypeFromAgent(agentConfigId) {
 function getValidCampaignAgentIds() {
   return Object.keys(AGENT_TO_CAMPAIGN_TYPE_MAP);
 }
-
-
 
 const extractAgentNameFromAgent = (agent = {}) => {
   return agent.name || agent.agent_name || null;
@@ -72,13 +71,15 @@ const fetchAgentProfile = async (agentId) => {
   try {
     const response = await axios.get(ELEVENLABS_AGENTS_URL, {
       headers: {
-        "xi-api-key": process.env.ELEVENLABS_API_KEY,
+        'xi-api-key': process.env.ELEVENLABS_API_KEY,
       },
       timeout: 10000,
     });
 
     const agentsArray = Array.isArray(response.data) ? response.data : response.data.agents || [];
-    const selectedAgent = agentsArray.find((agent) => agent.agent_id === agentId || agent.id === agentId);
+    const selectedAgent = agentsArray.find(
+      (agent) => agent.agent_id === agentId || agent.id === agentId
+    );
 
     if (!selectedAgent) {
       return {
@@ -94,7 +95,7 @@ const fetchAgentProfile = async (agentId) => {
       voiceId: extractVoiceIdFromAgent(selectedAgent),
     };
   } catch (error) {
-    logger.warn("Failed to resolve ElevenLabs agent profile", {
+    logger.warn('Failed to resolve ElevenLabs agent profile', {
       agentId,
       error: error.message,
     });
@@ -108,10 +109,17 @@ const fetchAgentProfile = async (agentId) => {
 
 const normalizeScheduledTimeUnix = (scheduledTimeUnix) => {
   // Log for debugging
-  console.log('[normalizeScheduledTimeUnix] Input:', scheduledTimeUnix, 'Type:', typeof scheduledTimeUnix);
+  console.log(
+    '[normalizeScheduledTimeUnix] Input:',
+    scheduledTimeUnix,
+    'Type:',
+    typeof scheduledTimeUnix
+  );
 
   if (scheduledTimeUnix === null || scheduledTimeUnix === undefined) {
-    console.log('[normalizeScheduledTimeUnix] Input is null/undefined, returning undefined (immediate execution)');
+    console.log(
+      '[normalizeScheduledTimeUnix] Input is null/undefined, returning undefined (immediate execution)'
+    );
     return undefined;
   }
 
@@ -131,10 +139,20 @@ const normalizeScheduledTimeUnix = (scheduledTimeUnix) => {
 
   // If it's in the past or nearly now, treat as immediate call (no scheduling).
   const nowUnix = Math.floor(Date.now() / 1000);
-  console.log('[normalizeScheduledTimeUnix] Now:', nowUnix, 'Scheduled:', parsed, 'Diff:', parsed - nowUnix, 'seconds');
+  console.log(
+    '[normalizeScheduledTimeUnix] Now:',
+    nowUnix,
+    'Scheduled:',
+    parsed,
+    'Diff:',
+    parsed - nowUnix,
+    'seconds'
+  );
 
   if (parsed <= nowUnix + 30) {
-    console.log('[normalizeScheduledTimeUnix] Scheduled time is in the past or within 30 seconds, returning undefined (immediate execution)');
+    console.log(
+      '[normalizeScheduledTimeUnix] Scheduled time is in the past or within 30 seconds, returning undefined (immediate execution)'
+    );
     return undefined;
   }
 
@@ -228,7 +246,7 @@ async function classifyEstablishmentsByStage(establishmentIds, campaignType, opt
     where: { establishmentId: { in: ids } },
     select: { establishmentId: true, enrichmentStatus: true, level: true, callStatus: true },
   });
-  const infoById = new Map(records.map(r => [r.establishmentId, r]));
+  const infoById = new Map(records.map((r) => [r.establishmentId, r]));
 
   // Outcomes re-llamables de la etapa: solo estos justifican re-hacer la misma etapa.
   const reLlamables = REENGAGEMENT_OUTCOMES_BY_STAGE[campaignType]?.outcomes || [];
@@ -264,7 +282,6 @@ async function classifyEstablishmentsByStage(establishmentIds, campaignType, opt
   return { eligibleIds, excludedNoPrereq, excludedAdvanced, excludedClient };
 }
 
-
 // Outcomes re-llamables por etapa, basados en los que cada agente reporta realmente
 // (ver CONVERSATIONAL_OUTCOMES en funnelWebhookService y check constraint de call_status).
 // Criterio: posposicion y no-contacto. Rechazos explicitos (NOT_INTERESTED, LOST) son
@@ -289,8 +306,15 @@ const REENGAGEMENT_OUTCOMES_BY_STAGE = {
   // NEEDS_TIME/NOT_NOW no se incluyen: son decision_status de save_conversation_outcome,
   // nunca llegan como outcome de end_conversion_call (ver enum en conversionMcp)
   CONVERSION: {
-    outcomes: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_VALIDATION',
-               'OBJECTION_UNRESOLVED', 'NOT_INTERESTED', 'LOST'],
+    outcomes: [
+      'NO_ANSWER',
+      'VOICEMAIL',
+      'FOLLOW_UP_LATER',
+      'NEEDS_VALIDATION',
+      'OBJECTION_UNRESOLVED',
+      'NOT_INTERESTED',
+      'LOST',
+    ],
     defaults: ['NO_ANSWER', 'VOICEMAIL', 'FOLLOW_UP_LATER', 'NEEDS_VALIDATION'],
   },
 };
@@ -311,7 +335,12 @@ const REENGAGEMENT_OUTCOME_LABELS = {
   LOST: 'Perdido',
 };
 
-const REENGAGEMENT_VALID_CAMPAIGN_TYPES = ['DISCOVERY', 'QUALIFICATION', 'ACTIVATION', 'CONVERSION'];
+const REENGAGEMENT_VALID_CAMPAIGN_TYPES = [
+  'DISCOVERY',
+  'QUALIFICATION',
+  'ACTIVATION',
+  'CONVERSION',
+];
 
 const REENGAGEMENT_MAX_RECOMMENDED = 200;
 const REENGAGEMENT_MAX_HARD_CAP = 500;
@@ -319,13 +348,13 @@ const REENGAGEMENT_MAX_HARD_CAP = 500;
 // Config para el selector de reenganche del frontend: una entrada por agente/etapa
 // con sus outcomes filtrables, defaults, agente fijo y elegibilidad de cupon.
 const getReengagementConfig = () => {
-  return REENGAGEMENT_VALID_CAMPAIGN_TYPES.map(type => ({
+  return REENGAGEMENT_VALID_CAMPAIGN_TYPES.map((type) => ({
     campaignType: type,
     agentConfigId: CAMPAIGN_TYPE_TO_AGENT[type],
     agentName: CAMPAIGN_TYPE_TO_AGENT_NAME[type],
     couponEligible: COUPON_REQUIRED_TYPES.includes(type),
     suggestedCouponType: COUPON_REQUIRED_TYPES.includes(type) ? 'COMEBACK' : null,
-    outcomes: REENGAGEMENT_OUTCOMES_BY_STAGE[type].outcomes.map(o => ({
+    outcomes: REENGAGEMENT_OUTCOMES_BY_STAGE[type].outcomes.map((o) => ({
       value: o,
       label: REENGAGEMENT_OUTCOME_LABELS[o] || o,
       default: REENGAGEMENT_OUTCOMES_BY_STAGE[type].defaults.includes(o),
@@ -351,27 +380,31 @@ const getReengagementCandidates = async ({
 } = {}) => {
   const safeLimit = Math.min(Math.max(1, parseInt(limit) || 500), 1000);
   // Validar contra whitelist para construir SQL inline de forma segura
-  const safeTypes = campaignTypes.filter(t => REENGAGEMENT_VALID_CAMPAIGN_TYPES.includes(t));
+  const safeTypes = campaignTypes.filter((t) => REENGAGEMENT_VALID_CAMPAIGN_TYPES.includes(t));
   if (safeTypes.length === 0) safeTypes.push('ACTIVATION', 'CONVERSION');
 
   // Outcomes permitidos = union de los outcomes de las etapas seleccionadas.
   // Fallback: defaults de esas etapas (no un trio fijo) si ninguno es valido.
-  const allowedForStages = new Set(safeTypes.flatMap(t => REENGAGEMENT_OUTCOMES_BY_STAGE[t].outcomes));
-  const safeOutcomes = outcomes.filter(o => allowedForStages.has(o));
+  const allowedForStages = new Set(
+    safeTypes.flatMap((t) => REENGAGEMENT_OUTCOMES_BY_STAGE[t].outcomes)
+  );
+  const safeOutcomes = outcomes.filter((o) => allowedForStages.has(o));
   if (safeOutcomes.length === 0) {
-    safeOutcomes.push(...new Set(safeTypes.flatMap(t => REENGAGEMENT_OUTCOMES_BY_STAGE[t].defaults)));
+    safeOutcomes.push(
+      ...new Set(safeTypes.flatMap((t) => REENGAGEMENT_OUTCOMES_BY_STAGE[t].defaults))
+    );
   }
 
-  const fromDate = lastCalledFrom ? new Date(lastCalledFrom) : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const fromDate = lastCalledFrom
+    ? new Date(lastCalledFrom)
+    : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   // "Hasta" debe cubrir el dia completo: una fecha YYYY-MM-DD sola se interpreta como medianoche,
   // lo que dejaria fuera las llamadas del propio dia seleccionado (ej. una llamada de hoy 18:06).
-  const toDate = lastCalledTo
-    ? new Date(`${lastCalledTo.slice(0, 10)}T23:59:59.999Z`)
-    : new Date();
+  const toDate = lastCalledTo ? new Date(`${lastCalledTo.slice(0, 10)}T23:59:59.999Z`) : new Date();
 
   // Literales SQL seguros (validados contra whitelist, no input directo de usuario)
-  const outcomesLiteral = safeOutcomes.map(o => `'${o}'`).join(',');
-  const typesLiteral = safeTypes.map(t => `'${t}'`).join(',');
+  const outcomesLiteral = safeOutcomes.map((o) => `'${o}'`).join(',');
+  const typesLiteral = safeTypes.map((t) => `'${t}'`).join(',');
 
   const queryParams = [fromDate, toDate, safeLimit];
   let paramIdx = 3;
@@ -390,13 +423,13 @@ const getReengagementCandidates = async ({
   // otra exitosa con INTERESTED). Dos condiciones:
   // 1. call_status (resultado de la ultima llamada) debe seguir siendo re-llamable o nulo.
   // 2. enrichment_status no debe haber avanzado a una etapa posterior a la seleccionada.
-  const reLlamablesLiteral = [...allowedForStages].map(o => `'${o}'`).join(',');
+  const reLlamablesLiteral = [...allowedForStages].map((o) => `'${o}'`).join(',');
   whereClauses += ` AND (ee.call_status IS NULL OR ee.call_status IN (${reLlamablesLiteral}))`;
 
-  const minCampaignRank = Math.min(...safeTypes.map(t => CAMPAIGN_RANK[t]));
-  const posteriores = FUNNEL_STATUSES.filter(s => STAGE_RANK[s] > minCampaignRank);
+  const minCampaignRank = Math.min(...safeTypes.map((t) => CAMPAIGN_RANK[t]));
+  const posteriores = FUNNEL_STATUSES.filter((s) => STAGE_RANK[s] > minCampaignRank);
   if (posteriores.length > 0) {
-    const posterioresLiteral = posteriores.map(s => `'${s}'`).join(',');
+    const posterioresLiteral = posteriores.map((s) => `'${s}'`).join(',');
     whereClauses += ` AND (ee.enrichment_status IS NULL OR ee.enrichment_status NOT IN (${posterioresLiteral}))`;
   }
 
@@ -407,7 +440,7 @@ const getReengagementCandidates = async ({
 
   if (agentConfigId) {
     queryParams.push(agentConfigId);
-    whereClauses += ` AND c.agent_config_id = $${++paramIdx}`;
+    whereClauses += ` AND c.agent_config_id = $${paramIdx + 1}`;
   }
 
   if (excludeClients) {
@@ -437,8 +470,7 @@ const getReengagementCandidates = async ({
   // El mismo numero puede existir con varios establishment_id (csv_* de distintas pruebas,
   // id geo real, etc.); sin esto apareceria N veces y se marcaria N veces al mismo telefono.
   // Sin telefono valido cae a establishment_id para no colapsar todos los sin-telefono en uno.
-  const phoneDedupKey =
-    `COALESCE(NULLIF(RIGHT(REGEXP_REPLACE(cc.establishment_phone, '[^0-9]', '', 'g'), 10), ''), cc.establishment_id)`;
+  const phoneDedupKey = `COALESCE(NULLIF(RIGHT(REGEXP_REPLACE(cc.establishment_phone, '[^0-9]', '', 'g'), 10), ''), cc.establishment_id)`;
 
   // DISTINCT ON sobre el telefono normalizado: conserva la llamada mas reciente por numero.
   const query = `
@@ -530,12 +562,12 @@ const createCampaign = async (data) => {
   } = data;
 
   if (!name) {
-    throw new Error("Campaign name is required");
+    throw new Error('Campaign name is required');
   }
 
   // Validar que se proporcione un agente
   if (!agentConfigId) {
-    throw new Error("agentConfigId is required");
+    throw new Error('agentConfigId is required');
   }
 
   // Auto-calcular type desde agentConfigId
@@ -548,13 +580,11 @@ const createCampaign = async (data) => {
   // Validar que el agentConfigId sea válido para campañas
   if (!campaignType) {
     const validIds = getValidCampaignAgentIds();
-    throw new Error(
-      `Invalid agent for campaigns. Agent ID must be one of: ${validIds.join(', ')}`
-    );
+    throw new Error(`Invalid agent for campaigns. Agent ID must be one of: ${validIds.join(', ')}`);
   }
 
   // Solo ACTIVATION y CONVERSION pueden tener cupones
-  const COUPON_ELIGIBLE_TYPES = ["ACTIVATION", "CONVERSION"];
+  const COUPON_ELIGIBLE_TYPES = ['ACTIVATION', 'CONVERSION'];
   if (
     (couponPrefix || (Array.isArray(couponTemplateIds) && couponTemplateIds.length > 0)) &&
     !COUPON_ELIGIBLE_TYPES.includes(campaignType)
@@ -567,24 +597,24 @@ const createCampaign = async (data) => {
   const isReengagement = Array.isArray(establishmentIds) && establishmentIds.length > 0;
   const isCsvUpload = Array.isArray(csvContacts) && csvContacts.length > 0;
 
-  if (isCsvUpload && campaignType !== "DISCOVERY") {
-    throw new Error("CSV upload solo está permitido para campañas de tipo Discovery");
+  if (isCsvUpload && campaignType !== 'DISCOVERY') {
+    throw new Error('CSV upload solo está permitido para campañas de tipo Discovery');
   }
 
   if (isCsvUpload && csvContacts.length > 500) {
-    throw new Error("El máximo de contactos por CSV es 500");
+    throw new Error('El máximo de contactos por CSV es 500');
   }
 
   if (isReengagement && establishmentIds.length > 500) {
-    throw new Error("El máximo de establecimientos para una campaña de reenganche es 500");
+    throw new Error('El máximo de establecimientos para una campaña de reenganche es 500');
   }
 
   if (!isReengagement && !isCsvUpload) {
     if (centerLat && centerLng && !radiusMeters) {
-      throw new Error("radiusMeters is required when centerLat and centerLng are provided");
+      throw new Error('radiusMeters is required when centerLat and centerLng are provided');
     }
     if (radiusMeters && radiusMeters < 0) {
-      throw new Error("radiusMeters must be a positive number");
+      throw new Error('radiusMeters must be a positive number');
     }
   }
 
@@ -619,13 +649,13 @@ const createCampaign = async (data) => {
       name,
       description,
       type: campaignType,
-      status: "DRAFT",
+      status: 'DRAFT',
       // CSV y reenganche no usan coordenadas geográficas
       centerLat: isReengagement || isCsvUpload ? null : centerLat,
       centerLng: isReengagement || isCsvUpload ? null : centerLng,
       radiusMeters: isReengagement || isCsvUpload ? null : radiusMeters,
-      activityCodes: isCsvUpload ? [] : (activityCodes || []),
-      employeeRanges: isCsvUpload ? [] : (employeeRanges || []),
+      activityCodes: isCsvUpload ? [] : activityCodes || [],
+      employeeRanges: isCsvUpload ? [] : employeeRanges || [],
       filters: campaignFilters,
       agentConfigId,
       agentConfigName,
@@ -634,17 +664,17 @@ const createCampaign = async (data) => {
       couponPrefix: couponPrefix || null,
       couponTemplateIds: couponTemplateIds || [],
       createdBy,
-      contactSource: isCsvUpload ? "CSV" : (contactSource || "GEO"),
-      csvOriginalName: isCsvUpload ? (csvMetadata?.originalName || null) : null,
-      csvRowsTotal: isCsvUpload ? (csvMetadata?.rowsTotal || csvContacts.length) : null,
-      csvRowsValid: isCsvUpload ? (csvMetadata?.rowsValid || csvContacts.length) : null,
-      csvRowsRejected: isCsvUpload ? (csvMetadata?.rowsRejected || 0) : null,
+      contactSource: isCsvUpload ? 'CSV' : contactSource || 'GEO',
+      csvOriginalName: isCsvUpload ? csvMetadata?.originalName || null : null,
+      csvRowsTotal: isCsvUpload ? csvMetadata?.rowsTotal || csvContacts.length : null,
+      csvRowsValid: isCsvUpload ? csvMetadata?.rowsValid || csvContacts.length : null,
+      csvRowsRejected: isCsvUpload ? csvMetadata?.rowsRejected || 0 : null,
     },
   });
 
   if (isCsvUpload) {
     await assignCsvContactsToCampaign(campaign.id, csvContacts);
-    logger.info("[campaignsService:createCampaign] CSV campaign created", {
+    logger.info('[campaignsService:createCampaign] CSV campaign created', {
       campaignId: campaign.id,
       csvRows: csvContacts.length,
       originalName: csvMetadata?.originalName || null,
@@ -652,23 +682,26 @@ const createCampaign = async (data) => {
   } else if (isReengagement) {
     // Continuación: comportamiento original (sin same-stage ni dedup por teléfono).
     // Reenganche real: aplica same-stage + dedup por teléfono.
-    const assignmentSummary = await assignContactsToCampaign(
-      campaign.id, establishmentIds, { isReengagement: !isContinuation }
-    );
+    const assignmentSummary = await assignContactsToCampaign(campaign.id, establishmentIds, {
+      isReengagement: !isContinuation,
+    });
     // El frontend usa este summary para informar exclusiones por etapa/cliente
     campaign.assignmentSummary = assignmentSummary;
-    logger.info('[campaignsService:createCampaign] Reengagement campaign created with preloaded contacts', {
-      campaignId: campaign.id,
-      sourceCampaignId: sourceCampaignId || null,
-      establishmentCount: establishmentIds.length,
-      assignedCount: assignmentSummary.count,
-      excludedNoPrereq: assignmentSummary.excludedNoPrereq,
-      excludedAdvanced: assignmentSummary.excludedAdvanced,
-      excludedClient: assignmentSummary.excludedClient,
-    });
+    logger.info(
+      '[campaignsService:createCampaign] Reengagement campaign created with preloaded contacts',
+      {
+        campaignId: campaign.id,
+        sourceCampaignId: sourceCampaignId || null,
+        establishmentCount: establishmentIds.length,
+        assignedCount: assignmentSummary.count,
+        excludedNoPrereq: assignmentSummary.excludedNoPrereq,
+        excludedAdvanced: assignmentSummary.excludedAdvanced,
+        excludedClient: assignmentSummary.excludedClient,
+      }
+    );
   } else if (campaign.centerLat && campaign.centerLng && campaign.radiusMeters) {
     await assignContactsWithGeoFilter(campaign.id, {
-      ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+      ...(campaign.filters && typeof campaign.filters === 'object' ? campaign.filters : {}),
       activityCodes: campaign.activityCodes || [],
       employeeRanges: campaign.employeeRanges || [],
     });
@@ -677,7 +710,7 @@ const createCampaign = async (data) => {
   logger.info(`Campaign created: ${campaign.id}`, {
     campaignId: campaign.id,
     type: campaignType,
-    agentConfigId
+    agentConfigId,
   });
   return campaign;
 };
@@ -688,18 +721,18 @@ const getCampaignById = async (id) => {
     include: {
       contacts: {
         take: 10,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       },
       coupons: {
         take: 10,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       },
       couponTemplate: true,
     },
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
   // Para QUICK_ACTION: enriquecer con datos del establecimiento de la BD geo.
@@ -728,9 +761,14 @@ const getCampaignById = async (id) => {
           campaign.quickActionEstablishment = geoEstablishment;
         }
       } catch (geoErr) {
-        logger.warn('[getCampaignById] No se pudo obtener el establecimiento geo para QUICK_ACTION', {
-          campaignId: id, establishmentId, error: geoErr.message,
-        });
+        logger.warn(
+          '[getCampaignById] No se pudo obtener el establecimiento geo para QUICK_ACTION',
+          {
+            campaignId: id,
+            establishmentId,
+            error: geoErr.message,
+          }
+        );
       }
     }
   }
@@ -755,7 +793,7 @@ const listCampaigns = async (filters = {}) => {
   const [campaigns, total] = await Promise.all([
     prisma.campaign.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
       include: {
@@ -798,7 +836,7 @@ const updateCampaign = async (id, data) => {
     agentConfigName,
     offer,
     couponPrefix,
-    couponTemplateIds
+    couponTemplateIds,
   } = data;
 
   const existingCampaign = await prisma.campaign.findUnique({
@@ -806,26 +844,34 @@ const updateCampaign = async (id, data) => {
   });
 
   if (!existingCampaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
-  if (existingCampaign.status === "COMPLETED" || existingCampaign.status === "CANCELLED") {
+  if (existingCampaign.status === 'COMPLETED' || existingCampaign.status === 'CANCELLED') {
     throw new Error(`Cannot update campaign with status ${existingCampaign.status}`);
   }
 
-  if (existingCampaign.status === "ACTIVE") {
-    throw new Error("Cannot update an active campaign");
+  if (existingCampaign.status === 'ACTIVE') {
+    throw new Error('Cannot update an active campaign');
   }
 
   if (radiusMeters && radiusMeters < 0) {
-    throw new Error("radiusMeters must be a positive number");
+    throw new Error('radiusMeters must be a positive number');
   }
 
   // Para campañas SCHEDULED: detectar si hay cambios que requieren re-dispatch.
   // Cualquier campo que afecte el batch (zona, filtros, agente) requiere
   // cancelar el batch existente en ElevenLabs y crear uno nuevo con los datos actualizados.
-  const isScheduled = existingCampaign.status === "SCHEDULED";
-  const REDISPATCH_FIELDS = ["centerLat", "centerLng", "radiusMeters", "activityCodes", "employeeRanges", "filters", "agentConfigId"];
+  const isScheduled = existingCampaign.status === 'SCHEDULED';
+  const REDISPATCH_FIELDS = [
+    'centerLat',
+    'centerLng',
+    'radiusMeters',
+    'activityCodes',
+    'employeeRanges',
+    'filters',
+    'agentConfigId',
+  ];
 
   // Solo hacer re-dispatch si el campo realmente cambió de valor.
   // Arrays y objetos se comparan por valor (JSON) para evitar re-dispatch innecesario
@@ -834,7 +880,7 @@ const updateCampaign = async (id, data) => {
     if (data[field] === undefined) return false;
     const existing = existingCampaign[field];
     const incoming = data[field];
-    if (incoming !== null && typeof incoming === "object") {
+    if (incoming !== null && typeof incoming === 'object') {
       return JSON.stringify(incoming) !== JSON.stringify(existing);
     }
     return incoming !== existing;
@@ -848,13 +894,17 @@ const updateCampaign = async (id, data) => {
       where: { campaignId: id, providerBatchId: { not: null } },
       select: { providerBatchId: true },
     });
-    uniqueBatchIdsToCancel = [...new Set(batchContacts.map((c) => c.providerBatchId).filter(Boolean))];
+    uniqueBatchIdsToCancel = [
+      ...new Set(batchContacts.map((c) => c.providerBatchId).filter(Boolean)),
+    ];
 
     if (uniqueBatchIdsToCancel.length > 0) {
       await Promise.allSettled(
-        uniqueBatchIdsToCancel.map((batchId) => campaignBatchDispatcherService.cancelProviderBatch(batchId))
+        uniqueBatchIdsToCancel.map((batchId) =>
+          campaignBatchDispatcherService.cancelProviderBatch(batchId)
+        )
       );
-      logger.info("[CampaignUpdate] Provider batches cancelled for SCHEDULED re-dispatch", {
+      logger.info('[CampaignUpdate] Provider batches cancelled for SCHEDULED re-dispatch', {
         campaignId: id,
         batchCount: uniqueBatchIdsToCancel.length,
       });
@@ -868,7 +918,7 @@ const updateCampaign = async (id, data) => {
       ? getCampaignTypeFromAgent(agentConfigId)
       : existingCampaign.type;
 
-  const COUPON_ELIGIBLE_TYPES_UPDATE = ["ACTIVATION", "CONVERSION"];
+  const COUPON_ELIGIBLE_TYPES_UPDATE = ['ACTIVATION', 'CONVERSION'];
   if (
     (couponPrefix || (Array.isArray(couponTemplateIds) && couponTemplateIds.length > 0)) &&
     !COUPON_ELIGIBLE_TYPES_UPDATE.includes(effectiveCampaignType)
@@ -899,7 +949,7 @@ const updateCampaign = async (id, data) => {
   // startCampaign pueda ejecutarse sin conflicto de status SCHEDULED
   const originalScheduledAt = existingCampaign.scheduledAt;
   if (needsRedispatch) {
-    updateData.status = "DRAFT";
+    updateData.status = 'DRAFT';
     updateData.scheduledAt = null;
   }
 
@@ -917,7 +967,7 @@ const updateCampaign = async (id, data) => {
 
     // Reasignar contactos con los nuevos filtros
     await assignContactsWithGeoFilter(campaign.id, {
-      ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+      ...(campaign.filters && typeof campaign.filters === 'object' ? campaign.filters : {}),
       activityCodes: campaign.activityCodes || [],
       employeeRanges: campaign.employeeRanges || [],
     });
@@ -938,17 +988,19 @@ const updateCampaign = async (id, data) => {
     // que startCampaign los encuentre. Para campañas geo esto no aplica: ya fueron recreados.
     if (!campaign.centerLat || !campaign.centerLng || !campaign.radiusMeters) {
       await prisma.campaignContact.updateMany({
-        where: { campaignId: id, status: { in: ["SCHEDULED", "PENDING"] } },
-        data: { status: "PENDING", providerBatchId: null, sentAt: null },
+        where: { campaignId: id, status: { in: ['SCHEDULED', 'PENDING'] } },
+        data: { status: 'PENDING', providerBatchId: null, sentAt: null },
       });
-      logger.info("[CampaignUpdate] Non-geo campaign contacts reset to PENDING for re-dispatch", {
+      logger.info('[CampaignUpdate] Non-geo campaign contacts reset to PENDING for re-dispatch', {
         campaignId: id,
       });
     }
 
     try {
-      const redispatchResult = await startCampaign(id, { scheduledTimeUnix: originalScheduledTimeUnix });
-      logger.info("[CampaignUpdate] SCHEDULED campaign re-dispatched after significant update", {
+      const redispatchResult = await startCampaign(id, {
+        scheduledTimeUnix: originalScheduledTimeUnix,
+      });
+      logger.info('[CampaignUpdate] SCHEDULED campaign re-dispatched after significant update', {
         campaignId: id,
         originalScheduledAt,
         cancelledBatches: uniqueBatchIdsToCancel.length,
@@ -957,10 +1009,13 @@ const updateCampaign = async (id, data) => {
     } catch (dispatchError) {
       // El update de datos fue exitoso pero el re-dispatch falló.
       // La campaña queda en DRAFT — el usuario puede reiniciarla manualmente.
-      logger.error("[CampaignUpdate] Re-dispatch failed. Campaign left in DRAFT for manual restart.", {
-        campaignId: id,
-        error: dispatchError.message,
-      });
+      logger.error(
+        '[CampaignUpdate] Re-dispatch failed. Campaign left in DRAFT for manual restart.',
+        {
+          campaignId: id,
+          error: dispatchError.message,
+        }
+      );
       // Retornar la campaña en su estado actual (DRAFT) sin lanzar error
       return prisma.campaign.findUnique({ where: { id } });
     }
@@ -975,11 +1030,11 @@ const deleteCampaign = async (id) => {
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
-  if (campaign.status === "ACTIVE") {
-    throw new Error("Cannot delete an active campaign. Pause or cancel it first.");
+  if (campaign.status === 'ACTIVE') {
+    throw new Error('Cannot delete an active campaign. Pause or cancel it first.');
   }
 
   await prisma.campaign.delete({
@@ -1002,8 +1057,13 @@ const deleteCampaign = async (id) => {
 // igual que en geo donde un establecimiento sin enrichment puede volver a seleccionarse.
 // PENDING y FAILED siempre permitidos (nunca fue procesado, o falló).
 const ALREADY_CONTACTED_STATUSES = [
-  'SCHEDULED', 'CALLING',
-  'RESPONDED', 'SENT', 'DELIVERED', 'VISITED', 'CONVERTED',
+  'SCHEDULED',
+  'CALLING',
+  'RESPONDED',
+  'SENT',
+  'DELIVERED',
+  'VISITED',
+  'CONVERTED',
 ];
 
 /**
@@ -1087,12 +1147,12 @@ const CONTACTED_STATUSES = ['RESPONDED', 'SENT', 'DELIVERED', 'VISITED', 'CONVER
  */
 const findPhonesInProcess = async (items) => {
   const result = new Map();
-  const valid = (items || []).filter(it => it && it.establishmentId && it.phone);
+  const valid = (items || []).filter((it) => it && it.establishmentId && it.phone);
   if (valid.length === 0) return result;
 
   const contacts = await prisma.campaignContact.findMany({
     where: {
-      establishmentPhone: { in: buildPhoneVariantsForQuery(valid.map(it => it.phone)) },
+      establishmentPhone: { in: buildPhoneVariantsForQuery(valid.map((it) => it.phone)) },
       status: { in: [...IN_FLIGHT_STATUSES, ...CONTACTED_STATUSES] },
     },
     select: { establishmentPhone: true, establishmentId: true, status: true },
@@ -1117,14 +1177,14 @@ const findPhonesInProcess = async (items) => {
 
   for (const it of valid) {
     const variants = getPhoneVariants(it.phone);
-    if (variants.some(v => inFlightVariants.has(v))) {
+    if (variants.some((v) => inFlightVariants.has(v))) {
       result.set(it.establishmentId, 'in_flight');
       continue;
     }
     // contactado por OTRO establishmentId (no por si mismo)
-    const elsewhere = variants.some(v => {
+    const elsewhere = variants.some((v) => {
       const owners = contactedVariantOwners.get(v);
-      return owners && [...owners].some(owner => owner !== it.establishmentId);
+      return owners && [...owners].some((owner) => owner !== it.establishmentId);
     });
     if (elsewhere) result.set(it.establishmentId, 'contacted_elsewhere');
   }
@@ -1133,13 +1193,13 @@ const findPhonesInProcess = async (items) => {
 
 const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
   if (!Array.isArray(csvRows) || csvRows.length === 0) {
-    throw new Error("csvRows debe ser un array no vacío");
+    throw new Error('csvRows debe ser un array no vacío');
   }
 
   // Deduplicación cross-campaign: excluir teléfonos que ya tienen historial activo.
   // Se generan variantes de formato (+52, sin +52, 10 dígitos) para detectar coincidencias
   // entre contactos geo (guardados sin +52 desde DENUE) y contactos CSV (E.164).
-  const incomingPhones = csvRows.map(r => r.phone).filter(Boolean);
+  const incomingPhones = csvRows.map((r) => r.phone).filter(Boolean);
   let alreadyContactedPhones = new Set();
 
   if (incomingPhones.length > 0) {
@@ -1156,11 +1216,11 @@ const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
     alreadyContactedPhones = buildContactedPhonesSet(existingContacts);
   }
 
-  const deduplicatedRows = csvRows.filter(row => !alreadyContactedPhones.has(row.phone));
+  const deduplicatedRows = csvRows.filter((row) => !alreadyContactedPhones.has(row.phone));
   const skippedCount = csvRows.length - deduplicatedRows.length;
 
   if (skippedCount > 0) {
-    logger.info("[assignCsvContactsToCampaign] Contactos excluidos por dedup de telefono", {
+    logger.info('[assignCsvContactsToCampaign] Contactos excluidos por dedup de telefono', {
       campaignId,
       skippedCount,
       totalRequested: csvRows.length,
@@ -1169,9 +1229,12 @@ const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
   }
 
   if (deduplicatedRows.length === 0) {
-    logger.warn("[assignCsvContactsToCampaign] Todos los contactos ya existen en otras campanas — ningun contacto creado", {
-      campaignId,
-    });
+    logger.warn(
+      '[assignCsvContactsToCampaign] Todos los contactos ya existen en otras campanas — ningun contacto creado',
+      {
+        campaignId,
+      }
+    );
     const totalContacts = await prisma.campaignContact.count({ where: { campaignId } });
     await prisma.campaign.update({ where: { id: campaignId }, data: { totalContacts } });
     return { count: 0, skippedCount };
@@ -1183,7 +1246,7 @@ const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
     establishmentName: row.name || null,
     establishmentPhone: row.phone || null,
     establishmentData: {
-      source: "CSV",
+      source: 'CSV',
       name: row.name || null,
       phone: row.phone || null,
       email: row.email || null,
@@ -1191,8 +1254,8 @@ const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
       address: row.address || null,
       notes: row.notes || null,
     },
-    status: "PENDING",
-    sourceType: "CSV",
+    status: 'PENDING',
+    sourceType: 'CSV',
   }));
 
   const result = await prisma.campaignContact.createMany({
@@ -1207,7 +1270,7 @@ const assignCsvContactsToCampaign = async (campaignId, csvRows) => {
     data: { totalContacts },
   });
 
-  logger.info("[campaignsService:assignCsvContactsToCampaign] CSV contacts assigned", {
+  logger.info('[campaignsService:assignCsvContactsToCampaign] CSV contacts assigned', {
     campaignId,
     requested: csvRows.length,
     skipped: skippedCount,
@@ -1225,11 +1288,11 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
   if (!Array.isArray(establishmentIds) || establishmentIds.length === 0) {
-    throw new Error("establishmentIds must be a non-empty array");
+    throw new Error('establishmentIds must be a non-empty array');
   }
 
   const rawUniqueIds = [...new Set(establishmentIds.filter(Boolean))];
@@ -1240,9 +1303,11 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
   // En reenganche también entran los que ya completaron LA MISMA etapa (re-llamada con el
   // mismo agente a contactos pospuestos). Nunca entran los de etapas posteriores ni CLIENTs.
   const { eligibleIds, excludedNoPrereq, excludedAdvanced, excludedClient } =
-    await classifyEstablishmentsByStage(rawUniqueIds, campaignType, { allowSameStage: isReengagement });
+    await classifyEstablishmentsByStage(rawUniqueIds, campaignType, {
+      allowSameStage: isReengagement,
+    });
 
-  logger.info("[campaignsService:assignContactsToCampaign] Funnel classification", {
+  logger.info('[campaignsService:assignContactsToCampaign] Funnel classification', {
     campaignId,
     campaignType,
     isReengagement,
@@ -1256,8 +1321,8 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
   const uniqueEstablishmentIds = eligibleIds;
 
   // Separar IDs sintéticos CSV (csv_<uuid>) de IDs geo reales — los CSV no existen en BD geo
-  const csvOnlyIds = uniqueEstablishmentIds.filter(id => id.startsWith('csv_'));
-  const geoOnlyIds = uniqueEstablishmentIds.filter(id => !id.startsWith('csv_'));
+  const csvOnlyIds = uniqueEstablishmentIds.filter((id) => id.startsWith('csv_'));
+  const geoOnlyIds = uniqueEstablishmentIds.filter((id) => !id.startsWith('csv_'));
 
   // Para IDs CSV heredados, recuperar phone/name/data del CampaignContact de la campaña anterior
   let csvContactSnapshotById = new Map();
@@ -1276,12 +1341,15 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
         },
         distinct: ['establishmentId'],
       });
-      csvContactSnapshotById = new Map(previousCsvContacts.map(c => [c.establishmentId, c]));
-      logger.info('[assignContactsToCampaign] CSV contact snapshots loaded from previous campaign', {
-        campaignId,
-        csvIdCount: csvOnlyIds.length,
-        snapshotsFound: previousCsvContacts.length,
-      });
+      csvContactSnapshotById = new Map(previousCsvContacts.map((c) => [c.establishmentId, c]));
+      logger.info(
+        '[assignContactsToCampaign] CSV contact snapshots loaded from previous campaign',
+        {
+          campaignId,
+          csvIdCount: csvOnlyIds.length,
+          snapshotsFound: previousCsvContacts.length,
+        }
+      );
     } catch (csvLookupError) {
       logger.warn('[assignContactsToCampaign] Failed to load CSV contact snapshots', {
         campaignId,
@@ -1316,23 +1384,29 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
           neighborhood: true,
         },
       });
-      console.log(`[assignContactsToCampaign] Establishments found in Geo DB: ${establishments.length}`);
+      console.log(
+        `[assignContactsToCampaign] Establishments found in Geo DB: ${establishments.length}`
+      );
 
       // Identificar establecimientos geo que no se encontraron
-      const foundIds = new Set(establishments.map(e => e.id));
-      const notFound = geoOnlyIds.filter(id => !foundIds.has(id));
+      const foundIds = new Set(establishments.map((e) => e.id));
+      const notFound = geoOnlyIds.filter((id) => !foundIds.has(id));
       if (notFound.length > 0) {
-        console.warn(`[assignContactsToCampaign] ${notFound.length} establishments not found in Geo DB`);
+        console.warn(
+          `[assignContactsToCampaign] ${notFound.length} establishments not found in Geo DB`
+        );
       }
     } catch (geoError) {
-      logger.warn("Geo DB lookup failed while assigning campaign contacts", {
+      logger.warn('Geo DB lookup failed while assigning campaign contacts', {
         campaignId,
         error: geoError.message,
       });
     }
   }
 
-  const establishmentById = new Map(establishments.map((establishment) => [establishment.id, establishment]));
+  const establishmentById = new Map(
+    establishments.map((establishment) => [establishment.id, establishment])
+  );
 
   // Preparar datos para inserción masiva
   const contactsToCreate = uniqueEstablishmentIds.map((establishmentId) => {
@@ -1356,24 +1430,26 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
 
     const establishmentData = establishment
       ? {
-        name: establishmentNameToUse,
-        phone: establishment.phone || null,
-        email: establishment.email || null,
-        website: establishment.website || null,
-        activityName: establishment.activityName || null,
-        latitude: establishment.latitude ?? null,
-        longitude: establishment.longitude ?? null,
-        municipalityName: establishment.municipalityName || null,
-        stateName: establishment.stateName || null,
-        employees: establishment.employeeRange ? establishment.employeeRange.trim() : "-",
-        address: [
-          establishment.streetName,
-          establishment.exteriorNum,
-          establishment.neighborhood,
-          establishment.municipalityName,
-          establishment.stateName
-        ].filter(Boolean).join(", ")
-      }
+          name: establishmentNameToUse,
+          phone: establishment.phone || null,
+          email: establishment.email || null,
+          website: establishment.website || null,
+          activityName: establishment.activityName || null,
+          latitude: establishment.latitude ?? null,
+          longitude: establishment.longitude ?? null,
+          municipalityName: establishment.municipalityName || null,
+          stateName: establishment.stateName || null,
+          employees: establishment.employeeRange ? establishment.employeeRange.trim() : '-',
+          address: [
+            establishment.streetName,
+            establishment.exteriorNum,
+            establishment.neighborhood,
+            establishment.municipalityName,
+            establishment.stateName,
+          ]
+            .filter(Boolean)
+            .join(', '),
+        }
       : null;
 
     return {
@@ -1382,8 +1458,8 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
       establishmentName: establishmentNameToUse,
       establishmentPhone: establishment?.phone || null,
       establishmentData,
-      status: "PENDING",
-      sourceType: "GEO",
+      status: 'PENDING',
+      sourceType: 'GEO',
     };
   });
 
@@ -1395,7 +1471,7 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
   if (isReengagement) {
     // 1. Dedup intra-batch por teléfono normalizado (últimos 10 dígitos). Defensa contra IDs
     //    distintos con el mismo número pasados explícitamente desde el cliente.
-    const normalizePhone = (p) => (p || "").replace(/\D/g, "").slice(-10);
+    const normalizePhone = (p) => (p || '').replace(/\D/g, '').slice(-10);
     const seenPhones = new Set();
     const intraBatchDeduped = [];
     for (const contact of finalContactsToCreate) {
@@ -1411,19 +1487,22 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
     // 2. Red de seguridad cross-campaign: excluir números que entraron a una campaña activa
     //    (in_flight) o ya respondieron en otra identidad entre la búsqueda y la creación.
     const phoneItems = intraBatchDeduped
-      .filter(c => c.establishmentPhone)
-      .map(c => ({ establishmentId: c.establishmentId, phone: c.establishmentPhone }));
+      .filter((c) => c.establishmentPhone)
+      .map((c) => ({ establishmentId: c.establishmentId, phone: c.establishmentPhone }));
     const blocked = await findPhonesInProcess(phoneItems);
-    finalContactsToCreate = intraBatchDeduped.filter(c => !blocked.has(c.establishmentId));
+    finalContactsToCreate = intraBatchDeduped.filter((c) => !blocked.has(c.establishmentId));
     excludedPhoneInProcess += intraBatchDeduped.length - finalContactsToCreate.length;
 
     if (excludedPhoneInProcess > 0) {
-      logger.info("[campaignsService:assignContactsToCampaign] Excluidos por teléfono duplicado o en proceso", {
-        campaignId,
-        excludedPhoneInProcess,
-        eligibleBeforePhoneDedup: contactsToCreate.length,
-        toCreate: finalContactsToCreate.length,
-      });
+      logger.info(
+        '[campaignsService:assignContactsToCampaign] Excluidos por teléfono duplicado o en proceso',
+        {
+          campaignId,
+          excludedPhoneInProcess,
+          eligibleBeforePhoneDedup: contactsToCreate.length,
+          toCreate: finalContactsToCreate.length,
+        }
+      );
     }
   }
 
@@ -1444,7 +1523,7 @@ const assignContactsToCampaign = async (campaignId, establishmentIds, options = 
     },
   });
 
-  logger.info("[campaignsService:assignContactsToCampaign] Contacts assigned", {
+  logger.info('[campaignsService:assignContactsToCampaign] Contacts assigned', {
     campaignId,
     created: contacts.count,
     totalContacts,
@@ -1467,20 +1546,24 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
   if (!campaign.centerLat || !campaign.centerLng || !campaign.radiusMeters) {
-    throw new Error("Campaign must have geographic coordinates and radius defined");
+    throw new Error('Campaign must have geographic coordinates and radius defined');
   }
 
   const mergedFilters = {
-    ...(campaign.filters && typeof campaign.filters === "object" ? campaign.filters : {}),
+    ...(campaign.filters && typeof campaign.filters === 'object' ? campaign.filters : {}),
     ...options,
   };
 
-  if (!mergedFilters.activityCode && Array.isArray(campaign.activityCodes) && campaign.activityCodes.length > 0) {
-    mergedFilters.activityCode = campaign.activityCodes.join(",");
+  if (
+    !mergedFilters.activityCode &&
+    Array.isArray(campaign.activityCodes) &&
+    campaign.activityCodes.length > 0
+  ) {
+    mergedFilters.activityCode = campaign.activityCodes.join(',');
   }
 
   const establishments = await geoService.findEstablishmentsInRadius(
@@ -1490,7 +1573,9 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
     mergedFilters
   );
 
-  console.log(`[assignContactsWithGeoFilter] Establishments found from geoService: ${establishments.length}`);
+  console.log(
+    `[assignContactsWithGeoFilter] Establishments found from geoService: ${establishments.length}`
+  );
 
   if (establishments.length === 0) {
     logger.info(`No establishments found in radius for campaign ${campaignId}`);
@@ -1498,7 +1583,9 @@ const assignContactsWithGeoFilter = async (campaignId, options = {}) => {
   }
 
   const establishmentIds = establishments.map((e) => e.id);
-  console.log(`[assignContactsWithGeoFilter] Unique establishment IDs to assign: ${establishmentIds.length}`);
+  console.log(
+    `[assignContactsWithGeoFilter] Unique establishment IDs to assign: ${establishmentIds.length}`
+  );
 
   const result = await assignContactsToCampaign(campaignId, establishmentIds);
   console.log(`[assignContactsWithGeoFilter] Contacts created/updated: ${result.count}`);
@@ -1516,11 +1603,9 @@ const startCampaign = async (campaignId, options = {}) => {
   } = options;
 
   const resolvedAgentPhoneNumberId =
-    agentPhoneNumberId ||
-    process.env.ELEVENLABS_AGENT_PHONE_NUMBER_ID ||
-    null;
+    agentPhoneNumberId || process.env.ELEVENLABS_AGENT_PHONE_NUMBER_ID || null;
 
-  const resolvedScheduledTimeUnix = normalizeScheduledTimeUnix(scheduledTimeUnix);
+  let resolvedScheduledTimeUnix = normalizeScheduledTimeUnix(scheduledTimeUnix);
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
@@ -1542,18 +1627,18 @@ const startCampaign = async (campaignId, options = {}) => {
   });
 
   if (!campaign) {
-    const error = new Error("Campaign not found");
+    const error = new Error('Campaign not found');
     error.statusCode = 404;
     throw error;
   }
 
-  if (campaign.status === "ACTIVE") {
-    const error = new Error("Campaign is already active");
+  if (campaign.status === 'ACTIVE') {
+    const error = new Error('Campaign is already active');
     error.statusCode = 409;
     throw error;
   }
 
-  if (campaign.status === "COMPLETED" || campaign.status === "CANCELLED") {
+  if (campaign.status === 'COMPLETED' || campaign.status === 'CANCELLED') {
     const error = new Error(`Cannot start campaign with status ${campaign.status}`);
     error.statusCode = 409;
     throw error;
@@ -1561,28 +1646,33 @@ const startCampaign = async (campaignId, options = {}) => {
 
   // Auto-activate SCHEDULED campaigns if their scheduled time has passed
   // If campaign is SCHEDULED and time has passed, clear scheduledTimeUnix to mark as ACTIVE
-  if (campaign.status === "SCHEDULED") {
+  if (campaign.status === 'SCHEDULED') {
     const now = new Date();
     const scheduledAt = campaign.scheduledAt ? new Date(campaign.scheduledAt) : null;
 
     if (scheduledAt && scheduledAt <= now) {
-      logger.info("[CampaignStart] Auto-activating SCHEDULED campaign (scheduled time has passed)", {
-        campaignId,
-        scheduledAt,
-        now,
-      });
+      logger.info(
+        '[CampaignStart] Auto-activating SCHEDULED campaign (scheduled time has passed)',
+        {
+          campaignId,
+          scheduledAt,
+          now,
+        }
+      );
       // Resetear contactos SCHEDULED a PENDING para que el query de abajo los encuentre.
       // Solo afecta contactos que ElevenLabs no alcanzó a procesar (siguen en SCHEDULED);
       // los que ya pasaron a CALLED/RESPONDED no se tocan.
       await prisma.campaignContact.updateMany({
-        where: { campaignId, status: "SCHEDULED" },
-        data: { status: "PENDING", providerBatchId: null },
+        where: { campaignId, status: 'SCHEDULED' },
+        data: { status: 'PENDING', providerBatchId: null },
       });
       // Clear resolvedScheduledTimeUnix to force ACTIVE status below
       resolvedScheduledTimeUnix = null;
     } else if (scheduledAt && scheduledAt > now) {
       // Campaign is scheduled for future time - don't activate yet
-      const error = new Error(`Campaign is scheduled to start at ${scheduledAt.toISOString()}. Current time: ${now.toISOString()}`);
+      const error = new Error(
+        `Campaign is scheduled to start at ${scheduledAt.toISOString()}. Current time: ${now.toISOString()}`
+      );
       error.statusCode = 409;
       throw error;
     }
@@ -1590,14 +1680,14 @@ const startCampaign = async (campaignId, options = {}) => {
 
   const resolvedAgentId = agentId || campaign.agentConfigId;
   if (!resolvedAgentId) {
-    const error = new Error("agentId is required to start campaign");
+    const error = new Error('agentId is required to start campaign');
     error.statusCode = 400;
     throw error;
   }
 
   if (!resolvedAgentPhoneNumberId) {
     const error = new Error(
-      "agentPhoneNumberId is required to start campaign (or set ELEVENLABS_AGENT_PHONE_NUMBER_ID in .env)"
+      'agentPhoneNumberId is required to start campaign (or set ELEVENLABS_AGENT_PHONE_NUMBER_ID in .env)'
     );
     error.statusCode = 400;
     throw error;
@@ -1605,7 +1695,7 @@ const startCampaign = async (campaignId, options = {}) => {
 
   const resolvedAgentProfile = await fetchAgentProfile(resolvedAgentId);
 
-  logger.info("[CampaignStart] Resolved ElevenLabs agent profile", {
+  logger.info('[CampaignStart] Resolved ElevenLabs agent profile', {
     campaignId,
     agentId: resolvedAgentId,
     agentName: resolvedAgentProfile.agentName,
@@ -1620,13 +1710,13 @@ const startCampaign = async (campaignId, options = {}) => {
 
   logger.info(`[CampaignStart] Usando voz actual del agente ElevenLabs`, {
     voiceId: agentBuilderVoiceId,
-    voiceName: agentBuilderPersonalityName
+    voiceName: agentBuilderPersonalityName,
   });
 
   let contacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
-      status: "PENDING",
+      status: 'PENDING',
     },
     select: {
       id: true,
@@ -1646,7 +1736,7 @@ const startCampaign = async (campaignId, options = {}) => {
       contacts = await prisma.campaignContact.findMany({
         where: {
           campaignId,
-          status: "PENDING",
+          status: 'PENDING',
         },
         select: {
           id: true,
@@ -1661,14 +1751,18 @@ const startCampaign = async (campaignId, options = {}) => {
   }
 
   if (contacts.length === 0) {
-    const error = new Error("No hay contactos en estado PENDING para esta campaña. Todos pueden estar ya en proceso, completados o la asignación de contactos falló.");
+    const error = new Error(
+      'No hay contactos en estado PENDING para esta campaña. Todos pueden estar ya en proceso, completados o la asignación de contactos falló.'
+    );
     error.statusCode = 409;
     throw error;
   }
 
-  const allEstablishmentIds = [...new Set(contacts.map((contact) => contact.establishmentId).filter(Boolean))];
+  const allEstablishmentIds = [
+    ...new Set(contacts.map((contact) => contact.establishmentId).filter(Boolean)),
+  ];
   // IDs sintéticos csv_* no existen en BD geo — excluirlos del lookup para no generar query inútil
-  const establishmentIds = allEstablishmentIds.filter((id) => !id.startsWith("csv_"));
+  const establishmentIds = allEstablishmentIds.filter((id) => !id.startsWith('csv_'));
   let establishments = [];
 
   if (establishmentIds.length > 0) {
@@ -1692,218 +1786,232 @@ const startCampaign = async (campaignId, options = {}) => {
         },
       });
     } catch (geoError) {
-      logger.warn("Geo DB lookup failed while starting campaign, using campaign contact snapshot only", {
-        campaignId,
-        error: geoError.message,
-      });
+      logger.warn(
+        'Geo DB lookup failed while starting campaign, using campaign contact snapshot only',
+        {
+          campaignId,
+          error: geoError.message,
+        }
+      );
     }
   }
 
-  const establishmentById = new Map(establishments.map((establishment) => [establishment.id, establishment]));
+  const establishmentById = new Map(
+    establishments.map((establishment) => [establishment.id, establishment])
+  );
 
   // Construir contexto de campaña para pasar a ElevenLabs
   // IMPORTANTE: Solo se incluye cuando la llamada se dispara desde una campaña
   const campaignContext = await campaignContextService.buildCampaignContext(campaignId, null);
 
-  const recipients = await Promise.all(contacts.map(async (contact) => {
-    const establishment = establishmentById.get(contact.establishmentId);
-    const contactData =
-      contact.establishmentData && typeof contact.establishmentData === "object"
-        ? contact.establishmentData
-        : {};
+  const recipients = await Promise.all(
+    contacts.map(async (contact) => {
+      const establishment = establishmentById.get(contact.establishmentId);
+      const contactData =
+        contact.establishmentData && typeof contact.establishmentData === 'object'
+          ? contact.establishmentData
+          : {};
 
-    const businessName =
-      contact.establishmentName ||
-      establishment?.name ||
-      contactData.name ||
-      contactData.businessName ||
-      null;
+      const businessName =
+        contact.establishmentName ||
+        establishment?.name ||
+        contactData.name ||
+        contactData.businessName ||
+        null;
 
-    const prospectName =
-      contactData.prospectName ||
-      contactData.decisionMakerName ||
-      contactData.contactName ||
-      businessName ||
-      "Prospecto";
+      const prospectName =
+        contactData.prospectName ||
+        contactData.decisionMakerName ||
+        contactData.contactName ||
+        businessName ||
+        'Prospecto';
 
-    const establishmentName = businessName || "Establecimiento";
-    const decisionMakerName =
-      contactData.decisionMakerName ||
-      contactData.prospectName ||
-      contactData.contactName ||
-      prospectName ||
-      "Prospecto";
-    const agentName =
-      contactData.agentName ||
-      resolvedAgentProfile.agentName ||
-      campaign.agentConfigName ||
-      "Asesor EasyOrder";
+      const establishmentName = businessName || 'Establecimiento';
+      const decisionMakerName =
+        contactData.decisionMakerName ||
+        contactData.prospectName ||
+        contactData.contactName ||
+        prospectName ||
+        'Prospecto';
+      const agentName =
+        contactData.agentName ||
+        resolvedAgentProfile.agentName ||
+        campaign.agentConfigName ||
+        'Asesor EasyOrder';
 
-    // Prioridad 1: ElevenLabs, Prioridad 2: Agent Builder, Prioridad 3: Contact Data
-    const personalityName =
-      resolvedAgentProfile.voiceName ||
-      agentBuilderPersonalityName ||
-      resolvedAgentProfile.voiceId ||
-      contactData.personality_name ||
-      contactData.personalityName ||
-      agentName;
+      // Prioridad 1: ElevenLabs, Prioridad 2: Agent Builder, Prioridad 3: Contact Data
+      const personalityName =
+        resolvedAgentProfile.voiceName ||
+        agentBuilderPersonalityName ||
+        resolvedAgentProfile.voiceId ||
+        contactData.personality_name ||
+        contactData.personalityName ||
+        agentName;
 
-    const finalVoiceName = resolvedAgentProfile.voiceName || agentBuilderPersonalityName || null;
-    const finalVoiceId = resolvedAgentProfile.voiceId || agentBuilderVoiceId || null;
+      const finalVoiceName = resolvedAgentProfile.voiceName || agentBuilderPersonalityName || null;
+      const finalVoiceId = resolvedAgentProfile.voiceId || agentBuilderVoiceId || null;
 
-    const phoneNumber =
-      contact.establishmentPhone ||
-      establishment?.phone ||
-      contactData.phone ||
-      contactData.whatsapp ||
-      null;
+      const phoneNumber =
+        contact.establishmentPhone ||
+        establishment?.phone ||
+        contactData.phone ||
+        contactData.whatsapp ||
+        null;
 
-    const email =
-      contactData.email ||
-      contactData.decisionMakerEmail ||
-      establishment?.email ||
-      "";
+      const email =
+        contactData.email || contactData.decisionMakerEmail || establishment?.email || '';
 
-    // Enriquecer contexto de campaña con datos específicos del contacto
-    const contactSpecificContext = campaignContext ? {
-      ...campaignContext,
-      contactId: contact.id,
-      establishmentName: establishmentName,
-      prospectName: prospectName,
-      phoneNumber: phoneNumber
-    } : null;
+      // Enriquecer contexto de campaña con datos específicos del contacto
+      const contactSpecificContext = campaignContext
+        ? {
+            ...campaignContext,
+            contactId: contact.id,
+            establishmentName: establishmentName,
+            prospectName: prospectName,
+            phoneNumber: phoneNumber,
+          }
+        : null;
 
-    // Buscar enrichment previo del establishment
-    const enrichment = await prisma.establishmentEnrichment.findUnique({
-      where: { establishmentId: contact.establishmentId },
-      select: {
-        establishmentData: true,
-        decisionMakerName: true,
-        decisionMakerEmail: true,
-        enrichmentStatus: true,
-        level: true,
+      // Buscar enrichment previo del establishment
+      const enrichment = await prisma.establishmentEnrichment.findUnique({
+        where: { establishmentId: contact.establishmentId },
+        select: {
+          establishmentData: true,
+          decisionMakerName: true,
+          decisionMakerEmail: true,
+          enrichmentStatus: true,
+          level: true,
+        },
+      });
+
+      const stageData = enrichment?.establishmentData || {};
+
+      // Gating de cupones por contact: UPGRADEPRO y REFER son post-venta exclusivamente.
+      // El filtro se aplica aqui (dispatch), no al crear campaña, porque el batch puede
+      // mezclar prospectos y clientes activos.
+      // Nota: usamos solo level=CLIENT como señal de cliente activo — productPurchased y
+      // clientStatus no se usan actualmente en el flujo y no son confiables como filtro.
+      const isClient = enrichment?.level === 'CLIENT';
+
+      const campaignTemplates = contactSpecificContext?.coupons?.templates || [];
+
+      const eligibleTemplates = campaignTemplates.filter((t) => {
+        const code = t.type;
+        if (code === 'UPGRADEPRO') return isClient;
+        if (code === 'REFER') return isClient;
+        // PLUS30, 50OFF, COMEBACK aplican a prospectos/leads (no clientes activos)
+        if (['PLUS30', '50OFF', 'COMEBACK'].includes(code)) return !isClient;
+        return true;
+      });
+
+      // Resolver el cupón principal para este contact: usar el principal de la campaña si
+      // sigue siendo elegible, sino el primer alternativo que aplique, sino null.
+      const campaignPrincipal =
+        contactSpecificContext?.coupons?.couponType ||
+        campaign.couponPrefix ||
+        contactData.couponType ||
+        null;
+
+      // Intentar match por tipo (ej. "COMEBACK") o por ID del template (UUID que guarda couponPrefix)
+      const resolvedCouponType =
+        eligibleTemplates.find((t) => t.type === campaignPrincipal || t.id === campaignPrincipal)
+          ?.type ||
+        eligibleTemplates[0]?.type ||
+        null;
+
+      if (campaignPrincipal && !resolvedCouponType) {
+        logger.info(
+          '[CampaignStart] Cupon principal no elegible para este contact, ningun alternativo disponible',
+          {
+            contactId: contact.id,
+            establishmentId: contact.establishmentId,
+            campaignPrincipal,
+            level: enrichment?.level,
+          }
+        );
+      } else if (campaignPrincipal && resolvedCouponType !== campaignPrincipal) {
+        logger.info(
+          '[CampaignStart] Cupon principal sustituido por alternativo elegible para este contact',
+          {
+            contactId: contact.id,
+            original: campaignPrincipal,
+            resolved: resolvedCouponType,
+            level: enrichment?.level,
+          }
+        );
       }
-    })
 
-    const stageData = enrichment?.establishmentData || {};
-
-    // Gating de cupones por contact: UPGRADEPRO y REFER son post-venta exclusivamente.
-    // El filtro se aplica aqui (dispatch), no al crear campaña, porque el batch puede
-    // mezclar prospectos y clientes activos.
-    // Nota: usamos solo level=CLIENT como señal de cliente activo — productPurchased y
-    // clientStatus no se usan actualmente en el flujo y no son confiables como filtro.
-    const isClient = enrichment?.level === 'CLIENT';
-
-    const campaignTemplates = contactSpecificContext?.coupons?.templates || [];
-
-    const eligibleTemplates = campaignTemplates.filter(t => {
-      const code = t.type;
-      if (code === 'UPGRADEPRO') return isClient;
-      if (code === 'REFER') return isClient;
-      // PLUS30, 50OFF, COMEBACK aplican a prospectos/leads (no clientes activos)
-      if (['PLUS30', '50OFF', 'COMEBACK'].includes(code)) return !isClient;
-      return true;
-    });
-
-    // Resolver el cupón principal para este contact: usar el principal de la campaña si
-    // sigue siendo elegible, sino el primer alternativo que aplique, sino null.
-    const campaignPrincipal = contactSpecificContext?.coupons?.couponType
-      || campaign.couponPrefix
-      || contactData.couponType
-      || null;
-
-    // Intentar match por tipo (ej. "COMEBACK") o por ID del template (UUID que guarda couponPrefix)
-    const resolvedCouponType =
-      eligibleTemplates.find(t => t.type === campaignPrincipal || t.id === campaignPrincipal)?.type
-      || eligibleTemplates[0]?.type
-      || null;
-
-    if (campaignPrincipal && !resolvedCouponType) {
-      logger.info("[CampaignStart] Cupon principal no elegible para este contact, ningun alternativo disponible", {
-        contactId: contact.id,
-        establishmentId: contact.establishmentId,
-        campaignPrincipal,
-        level: enrichment?.level,
-      });
-    } else if (campaignPrincipal && resolvedCouponType !== campaignPrincipal) {
-      logger.info("[CampaignStart] Cupon principal sustituido por alternativo elegible para este contact", {
-        contactId: contact.id,
-        original: campaignPrincipal,
-        resolved: resolvedCouponType,
-        level: enrichment?.level,
-      });
-    }
-
-    return {
-      campaignContactId: contact.id,
-      phone_number: phoneNumber,
-      dynamic_variables: {
-        campaignId,
+      return {
         campaignContactId: contact.id,
-        establishmentId: contact.establishmentId,
-        establishment_id: contact.establishmentId,
-        prospectName,
-        businessName,
-        establishmentName,
-        decisionMakerName,
-        agentName,
-        voiceName: finalVoiceName,
-        voice_name: finalVoiceName,
-        voiceId: finalVoiceId,
-        voice_id: finalVoiceId,
-        establishment_name: establishmentName,
-        decision_maker_name: decisionMakerName,
-        agent_name: agentName,
-        companyName: establishmentName,
-        company_name: establishmentName,
-        contactName: decisionMakerName,
-        contact_name: decisionMakerName,
-        leadName: decisionMakerName,
-        lead_name: decisionMakerName,
-        agentConfigId: resolvedAgentId,
-        campaignName: campaign.name || null,
-        campaignOffer: campaign.offer || null,
-        personality_name: personalityName,
-        personalityName: personalityName,
-        phone: phoneNumber,
         phone_number: phoneNumber,
-        phoneNumber: phoneNumber,
-        email: email,
-        decisionMakerEmail: email,
-        decision_maker_email: email,
-        previousEmail: enrichment?.decisionMakerEmail || email || '',
-        previous_email: enrichment?.decisionMakerEmail || email || '',
-        // Contexto de campaña para ElevenLabs (Convertidos a string para evitar "CADENA VACÍA")
-        campaignContext: contactSpecificContext ? JSON.stringify(contactSpecificContext) : "",
-        // Cupones ya filtrados por elegibilidad del contact especifico
-        couponsAvailable: resolvedCouponType ? "true" : "false",
-        couponTypes: eligibleTemplates.map(t => t.type).join(", ") || "",
-        couponType: resolvedCouponType,
-        couponSendEndpoint: "/api/v1/coupons-whatsapp/generate-and-send",
-        agentInstructions: contactSpecificContext?.agentInstructions || null,
-        // Datos del stage
-        discoveryContext: JSON.stringify(stageData.discovery || {}),
-        qualificationContext: JSON.stringify(stageData.qualification || {}),
-        activationContext: JSON.stringify(stageData.activation || {}),
-        previousContactName: enrichment?.decisionMakerName || '',
-        previousContactEmail: enrichment?.decisionMakerEmail || '',
-        currentStage: enrichment?.enrichmentStatus || 'new',
-      },
-    };
-  }));
+        dynamic_variables: {
+          campaignId,
+          campaignContactId: contact.id,
+          establishmentId: contact.establishmentId,
+          establishment_id: contact.establishmentId,
+          prospectName,
+          businessName,
+          establishmentName,
+          decisionMakerName,
+          agentName,
+          voiceName: finalVoiceName,
+          voice_name: finalVoiceName,
+          voiceId: finalVoiceId,
+          voice_id: finalVoiceId,
+          establishment_name: establishmentName,
+          decision_maker_name: decisionMakerName,
+          agent_name: agentName,
+          companyName: establishmentName,
+          company_name: establishmentName,
+          contactName: decisionMakerName,
+          contact_name: decisionMakerName,
+          leadName: decisionMakerName,
+          lead_name: decisionMakerName,
+          agentConfigId: resolvedAgentId,
+          campaignName: campaign.name || null,
+          campaignOffer: campaign.offer || null,
+          personality_name: personalityName,
+          personalityName: personalityName,
+          phone: phoneNumber,
+          phone_number: phoneNumber,
+          phoneNumber: phoneNumber,
+          email: email,
+          decisionMakerEmail: email,
+          decision_maker_email: email,
+          previousEmail: enrichment?.decisionMakerEmail || email || '',
+          previous_email: enrichment?.decisionMakerEmail || email || '',
+          // Contexto de campaña para ElevenLabs (Convertidos a string para evitar "CADENA VACÍA")
+          campaignContext: contactSpecificContext ? JSON.stringify(contactSpecificContext) : '',
+          // Cupones ya filtrados por elegibilidad del contact especifico
+          couponsAvailable: resolvedCouponType ? 'true' : 'false',
+          couponTypes: eligibleTemplates.map((t) => t.type).join(', ') || '',
+          couponType: resolvedCouponType,
+          couponSendEndpoint: '/api/v1/coupons-whatsapp/generate-and-send',
+          agentInstructions: contactSpecificContext?.agentInstructions || null,
+          // Datos del stage
+          discoveryContext: JSON.stringify(stageData.discovery || {}),
+          qualificationContext: JSON.stringify(stageData.qualification || {}),
+          activationContext: JSON.stringify(stageData.activation || {}),
+          previousContactName: enrichment?.decisionMakerName || '',
+          previousContactEmail: enrichment?.decisionMakerEmail || '',
+          currentStage: enrichment?.enrichmentStatus || 'new',
+        },
+      };
+    })
+  );
 
-  logger.info("[CampaignStart] Dynamic variables preview", {
+  logger.info('[CampaignStart] Dynamic variables preview', {
     campaignId,
     agentId: resolvedAgentId,
     firstRecipient: recipients[0]
       ? {
-        campaignContactId: recipients[0].campaignContactId,
-        phoneNumber: recipients[0].phone_number,
-        establishment_id: recipients[0].dynamic_variables?.establishment_id,
-        agent_name: recipients[0].dynamic_variables?.agent_name,
-        voice_id: recipients[0].dynamic_variables?.voice_id,
-        personality_name: recipients[0].dynamic_variables?.personality_name,
-      }
+          campaignContactId: recipients[0].campaignContactId,
+          phoneNumber: recipients[0].phone_number,
+          establishment_id: recipients[0].dynamic_variables?.establishment_id,
+          agent_name: recipients[0].dynamic_variables?.agent_name,
+          voice_id: recipients[0].dynamic_variables?.voice_id,
+          personality_name: recipients[0].dynamic_variables?.personality_name,
+        }
       : null,
   });
 
@@ -1926,7 +2034,7 @@ const startCampaign = async (campaignId, options = {}) => {
     if (!campaignContactId) {
       continue;
     }
-    invalidContactReasons.set(campaignContactId, invalidEntry.reason || "Invalid recipient");
+    invalidContactReasons.set(campaignContactId, invalidEntry.reason || 'Invalid recipient');
   }
 
   const dispatchedContactIds = recipients
@@ -1934,8 +2042,8 @@ const startCampaign = async (campaignId, options = {}) => {
     .filter(Boolean);
 
   // Determinar estado según si está programada o no
-  const campaignStatus = resolvedScheduledTimeUnix ? "SCHEDULED" : "ACTIVE";
-  const contactStatus = resolvedScheduledTimeUnix ? "SCHEDULED" : "CALLING";
+  const campaignStatus = resolvedScheduledTimeUnix ? 'SCHEDULED' : 'ACTIVE';
+  const contactStatus = resolvedScheduledTimeUnix ? 'SCHEDULED' : 'CALLING';
 
   await prisma.$transaction([
     prisma.campaign.update({
@@ -1943,23 +2051,21 @@ const startCampaign = async (campaignId, options = {}) => {
       data: {
         status: campaignStatus,
         startedAt: new Date(),
-        scheduledAt: resolvedScheduledTimeUnix
-          ? new Date(resolvedScheduledTimeUnix * 1000)
-          : null,
+        scheduledAt: resolvedScheduledTimeUnix ? new Date(resolvedScheduledTimeUnix * 1000) : null,
       },
     }),
     ...Array.from(invalidContactReasons.entries()).map(([contactId, reason]) =>
       prisma.campaignContact.update({
         where: { id: contactId },
         data: {
-          status: "FAILED",
+          status: 'FAILED',
           errorReason: reason,
         },
       })
     ),
   ]);
 
-  logger.info("Campaign started with batch dispatch", {
+  logger.info('Campaign started with batch dispatch', {
     campaignId,
     agentId: resolvedAgentId,
     status: campaignStatus,
@@ -1975,7 +2081,9 @@ const startCampaign = async (campaignId, options = {}) => {
     campaignId,
     status: campaignStatus,
     startedAt: new Date().toISOString(),
-    scheduledFor: resolvedScheduledTimeUnix ? new Date(resolvedScheduledTimeUnix * 1000).toISOString() : null,
+    scheduledFor: resolvedScheduledTimeUnix
+      ? new Date(resolvedScheduledTimeUnix * 1000).toISOString()
+      : null,
     dispatch: dispatchResult,
   };
 };
@@ -1989,7 +2097,7 @@ const getCampaignContacts = async (campaignId, filters = {}) => {
   const [contacts, total] = await Promise.all([
     prisma.campaignContact.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
       include: {
@@ -2024,14 +2132,14 @@ const getCampaignContacts = async (campaignId, filters = {}) => {
         // Construir dirección completa
         const address = establishment
           ? [
-            establishment.streetName,
-            establishment.exteriorNum,
-            establishment.neighborhood,
-            establishment.municipalityName,
-            establishment.stateName,
-          ]
-            .filter(Boolean)
-            .join(", ")
+              establishment.streetName,
+              establishment.exteriorNum,
+              establishment.neighborhood,
+              establishment.municipalityName,
+              establishment.stateName,
+            ]
+              .filter(Boolean)
+              .join(', ')
           : null;
 
         return {
@@ -2066,30 +2174,30 @@ const getCampaignContacts = async (campaignId, filters = {}) => {
 
 const updateContactStatus = async (contactId, status, metadata = {}) => {
   const validStatuses = [
-    "PENDING",
-    "CALLING",
-    "PAUSED",
-    "CALLED",
-    "RESPONDED",
-    "SENT",
-    "DELIVERED",
-    "VISITED",
-    "CONVERTED",
-    "FAILED",
+    'PENDING',
+    'CALLING',
+    'PAUSED',
+    'CALLED',
+    'RESPONDED',
+    'SENT',
+    'DELIVERED',
+    'VISITED',
+    'CONVERTED',
+    'FAILED',
   ];
   if (!validStatuses.includes(status)) {
-    throw new Error(`Invalid status. Must be one of: ${validStatuses.join(", ")}`);
+    throw new Error(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
   }
 
   const updateData = { status };
 
-  if (status === "SENT" && !metadata.sentAt) {
+  if (status === 'SENT' && !metadata.sentAt) {
     updateData.sentAt = new Date();
   }
-  if (status === "VISITED" && !metadata.visitedAt) {
+  if (status === 'VISITED' && !metadata.visitedAt) {
     updateData.visitedAt = new Date();
   }
-  if (status === "CONVERTED" && !metadata.convertedAt) {
+  if (status === 'CONVERTED' && !metadata.convertedAt) {
     updateData.convertedAt = new Date();
   }
   if (metadata.messageId) {
@@ -2108,22 +2216,22 @@ const updateContactStatus = async (contactId, status, metadata = {}) => {
     where: { id: contact.campaignId },
   });
 
-  if (status === "SENT" || status === "DELIVERED" || status === "CALLED") {
+  if (status === 'SENT' || status === 'DELIVERED' || status === 'CALLED') {
     await prisma.campaign.update({
       where: { id: contact.campaignId },
       data: { totalCalled: { increment: 1 } },
     });
-  } else if (status === "RESPONDED" || status === "VISITED") {
+  } else if (status === 'RESPONDED' || status === 'VISITED') {
     await prisma.campaign.update({
       where: { id: contact.campaignId },
       data: { totalResponded: { increment: 1 } },
     });
-  } else if (status === "CONVERTED") {
+  } else if (status === 'CONVERTED') {
     await prisma.campaign.update({
       where: { id: contact.campaignId },
       data: { totalConverted: { increment: 1 } },
     });
-  } else if (status === "FAILED") {
+  } else if (status === 'FAILED') {
     await prisma.campaign.update({
       where: { id: contact.campaignId },
       data: { totalFailed: { increment: 1 } },
@@ -2148,11 +2256,11 @@ const getCampaignStats = async (campaignId) => {
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
   const statusBreakdown = await prisma.campaignContact.groupBy({
-    by: ["status"],
+    by: ['status'],
     where: { campaignId },
     _count: true,
   });
@@ -2161,7 +2269,7 @@ const getCampaignStats = async (campaignId) => {
   const convertedContacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
-      status: "CONVERTED",
+      status: 'CONVERTED',
       convertedAt: {
         not: null,
       },
@@ -2226,20 +2334,21 @@ const getCampaignStats = async (campaignId) => {
 
     const totalDuration = totalDurationResult._sum.callDuration || 0;
     const callsWithDurationCount = totalDurationResult._count.callDuration || 0;
-    const avgDurationSeconds = callsWithDurationCount > 0 ? Math.round(totalDuration / callsWithDurationCount) : 0;
+    const avgDurationSeconds =
+      callsWithDurationCount > 0 ? Math.round(totalDuration / callsWithDurationCount) : 0;
     const minutes = Math.floor(avgDurationSeconds / 60);
     const seconds = avgDurationSeconds % 60;
     const avgDurationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
     agentMetrics.push({
       agentId: campaign.agentConfigId,
-      agentName: campaign.agentConfigName || "Agente Desconocido",
+      agentName: campaign.agentConfigName || 'Agente Desconocido',
       callsMade: totalCalled,
       responses: totalResponded,
       conversions: totalConverted,
       responseRate: responseRate.toFixed(2),
       conversionRate: conversionRate.toFixed(2),
-      avgCallDuration: avgDurationStr
+      avgCallDuration: avgDurationStr,
     });
   }
 
@@ -2273,12 +2382,12 @@ const pauseCampaign = async (campaignId) => {
   });
 
   if (!campaign) {
-    const error = new Error("Campaign not found");
+    const error = new Error('Campaign not found');
     error.statusCode = 404;
     throw error;
   }
 
-  if (campaign.status !== "ACTIVE") {
+  if (campaign.status !== 'ACTIVE') {
     const error = new Error(`Campaign must be ACTIVE to pause. Current status: ${campaign.status}`);
     error.statusCode = 409;
     throw error;
@@ -2288,7 +2397,7 @@ const pauseCampaign = async (campaignId) => {
   const callingContactsCount = await prisma.campaignContact.count({
     where: {
       campaignId,
-      status: "CALLING",
+      status: 'CALLING',
     },
   });
 
@@ -2296,17 +2405,17 @@ const pauseCampaign = async (campaignId) => {
   const pausedContactsResult = await prisma.campaignContact.updateMany({
     where: {
       campaignId,
-      status: "CALLING",
+      status: 'CALLING',
     },
     data: {
-      status: "PAUSED",
+      status: 'PAUSED',
     },
   });
 
   const updatedCampaign = await prisma.campaign.update({
     where: { id: campaignId },
     data: {
-      status: "PAUSED",
+      status: 'PAUSED',
     },
   });
 
@@ -2323,17 +2432,19 @@ const pauseCampaign = async (campaignId) => {
 
 const cancelCampaign = async (id) => {
   const campaign = await prisma.campaign.findUnique({ where: { id } });
-  if (!campaign) throw new Error("Campaña no encontrada");
-  if (campaign.status === "COMPLETED" || campaign.status === "CANCELLED") {
-    throw new Error("La campaña ya ha finalizado");
+  if (!campaign) throw new Error('Campaña no encontrada');
+  if (campaign.status === 'COMPLETED' || campaign.status === 'CANCELLED') {
+    throw new Error('La campaña ya ha finalizado');
   }
 
   // Ventana de bloqueo: no cancelar si la campaña se ejecutará en < 2 min
   // (ElevenLabs podría estar iniciando las llamadas en este momento)
-  if (campaign.status === "SCHEDULED" && campaign.scheduledAt) {
+  if (campaign.status === 'SCHEDULED' && campaign.scheduledAt) {
     const minutesUntilExecution = (new Date(campaign.scheduledAt) - new Date()) / 1000 / 60;
     if (minutesUntilExecution < 2) {
-      const error = new Error("No se puede cancelar una campaña que se ejecutará en menos de 2 minutos");
+      const error = new Error(
+        'No se puede cancelar una campaña que se ejecutará en menos de 2 minutos'
+      );
       error.statusCode = 400;
       throw error;
     }
@@ -2344,7 +2455,7 @@ const cancelCampaign = async (id) => {
     where: {
       campaignId: id,
       providerBatchId: { not: null },
-      status: { in: ["SCHEDULED", "CALLING", "PENDING"] },
+      status: { in: ['SCHEDULED', 'CALLING', 'PENDING'] },
     },
     select: { providerBatchId: true },
   });
@@ -2359,19 +2470,19 @@ const cancelCampaign = async (id) => {
 
     const failures = cancelResults
       .map((result, i) => ({ batchId: uniqueBatchIds[i], ...result }))
-      .filter((r) => r.status === "rejected");
+      .filter((r) => r.status === 'rejected');
 
     if (failures.length > 0) {
-      logger.warn("[CampaignCancel] Some provider batches could not be cancelled", {
+      logger.warn('[CampaignCancel] Some provider batches could not be cancelled', {
         campaignId: id,
         failures: failures.map((f) => ({ batchId: f.batchId, reason: f.reason?.message })),
       });
     }
 
-    logger.info("[CampaignCancel] Provider batches processed", {
+    logger.info('[CampaignCancel] Provider batches processed', {
       campaignId: id,
       total: uniqueBatchIds.length,
-      cancelled: cancelResults.filter((r) => r.status === "fulfilled").length,
+      cancelled: cancelResults.filter((r) => r.status === 'fulfilled').length,
     });
   }
 
@@ -2381,14 +2492,14 @@ const cancelCampaign = async (id) => {
   await prisma.campaignContact.updateMany({
     where: {
       campaignId: id,
-      status: { in: ["PENDING", "SCHEDULED", "CALLING"] },
+      status: { in: ['PENDING', 'SCHEDULED', 'CALLING'] },
     },
-    data: { status: "CANCELLED" },
+    data: { status: 'CANCELLED' },
   });
 
   return prisma.campaign.update({
     where: { id },
-    data: { status: "CANCELLED" },
+    data: { status: 'CANCELLED' },
   });
 };
 
@@ -2400,12 +2511,12 @@ const cancelCampaign = async (id) => {
 const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
   const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
   if (!campaign) {
-    const error = new Error("Campaña no encontrada");
+    const error = new Error('Campaña no encontrada');
     error.statusCode = 404;
     throw error;
   }
 
-  if (campaign.status !== "SCHEDULED") {
+  if (campaign.status !== 'SCHEDULED') {
     const error = new Error(
       `Solo se pueden posponer campañas SCHEDULED. Estado actual: ${campaign.status}`
     );
@@ -2418,7 +2529,7 @@ const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
     const minutesUntilExecution = (new Date(campaign.scheduledAt) - new Date()) / 1000 / 60;
     if (minutesUntilExecution < 2) {
       const error = new Error(
-        "No se puede posponer una campaña que se ejecutará en menos de 2 minutos"
+        'No se puede posponer una campaña que se ejecutará en menos de 2 minutos'
       );
       error.statusCode = 400;
       throw error;
@@ -2428,7 +2539,7 @@ const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
   // Validar que la nueva fecha sea al menos 60 segundos en el futuro
   const resolvedNewTime = normalizeScheduledTimeUnix(newScheduledTimeUnix);
   if (!resolvedNewTime) {
-    const error = new Error("La nueva fecha debe ser al menos 60 segundos en el futuro");
+    const error = new Error('La nueva fecha debe ser al menos 60 segundos en el futuro');
     error.statusCode = 400;
     throw error;
   }
@@ -2445,7 +2556,7 @@ const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
     await Promise.allSettled(
       uniqueBatchIds.map((batchId) => campaignBatchDispatcherService.cancelProviderBatch(batchId))
     );
-    logger.info("[CampaignReschedule] Existing provider batches cancelled", {
+    logger.info('[CampaignReschedule] Existing provider batches cancelled', {
       campaignId,
       batchCount: uniqueBatchIds.length,
     });
@@ -2454,19 +2565,19 @@ const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
   // Resetear contactos a PENDING para que startCampaign los re-despache
   await prisma.campaignContact.updateMany({
     where: { campaignId },
-    data: { status: "PENDING", providerBatchId: null, sentAt: null },
+    data: { status: 'PENDING', providerBatchId: null, sentAt: null },
   });
 
   // Temporalmente DRAFT para que startCampaign pueda ejecutarse sin conflicto de status
   await prisma.campaign.update({
     where: { id: campaignId },
-    data: { status: "DRAFT", scheduledAt: null },
+    data: { status: 'DRAFT', scheduledAt: null },
   });
 
   try {
     const result = await startCampaign(campaignId, { scheduledTimeUnix: resolvedNewTime });
 
-    logger.info("[CampaignReschedule] Campaign rescheduled successfully", {
+    logger.info('[CampaignReschedule] Campaign rescheduled successfully', {
       campaignId,
       newScheduledAt: result.scheduledAt,
       cancelledBatches: uniqueBatchIds.length,
@@ -2475,7 +2586,7 @@ const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
     return result;
   } catch (dispatchError) {
     // Si el re-envío falla, la campaña queda en DRAFT para que el usuario pueda reintentar
-    logger.error("[CampaignReschedule] Re-dispatch failed after cancel. Campaign left in DRAFT.", {
+    logger.error('[CampaignReschedule] Re-dispatch failed after cancel. Campaign left in DRAFT.', {
       campaignId,
       error: dispatchError.message,
     });
@@ -2492,8 +2603,8 @@ const rescheduleCampaign = async (campaignId, newScheduledTimeUnix) => {
 const retryCampaignContacts = async (campaignId, options = {}) => {
   const { includeFailed = true, includeStaleCalling = true } = options;
   const statuses = [];
-  if (includeFailed) statuses.push("FAILED");
-  if (includeStaleCalling) statuses.push("CALLING");
+  if (includeFailed) statuses.push('FAILED');
+  if (includeStaleCalling) statuses.push('CALLING');
 
   if (statuses.length === 0) return { updatedCount: 0 };
 
@@ -2503,13 +2614,13 @@ const retryCampaignContacts = async (campaignId, options = {}) => {
       status: { in: statuses },
     },
     data: {
-      status: "PENDING",
+      status: 'PENDING',
       providerBatchId: null,
       errorReason: null,
     },
   });
 
-  logger.info("[CampaignRetry] Contacts reset for retry", {
+  logger.info('[CampaignRetry] Contacts reset for retry', {
     campaignId,
     updatedCount: result.count,
     statuses,
@@ -2528,13 +2639,15 @@ const resumeCampaign = async (campaignId) => {
   });
 
   if (!campaign) {
-    const error = new Error("Campaign not found");
+    const error = new Error('Campaign not found');
     error.statusCode = 404;
     throw error;
   }
 
-  if (campaign.status !== "PAUSED" && campaign.status !== "ACTIVE") {
-    const error = new Error(`Campaign must be PAUSED or ACTIVE to resume/reconcile. Current status: ${campaign.status}`);
+  if (campaign.status !== 'PAUSED' && campaign.status !== 'ACTIVE') {
+    const error = new Error(
+      `Campaign must be PAUSED or ACTIVE to resume/reconcile. Current status: ${campaign.status}`
+    );
     error.statusCode = 409;
     throw error;
   }
@@ -2544,7 +2657,7 @@ const resumeCampaign = async (campaignId) => {
   const stuckCallingContacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
-      status: { in: ["CALLING", "PAUSED"] },
+      status: { in: ['CALLING', 'PAUSED'] },
     },
     select: {
       id: true,
@@ -2588,8 +2701,10 @@ const resumeCampaign = async (campaignId) => {
         continue;
       }
 
-      if (!["CALLING", "PAUSED"].includes(latestContact.status)) {
-        logger.info(`Contact ${latestContact.id} skipped in resume reconciliation (status changed to ${latestContact.status})`);
+      if (!['CALLING', 'PAUSED'].includes(latestContact.status)) {
+        logger.info(
+          `Contact ${latestContact.id} skipped in resume reconciliation (status changed to ${latestContact.status})`
+        );
         continue;
       }
 
@@ -2600,32 +2715,36 @@ const resumeCampaign = async (campaignId) => {
 
       // Si el webhook fue recibido, marcar como CALLED (la llamada se completó)
       if (latestContact.webhookReceivedAt) {
-        const finalStatus = ["CALLED", "RESPONDED", "FAILED", "SENT"].includes(latestContact.status)
+        const finalStatus = ['CALLED', 'RESPONDED', 'FAILED', 'SENT'].includes(latestContact.status)
           ? latestContact.status
-          : "CALLED";
+          : 'CALLED';
 
         await prisma.campaignContact.update({
           where: { id: latestContact.id },
           data: { status: finalStatus },
         });
         reconciliedCount++;
-        logger.info(`Contact ${latestContact.id} reconciled: ${latestContact.status} → ${finalStatus} (webhook received)`);
+        logger.info(
+          `Contact ${latestContact.id} reconciled: ${latestContact.status} → ${finalStatus} (webhook received)`
+        );
       }
       // Especial para contactos en PAUSED sin webhook pero con evidencia de que NO se despacharon o fallaron silenciosamente
-      else if (latestContact.status === "PAUSED" && !latestContact.providerBatchId) {
+      else if (latestContact.status === 'PAUSED' && !latestContact.providerBatchId) {
         await prisma.campaignContact.update({
           where: { id: latestContact.id },
           data: {
-            status: "PENDING",
+            status: 'PENDING',
             sentAt: null,
             providerBatchId: null,
             conversationId: null,
-            errorReason: null
+            errorReason: null,
           },
         });
         reconciliedCount++;
         relaunchedCount++;
-        logger.info(`Contact ${latestContact.id} reconciled: PAUSED → PENDING (no provider/webhook evidence, ready to retry)`);
+        logger.info(
+          `Contact ${latestContact.id} reconciled: PAUSED → PENDING (no provider/webhook evidence, ready to retry)`
+        );
       }
       // Si ya fue despachado al proveedor (providerBatchId), NO relanzar para evitar duplicados.
       // Esperar webhook y, si expira timeout, cerrarlo sin redial.
@@ -2634,26 +2753,33 @@ const resumeCampaign = async (campaignId) => {
           await prisma.campaignContact.update({
             where: { id: latestContact.id },
             data: {
-              status: "FAILED",
-              errorReason: "Call dispatched to provider but webhook was not received before timeout (30m+)",
+              status: 'FAILED',
+              errorReason:
+                'Call dispatched to provider but webhook was not received before timeout (30m+)',
             },
           });
           reconciliedCount++;
           closedWithoutWebhookCount++;
-          logger.warn(`Contact ${latestContact.id} reconciled: ${latestContact.status} → FAILED (provider dispatch confirmed, timeout without webhook)`);
+          logger.warn(
+            `Contact ${latestContact.id} reconciled: ${latestContact.status} → FAILED (provider dispatch confirmed, timeout without webhook)`
+          );
         } else {
-          if (latestContact.status === "PAUSED") {
+          if (latestContact.status === 'PAUSED') {
             // Regresarlo a CALLING porque ya está en ElevenLabs, estamos esperando el webhook
             await prisma.campaignContact.update({
               where: { id: latestContact.id },
-              data: { status: "CALLING" },
+              data: { status: 'CALLING' },
             });
             reconciliedCount++;
             waitingWebhookCount++;
-            logger.info(`Contact ${latestContact.id} reconciled: PAUSED → CALLING (provider dispatch confirmed, awaiting webhook ${timeInCallingMinutes.toFixed(1)}m)`);
+            logger.info(
+              `Contact ${latestContact.id} reconciled: PAUSED → CALLING (provider dispatch confirmed, awaiting webhook ${timeInCallingMinutes.toFixed(1)}m)`
+            );
           } else {
             waitingWebhookCount++;
-            logger.info(`Contact ${latestContact.id} remains ${latestContact.status} (provider dispatch confirmed, awaiting webhook ${timeInCallingMinutes.toFixed(1)}m)`);
+            logger.info(
+              `Contact ${latestContact.id} remains ${latestContact.status} (provider dispatch confirmed, awaiting webhook ${timeInCallingMinutes.toFixed(1)}m)`
+            );
           }
         }
       }
@@ -2668,16 +2794,18 @@ const resumeCampaign = async (campaignId) => {
           await prisma.campaignContact.update({
             where: { id: latestContact.id },
             data: {
-              status: "PENDING",
+              status: 'PENDING',
               sentAt: null,
               providerBatchId: null,
               conversationId: null,
-              errorReason: null
+              errorReason: null,
             },
           });
           reconciliedCount++;
           relaunchedCount++;
-          logger.info(`Contact ${latestContact.id} reconciled: ${latestContact.status} → PENDING (no webhook after grace, will relaunch)`);
+          logger.info(
+            `Contact ${latestContact.id} reconciled: ${latestContact.status} → PENDING (no webhook after grace, will relaunch)`
+          );
         }
       }
     }
@@ -2687,7 +2815,7 @@ const resumeCampaign = async (campaignId) => {
   const pendingContacts = await prisma.campaignContact.findMany({
     where: {
       campaignId,
-      status: "PENDING",
+      status: 'PENDING',
     },
     select: {
       id: true,
@@ -2712,13 +2840,13 @@ const resumeCampaign = async (campaignId) => {
     // Actualizar estado de la campaña explícitamente a ACTIVE
     await prisma.campaign.update({
       where: { id: campaignId },
-      data: { status: "ACTIVE" },
+      data: { status: 'ACTIVE' },
     });
 
     logger.info(`Campaign resumed with redispatch: ${campaignId}`, {
       campaignId,
       previousStatus: campaign.status,
-      newStatus: "ACTIVE",
+      newStatus: 'ACTIVE',
       pendingContactsCount: pendingContacts.length,
       stuckCallingContactsCount: stuckCallingContacts.length,
       reconciliedContactsCount: reconciliedCount,
@@ -2730,7 +2858,7 @@ const resumeCampaign = async (campaignId) => {
 
     return {
       campaignId,
-      status: "ACTIVE",
+      status: 'ACTIVE',
       startedAt: startResult.startedAt,
       dispatch: startResult.dispatch,
       pendingContacts: pendingContacts.length,
@@ -2745,7 +2873,7 @@ const resumeCampaign = async (campaignId) => {
   const updatedCampaign = await prisma.campaign.update({
     where: { id: campaignId },
     data: {
-      status: "ACTIVE",
+      status: 'ACTIVE',
     },
   });
 
@@ -2781,10 +2909,10 @@ const getCouponBreakdown = async (campaignId) => {
 
   // Group coupons by type with aggregated metrics
   const breakdown = await prisma.campaignCoupon.groupBy({
-    by: ["couponType"],
+    by: ['couponType'],
     where: {
       campaignId,
-      couponType: { not: null }
+      couponType: { not: null },
     },
     _count: {
       _all: true,
@@ -2796,11 +2924,11 @@ const getCouponBreakdown = async (campaignId) => {
 
   // Get conversion counts per coupon type
   const conversionsByType = await prisma.campaignCoupon.groupBy({
-    by: ["couponType"],
+    by: ['couponType'],
     where: {
       campaignId,
-      status: "CONVERTED",
-      couponType: { not: null }
+      status: 'CONVERTED',
+      couponType: { not: null },
     },
     _count: {
       _all: true,
@@ -2809,11 +2937,11 @@ const getCouponBreakdown = async (campaignId) => {
 
   // Get visited counts per coupon type
   const visitedByType = await prisma.campaignCoupon.groupBy({
-    by: ["couponType"],
+    by: ['couponType'],
     where: {
       campaignId,
-      status: "VISITED",
-      couponType: { not: null }
+      status: 'VISITED',
+      couponType: { not: null },
     },
     _count: {
       _all: true,
@@ -2864,15 +2992,16 @@ const getCouponBreakdown = async (campaignId) => {
       name: template?.name || item.couponType,
       description: template?.description || null,
       offer: template
-        ? `${template.percentOff ? template.percentOff + "%" : ""} ${template.durationMonths ? template.durationMonths + " meses" : ""
-          } ${template.trialDays ? template.trialDays + " días trial" : ""}`.trim()
+        ? `${template.percentOff ? template.percentOff + '%' : ''} ${
+            template.durationMonths ? template.durationMonths + ' meses' : ''
+          } ${template.trialDays ? template.trialDays + ' días trial' : ''}`.trim()
         : null,
       metrics: {
         sent,
         visited,
         converted,
-        visitRate: sent > 0 ? ((visited / sent) * 100).toFixed(2) : "0.00",
-        conversionRate: sent > 0 ? ((converted / sent) * 100).toFixed(2) : "0.00",
+        visitRate: sent > 0 ? ((visited / sent) * 100).toFixed(2) : '0.00',
+        conversionRate: sent > 0 ? ((converted / sent) * 100).toFixed(2) : '0.00',
         totalVisits: item._sum.visitCount || 0,
       },
     };
@@ -2889,10 +3018,11 @@ const getCouponBreakdown = async (campaignId) => {
     totalVisits: enrichedBreakdown.reduce((sum, item) => sum + item.metrics.totalVisits, 0),
   };
 
-  totals.visitRate = totals.sent > 0 ? ((totals.visited / totals.sent) * 100).toFixed(2) : "0.00";
-  totals.conversionRate = totals.sent > 0 ? ((totals.converted / totals.sent) * 100).toFixed(2) : "0.00";
+  totals.visitRate = totals.sent > 0 ? ((totals.visited / totals.sent) * 100).toFixed(2) : '0.00';
+  totals.conversionRate =
+    totals.sent > 0 ? ((totals.converted / totals.sent) * 100).toFixed(2) : '0.00';
 
-  logger.info("Coupon breakdown retrieved", {
+  logger.info('Coupon breakdown retrieved', {
     campaignId,
     couponTypes: enrichedBreakdown.length,
     totalSent: totals.sent,
@@ -2937,14 +3067,18 @@ const previewContinuation = async (sourceCampaignId) => {
   }
 
   if (source.status !== 'COMPLETED') {
-    const err = new Error(`Solo se pueden continuar campañas completadas. Estado actual: ${source.status}`);
+    const err = new Error(
+      `Solo se pueden continuar campañas completadas. Estado actual: ${source.status}`
+    );
     err.statusCode = 400;
     throw err;
   }
 
   const nextType = NEXT_STAGE[source.type];
   if (!nextType) {
-    const err = new Error('Las campañas de Conversion son la etapa final del funnel y no pueden continuarse');
+    const err = new Error(
+      'Las campañas de Conversion son la etapa final del funnel y no pueden continuarse'
+    );
     err.statusCode = 400;
     throw err;
   }
@@ -2954,11 +3088,13 @@ const previewContinuation = async (sourceCampaignId) => {
     select: { establishmentId: true },
   });
 
-  const establishmentIds = contacts.map(c => c.establishmentId).filter(Boolean);
+  const establishmentIds = contacts.map((c) => c.establishmentId).filter(Boolean);
   const totalSourceContacts = establishmentIds.length;
 
-  const { eligibleIds, excludedNoPrereq, excludedAdvanced } =
-    await classifyEstablishmentsByStage(establishmentIds, nextType);
+  const { eligibleIds, excludedNoPrereq, excludedAdvanced } = await classifyEstablishmentsByStage(
+    establishmentIds,
+    nextType
+  );
 
   const msElapsed = Date.now() - new Date(source.updatedAt).getTime();
   const daysSinceCompletion = msElapsed / (1000 * 60 * 60 * 24);
@@ -3001,13 +3137,17 @@ const continueCampaign = async (sourceCampaignId, opts = {}) => {
   const preview = await previewContinuation(sourceCampaignId);
 
   if (preview.requiresCoupon && !couponPrefix) {
-    const err = new Error(`Las campañas de ${preview.nextType} requieren un cupón principal. Por favor selecciona un cupón antes de continuar.`);
+    const err = new Error(
+      `Las campañas de ${preview.nextType} requieren un cupón principal. Por favor selecciona un cupón antes de continuar.`
+    );
     err.statusCode = 400;
     throw err;
   }
 
   if (preview.eligibleIds.length === 0) {
-    const err = new Error(`No hay restaurantes elegibles para continuar a ${preview.nextType}. Ninguno completó la etapa de ${preview.sourceType}.`);
+    const err = new Error(
+      `No hay restaurantes elegibles para continuar a ${preview.nextType}. Ninguno completó la etapa de ${preview.sourceType}.`
+    );
     err.statusCode = 400;
     throw err;
   }
@@ -3042,7 +3182,12 @@ const continueCampaign = async (sourceCampaignId, opts = {}) => {
   // createCampaign nula las coordenadas cuando recibe establishmentIds (lógica de reenganche).
   // Para continuación las restauramos para que el mapa y los detalles muestren el área original.
   // Las campañas CSV no tienen coordenadas — no restaurar en ese caso.
-  if (!isCsvSourceCampaign && sourceFilters.centerLat && sourceFilters.centerLng && sourceFilters.radiusMeters) {
+  if (
+    !isCsvSourceCampaign &&
+    sourceFilters.centerLat &&
+    sourceFilters.centerLng &&
+    sourceFilters.radiusMeters
+  ) {
     campaign = await prisma.campaign.update({
       where: { id: campaign.id },
       data: {

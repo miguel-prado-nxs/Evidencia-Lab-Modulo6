@@ -1,7 +1,7 @@
 /**
  * Twenty Sync Worker
  * Worker que procesa jobs de sincronizacion con Twenty CRM
- * 
+ *
  * Caracteristicas:
  * - Migración inicial one-time de registros existentes (solo primera vez)
  * - Polling periodico de jobs pendientes
@@ -10,12 +10,16 @@
  * - Solo se inicia si TWENTY_API_KEY esta configurada
  */
 
-const config = require("../config/env");
-const logger = require("../config/logger");
-const prisma = require("../config/database");
+const config = require('../config/env');
+const logger = require('../config/logger');
+const prisma = require('../config/database');
 const { PrismaClient: PrismaClientGeo } = require('@prisma/client-geo');
-const { processPendingJobs, getSyncStats, enqueueSync } = require("../services/twenty/twentySyncService");
-const twentyService = require("../services/twenty/twentyService");
+const {
+  processPendingJobs,
+  getSyncStats,
+  enqueueSync,
+} = require('../services/twenty/twentySyncService');
+const twentyService = require('../services/twenty/twentyService');
 
 const prismaGeo = new PrismaClientGeo();
 
@@ -30,36 +34,36 @@ async function runInitialMigration() {
   try {
     // Verificar si ya se ejecutó la migración
     let metadata = await prisma.twentySyncMetadata.findUnique({
-      where: { id: 'singleton' }
+      where: { id: 'singleton' },
     });
 
     if (!metadata) {
       metadata = await prisma.twentySyncMetadata.create({
-        data: { id: 'singleton' }
+        data: { id: 'singleton' },
       });
     }
 
     if (metadata.initialMigrationCompleted) {
-      logger.info("[TwentySyncWorker] Migración inicial ya completada previamente");
+      logger.info('[TwentySyncWorker] Migración inicial ya completada previamente');
       return;
     }
 
-    logger.info("[TwentySyncWorker] Iniciando migración inicial de registros existentes");
+    logger.info('[TwentySyncWorker] Iniciando migración inicial de registros existentes');
 
     // Marcar como iniciada
     await prisma.twentySyncMetadata.update({
       where: { id: 'singleton' },
       data: {
-        initialMigrationStartedAt: new Date()
-      }
+        initialMigrationStartedAt: new Date(),
+      },
     });
 
     // Obtener registros a migrar (solo niveles enriquecidos)
     const enrichments = await prisma.establishmentEnrichment.findMany({
       where: {
-        level: { not: 'ESTABLISHMENT' }
+        level: { not: 'ESTABLISHMENT' },
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
     });
 
     logger.info(`[TwentySyncWorker] ${enrichments.length} registros a migrar`);
@@ -74,24 +78,28 @@ async function runInitialMigration() {
     for (let i = 0; i < enrichments.length; i += BATCH_SIZE) {
       const batch = enrichments.slice(i, i + BATCH_SIZE);
 
-      logger.info(`[TwentySyncWorker] Procesando lote ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(enrichments.length / BATCH_SIZE)}`);
+      logger.info(
+        `[TwentySyncWorker] Procesando lote ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(enrichments.length / BATCH_SIZE)}`
+      );
 
       for (const enrichment of batch) {
         try {
           // Verificar si el establishment existe en BD geo
           const establishment = await prismaGeo.establishment.findUnique({
-            where: { id: enrichment.establishmentId }
+            where: { id: enrichment.establishmentId },
           });
 
           if (!establishment || !establishment.clee) {
-            logger.warn(`[TwentySyncWorker] Establecimiento sin clee: ${enrichment.establishmentId}`);
+            logger.warn(
+              `[TwentySyncWorker] Establecimiento sin clee: ${enrichment.establishmentId}`
+            );
             failed++;
             continue;
           }
 
           // Verificar si ya tiene TwentySyncState
           const existingState = await prisma.twentySyncState.findUnique({
-            where: { establishmentId: enrichment.establishmentId }
+            where: { establishmentId: enrichment.establishmentId },
           });
 
           if (existingState?.twentyEstablecimientoId) {
@@ -99,31 +107,36 @@ async function runInitialMigration() {
             await enqueueSync({
               establishmentId: enrichment.establishmentId,
               partnerId: enrichment.enrichedBy,
-              reason: `BACKFILL_${enrichment.level}`
+              reason: `BACKFILL_${enrichment.level}`,
             });
           } else {
             // No migrado, buscar/crear en Twenty
-            let twentyEstablishment = await twentyService.findEstablecimientoByClaveDenue(establishment.clee);
+            const twentyEstablishment = await twentyService.findEstablecimientoByClaveDenue(
+              establishment.clee
+            );
 
             // Si no existe en Twenty, se creará automáticamente en la primera sync
             // Solo encolamos el job, el sync service se encargará de crear si no existe
             await enqueueSync({
               establishmentId: enrichment.establishmentId,
               partnerId: enrichment.enrichedBy,
-              reason: `MIGRATION_${enrichment.level}`
+              reason: `MIGRATION_${enrichment.level}`,
             });
           }
 
           migrated++;
         } catch (error) {
-          logger.error(`[TwentySyncWorker] Error migrando ${enrichment.establishmentId}:`, error.message);
+          logger.error(
+            `[TwentySyncWorker] Error migrando ${enrichment.establishmentId}:`,
+            error.message
+          );
           failed++;
         }
       }
 
       // Delay entre lotes para no saturar API
       if (i + BATCH_SIZE < enrichments.length) {
-        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
       }
     }
 
@@ -133,23 +146,26 @@ async function runInitialMigration() {
       data: {
         initialMigrationCompleted: true,
         initialMigrationCompletedAt: new Date(),
-        totalRecordsMigrated: migrated
-      }
+        totalRecordsMigrated: migrated,
+      },
     });
 
-    logger.info(`[TwentySyncWorker] Migración inicial completada: ${migrated} encolados, ${failed} fallidos`);
-    logger.info("[TwentySyncWorker] Los registros serán procesados gradualmente por el worker");
-
+    logger.info(
+      `[TwentySyncWorker] Migración inicial completada: ${migrated} encolados, ${failed} fallidos`
+    );
+    logger.info('[TwentySyncWorker] Los registros serán procesados gradualmente por el worker');
   } catch (error) {
-    logger.error("[TwentySyncWorker] Error en migración inicial:", error);
+    logger.error('[TwentySyncWorker] Error en migración inicial:', error);
 
     // Guardar error pero no marcar como completada
-    await prisma.twentySyncMetadata.update({
-      where: { id: 'singleton' },
-      data: {
-        lastMigrationError: error.message
-      }
-    }).catch(() => { });
+    await prisma.twentySyncMetadata
+      .update({
+        where: { id: 'singleton' },
+        data: {
+          lastMigrationError: error.message,
+        },
+      })
+      .catch(() => {});
   }
 }
 
@@ -158,31 +174,31 @@ async function runInitialMigration() {
  */
 async function start() {
   if (!config.twenty.apiKey) {
-    logger.info("[TwentySyncWorker] TWENTY_API_KEY no configurada - worker no iniciado");
+    logger.info('[TwentySyncWorker] TWENTY_API_KEY no configurada - worker no iniciado');
     return;
   }
 
   if (!config.twenty.syncEnabled) {
-    logger.info("[TwentySyncWorker] Sync deshabilitado por configuracion");
+    logger.info('[TwentySyncWorker] Sync deshabilitado por configuracion');
     return;
   }
 
   if (isRunning) {
-    logger.warn("[TwentySyncWorker] Worker ya esta corriendo");
+    logger.warn('[TwentySyncWorker] Worker ya esta corriendo');
     return;
   }
 
   isRunning = true;
   const intervalMs = config.twenty.syncIntervalMs || 10000;
 
-  logger.info("[TwentySyncWorker] Iniciando worker de sincronizacion", {
+  logger.info('[TwentySyncWorker] Iniciando worker de sincronizacion', {
     intervalMs,
     baseUrl: config.twenty.baseUrl,
   });
 
   // Ejecutar migración inicial de forma asíncrona (no bloquea el inicio)
-  runInitialMigration().catch(error => {
-    logger.error("[TwentySyncWorker] Error crítico en migración inicial:", error);
+  runInitialMigration().catch((error) => {
+    logger.error('[TwentySyncWorker] Error crítico en migración inicial:', error);
   });
 
   // Ejecutar primer ciclo de procesamiento después de 5 segundos
@@ -201,7 +217,7 @@ function stop() {
     intervalId = null;
   }
   isRunning = false;
-  logger.info("[TwentySyncWorker] Worker detenido");
+  logger.info('[TwentySyncWorker] Worker detenido');
 }
 
 /**
@@ -212,14 +228,14 @@ async function runCycle() {
     const result = await processPendingJobs(5); // Procesar hasta 5 jobs por ciclo
 
     if (result.processed > 0) {
-      logger.info("[TwentySyncWorker] Ciclo completado", {
+      logger.info('[TwentySyncWorker] Ciclo completado', {
         processed: result.processed,
         success: result.success,
         failed: result.failed,
       });
     }
   } catch (error) {
-    logger.error("[TwentySyncWorker] Error en ciclo de procesamiento", {
+    logger.error('[TwentySyncWorker] Error en ciclo de procesamiento', {
       error: error.message,
     });
   }
@@ -233,7 +249,7 @@ async function getStatus() {
 
   // Obtener metadata de migración
   const metadata = await prisma.twentySyncMetadata.findUnique({
-    where: { id: 'singleton' }
+    where: { id: 'singleton' },
   });
 
   return {
@@ -246,7 +262,7 @@ async function getStatus() {
       startedAt: metadata?.initialMigrationStartedAt,
       completedAt: metadata?.initialMigrationCompletedAt,
       totalRecordsMigrated: metadata?.totalRecordsMigrated || 0,
-      lastError: metadata?.lastMigrationError
+      lastError: metadata?.lastMigrationError,
     },
     ...stats,
   };

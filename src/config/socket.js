@@ -3,10 +3,10 @@
  * Maneja conexiones WebSocket para notificaciones en tiempo real
  */
 
-const { Server } = require("socket.io");
-const jwt = require("jsonwebtoken");
-const config = require("./env");
-const logger = require("./logger");
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+const config = require('./env');
+const logger = require('./logger');
 
 let io = null;
 
@@ -29,10 +29,11 @@ function initSocket(httpServer) {
   // Middleware de autenticación
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(" ")[1];
+      const token =
+        socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
 
       if (!token) {
-        return next(new Error("Token de autenticación requerido"));
+        return next(new Error('Token de autenticación requerido'));
       }
 
       const decoded = jwt.verify(token, config.auth.jwtSecret);
@@ -40,13 +41,13 @@ function initSocket(httpServer) {
       socket.userRole = decoded.role;
       next();
     } catch (error) {
-      logger.error("Socket auth error:", error.message);
-      next(new Error("Token inválido"));
+      logger.error('Socket auth error:', error.message);
+      next(new Error('Token inválido'));
     }
   });
 
   // Manejo de conexiones
-  io.on("connection", (socket) => {
+  io.on('connection', (socket) => {
     const userId = socket.userId;
     logger.info(`Socket connected: ${socket.id} for user ${userId}`);
 
@@ -60,12 +61,12 @@ function initSocket(httpServer) {
     socket.join(`user:${userId}`);
 
     // Si es admin, unir al room de admins
-    if (socket.userRole === "ADMIN") {
-      socket.join("admins");
+    if (socket.userRole === 'ADMIN') {
+      socket.join('admins');
     }
 
     // Manejar desconexión
-    socket.on("disconnect", (reason) => {
+    socket.on('disconnect', (reason) => {
       logger.info(`Socket disconnected: ${socket.id} - ${reason}`);
 
       const userSockets = connectedUsers.get(userId);
@@ -78,37 +79,37 @@ function initSocket(httpServer) {
     });
 
     // Marcar notificación como leída via socket
-    socket.on("notification:read", async (notificationId) => {
+    socket.on('notification:read', async (notificationId) => {
       try {
-        const prisma = require("./database");
+        const prisma = require('./database');
         await prisma.notification.update({
           where: { id: notificationId, userId },
           data: { read: true, readAt: new Date() },
         });
-        socket.emit("notification:read:success", notificationId);
+        socket.emit('notification:read:success', notificationId);
       } catch (error) {
-        logger.error("Error marking notification as read:", error);
-        socket.emit("notification:read:error", notificationId);
+        logger.error('Error marking notification as read:', error);
+        socket.emit('notification:read:error', notificationId);
       }
     });
 
     // Marcar todas las notificaciones como leídas
-    socket.on("notifications:read-all", async () => {
+    socket.on('notifications:read-all', async () => {
       try {
-        const prisma = require("./database");
+        const prisma = require('./database');
         await prisma.notification.updateMany({
           where: { userId, read: false },
           data: { read: true, readAt: new Date() },
         });
-        socket.emit("notifications:read-all:success");
+        socket.emit('notifications:read-all:success');
       } catch (error) {
-        logger.error("Error marking all notifications as read:", error);
-        socket.emit("notifications:read-all:error");
+        logger.error('Error marking all notifications as read:', error);
+        socket.emit('notifications:read-all:error');
       }
     });
   });
 
-  logger.info("Socket.io initialized");
+  logger.info('Socket.io initialized');
   return io;
 }
 
@@ -117,7 +118,7 @@ function initSocket(httpServer) {
  */
 function getIO() {
   if (!io) {
-    throw new Error("Socket.io not initialized. Call initSocket first.");
+    throw new Error('Socket.io not initialized. Call initSocket first.');
   }
   return io;
 }
@@ -137,7 +138,7 @@ function emitToUser(userId, event, data) {
  */
 function emitToAdmins(event, data) {
   if (io) {
-    io.to("admins").emit(event, data);
+    io.to('admins').emit(event, data);
     logger.debug(`Emitted ${event} to admins`);
   }
 }
@@ -164,4 +165,3 @@ module.exports = {
   isUserConnected,
   getConnectedUsers,
 };
-

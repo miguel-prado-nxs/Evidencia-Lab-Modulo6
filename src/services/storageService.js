@@ -3,18 +3,18 @@
  * Servicio para gestión de archivos en S3 (Railway Storage) con fallback local
  */
 
-const fs = require("fs").promises;
-const fsSync = require("fs");
-const path = require("path");
-const sharp = require("sharp");
-const { v4: uuidv4 } = require("uuid");
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+const { v4: uuidv4 } = require('uuid');
 const {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
-} = require("@aws-sdk/client-s3");
-const { Upload } = require("@aws-sdk/lib-storage");
+} = require('@aws-sdk/client-s3');
+const { Upload } = require('@aws-sdk/lib-storage');
 const {
   STORAGE_PATHS,
   getResourceType,
@@ -23,8 +23,8 @@ const {
   getPublicUrl,
   isS3Available,
   getExtensionFromMime,
-} = require("../config/storage");
-const logger = require("../config/logger");
+} = require('../config/storage');
+const logger = require('../config/logger');
 
 // ========================================
 // S3 Functions
@@ -36,7 +36,7 @@ const logger = require("../config/logger");
 async function uploadToS3(buffer, key, contentType) {
   const client = getS3Client();
   if (!client) {
-    throw new Error("S3 client not available");
+    throw new Error('S3 client not available');
   }
 
   try {
@@ -47,7 +47,7 @@ async function uploadToS3(buffer, key, contentType) {
         Key: key,
         Body: buffer,
         ContentType: contentType,
-        ACL: "public-read", // Hacer público
+        ACL: 'public-read', // Hacer público
       },
     });
 
@@ -66,7 +66,7 @@ async function uploadToS3(buffer, key, contentType) {
 async function downloadFromS3(key) {
   const client = getS3Client();
   if (!client) {
-    throw new Error("S3 client not available");
+    throw new Error('S3 client not available');
   }
 
   try {
@@ -142,7 +142,7 @@ async function existsInS3(key) {
 /**
  * Guardar archivo localmente
  */
-async function saveFileLocal(buffer, filename, directory = "resources") {
+async function saveFileLocal(buffer, filename, directory = 'resources') {
   const dir = STORAGE_PATHS[directory] || STORAGE_PATHS.resources;
   const filepath = path.join(dir, filename);
   await fs.writeFile(filepath, buffer);
@@ -158,7 +158,7 @@ async function deleteFileLocal(filepath) {
     logger.info(`File deleted locally: ${filepath}`);
     return true;
   } catch (error) {
-    if (error.code !== "ENOENT") {
+    if (error.code !== 'ENOENT') {
       logger.error(`Error deleting local file: ${filepath}`, error);
       throw error;
     }
@@ -192,28 +192,28 @@ async function fileExistsLocal(filepath) {
 /**
  * Subir archivo (S3 o local)
  */
-async function uploadFile(buffer, filename, contentType, folder = "resources") {
+async function uploadFile(buffer, filename, contentType, folder = 'resources') {
   const key = `${folder}/${filename}`;
 
   if (isS3Available()) {
     try {
       const url = await uploadToS3(buffer, key, contentType);
-      return { url, key, storage: "s3" };
+      return { url, key, storage: 's3' };
     } catch (error) {
-      logger.warn("S3 upload failed, falling back to local storage");
+      logger.warn('S3 upload failed, falling back to local storage');
     }
   }
 
   // Fallback a almacenamiento local
   const filepath = await saveFileLocal(buffer, filename, folder);
-  return { url: `/uploads/${folder}/${filename}`, key: filepath, storage: "local" };
+  return { url: `/uploads/${folder}/${filename}`, key: filepath, storage: 'local' };
 }
 
 /**
  * Eliminar archivo (S3 o local)
  */
-async function deleteFile(keyOrPath, storage = "auto") {
-  if (storage === "s3" || (storage === "auto" && keyOrPath.startsWith("http"))) {
+async function deleteFile(keyOrPath, storage = 'auto') {
+  if (storage === 's3' || (storage === 'auto' && keyOrPath.startsWith('http'))) {
     // Extraer key de la URL
     const key = keyOrPath.includes(S3_CONFIG.bucket)
       ? keyOrPath.split(`${S3_CONFIG.bucket}/`)[1]
@@ -234,8 +234,8 @@ async function generateThumbnail(inputBuffer, options = {}) {
   try {
     const thumbnailBuffer = await sharp(inputBuffer)
       .resize(width, height, {
-        fit: "cover",
-        position: "center",
+        fit: 'cover',
+        position: 'center',
       })
       .webp({ quality })
       .toBuffer();
@@ -250,7 +250,7 @@ async function generateThumbnail(inputBuffer, options = {}) {
 /**
  * Procesar archivo subido y guardar
  */
-async function processUploadedFile(file, folder = "resources") {
+async function processUploadedFile(file, folder = 'resources') {
   const resourceType = getResourceType(file.mimetype);
   const ext = getExtensionFromMime(file.mimetype) || path.extname(file.originalname);
   const uniqueFilename = `${uuidv4()}${ext}`;
@@ -263,15 +263,15 @@ async function processUploadedFile(file, folder = "resources") {
 
   // Generar y subir thumbnail si es imagen
   let thumbnailUrl = null;
-  if (resourceType === "image") {
+  if (resourceType === 'image') {
     const thumbnailBuffer = await generateThumbnail(buffer);
     if (thumbnailBuffer) {
       const thumbnailFilename = `${uuidv4()}_thumb.webp`;
       const thumbResult = await uploadFile(
         thumbnailBuffer,
         thumbnailFilename,
-        "image/webp",
-        "thumbnails"
+        'image/webp',
+        'thumbnails'
       );
       thumbnailUrl = thumbResult.url;
     }
@@ -296,8 +296,8 @@ async function processUploadedFile(file, folder = "resources") {
  * Obtener URL de descarga
  */
 function getDownloadUrl(storagePath, storageType) {
-  if (storageType === "s3") {
-    return storagePath.startsWith("http") ? storagePath : getPublicUrl(storagePath);
+  if (storageType === 's3') {
+    return storagePath.startsWith('http') ? storagePath : getPublicUrl(storagePath);
   }
   // Para archivos locales, devolver la ruta relativa
   return storagePath;
@@ -306,8 +306,8 @@ function getDownloadUrl(storagePath, storageType) {
 /**
  * Verificar si archivo existe
  */
-async function fileExists(keyOrPath, storage = "auto") {
-  if (storage === "s3" || (storage === "auto" && keyOrPath.startsWith("http"))) {
+async function fileExists(keyOrPath, storage = 'auto') {
+  if (storage === 's3' || (storage === 'auto' && keyOrPath.startsWith('http'))) {
     const key = keyOrPath.includes(S3_CONFIG.bucket)
       ? keyOrPath.split(`${S3_CONFIG.bucket}/`)[1]
       : keyOrPath;
@@ -320,8 +320,8 @@ async function fileExists(keyOrPath, storage = "auto") {
 /**
  * Leer contenido de archivo
  */
-async function readFile(keyOrPath, storage = "auto") {
-  if (storage === "s3" || (storage === "auto" && keyOrPath.startsWith("http"))) {
+async function readFile(keyOrPath, storage = 'auto') {
+  if (storage === 's3' || (storage === 'auto' && keyOrPath.startsWith('http'))) {
     const key = keyOrPath.includes(S3_CONFIG.bucket)
       ? keyOrPath.split(`${S3_CONFIG.bucket}/`)[1]
       : keyOrPath;

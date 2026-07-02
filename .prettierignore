@@ -1,0 +1,8 @@
+node_modules/
+prisma/migrations/
+prisma/seed*.js
+package-lock.json
+build/
+dist/
+coverage/
+*.min.js

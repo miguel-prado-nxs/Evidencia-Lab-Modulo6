@@ -1,4 +1,4 @@
-const analyticsService = require("../services/analyticsService");
+const analyticsService = require('../services/analyticsService');
 
 // Dashboard global (admin)
 const getDashboard = async (req, res, next) => {
@@ -40,7 +40,7 @@ const getTopPartners = async (req, res, next) => {
 
     const topPartners = await analyticsService.getTopPartners(
       parseInt(limit) || 10,
-      metric || "revenue"
+      metric || 'revenue'
     );
 
     res.json({
@@ -57,10 +57,7 @@ const getTrends = async (req, res, next) => {
   try {
     const { period, weeks } = req.query;
 
-    const trends = await analyticsService.getTrends(
-      period || "week",
-      parseInt(weeks) || 12
-    );
+    const trends = await analyticsService.getTrends(period || 'week', parseInt(weeks) || 12);
 
     res.json({
       success: true,
@@ -77,9 +74,7 @@ const getFunnel = async (req, res, next) => {
     const { partnerId, dateFrom, dateTo } = req.query;
 
     // Si no es admin, usar su partnerId
-    const filterPartnerId = req.user.role === "ADMIN" 
-      ? partnerId 
-      : req.user.partner?.id;
+    const filterPartnerId = req.user.role === 'ADMIN' ? partnerId : req.user.partner?.id;
 
     const funnel = await analyticsService.getFunnel({
       partnerId: filterPartnerId,
@@ -118,4 +113,3 @@ module.exports = {
   getFunnel,
   getKPIs,
 };
-

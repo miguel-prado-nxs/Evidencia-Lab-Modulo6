@@ -1,5 +1,5 @@
-const logger = require("../config/logger");
-const axios = require("axios");
+const logger = require('../config/logger');
+const axios = require('axios');
 
 const BAILEYS_URL = process.env.BAILEYS_URL;
 const BAILEYS_API_KEY = process.env.BAILEYS_API_KEY;
@@ -15,14 +15,14 @@ const getRandomConnectedSession = async () => {
   try {
     const response = await axios.get(`${BAILEYS_URL}/api/sessions`, {
       headers: {
-        "X-API-KEY": BAILEYS_API_KEY || ""
-      }
+        'X-API-KEY': BAILEYS_API_KEY || '',
+      },
     });
 
     const sessionsArr = response.data?.data || response.data || [];
 
     if (!Array.isArray(sessionsArr) || sessionsArr.length === 0) {
-      logger.warn("No connected sessions available in Baileys");
+      logger.warn('No connected sessions available in Baileys');
       return null;
     }
 
@@ -30,9 +30,9 @@ const getRandomConnectedSession = async () => {
     const randomSession = sessionsArr[Math.floor(Math.random() * sessionsArr.length)];
     return randomSession.phoneNumber || randomSession.id;
   } catch (error) {
-    logger.error("Error getting connected sessions from Baileys", {
+    logger.error('Error getting connected sessions from Baileys', {
       error: error.message,
-      url: `${BAILEYS_URL}/api/sessions`
+      url: `${BAILEYS_URL}/api/sessions`,
     });
     return null;
   }
@@ -50,8 +50,8 @@ const getRandomConnectedSession = async () => {
  */
 const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) => {
   if (!BAILEYS_URL) {
-    logger.warn("BAILEYS_URL not configured — skipping WhatsApp send");
-    return { success: false, error: "BAILEYS_URL not configured" };
+    logger.warn('BAILEYS_URL not configured — skipping WhatsApp send');
+    return { success: false, error: 'BAILEYS_URL not configured' };
   }
 
   let fromPhone = from || BAILEYS_FROM_PHONE;
@@ -60,35 +60,35 @@ const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) =
   if (!fromPhone) {
     fromPhone = await getRandomConnectedSession();
     if (!fromPhone) {
-      logger.error("No active WhatsApp sessions available to send message");
-      return { success: false, error: "No active WhatsApp sessions available" };
+      logger.error('No active WhatsApp sessions available to send message');
+      return { success: false, error: 'No active WhatsApp sessions available' };
     }
   }
 
   const payload = {
     to,
     message,
-    from: fromPhone
+    from: fromPhone,
   };
 
   // Si hay media, incluirla
   if (mediaUrl) {
     payload.mediaUrl = mediaUrl;
-    payload.mediaType = mediaType || "image";
+    payload.mediaType = mediaType || 'image';
   }
 
   try {
-    logger.info("Sending WhatsApp message via Baileys", {
+    logger.info('Sending WhatsApp message via Baileys', {
       to,
       from: fromPhone,
       hasMedia: !!mediaUrl,
     });
 
     const response = await fetch(`${BAILEYS_URL}/api/messages/send`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
-        "X-API-KEY": BAILEYS_API_KEY || "",
+        'Content-Type': 'application/json',
+        'X-API-KEY': BAILEYS_API_KEY || '',
       },
       body: JSON.stringify(payload),
     });
@@ -96,22 +96,22 @@ const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) =
     const data = await response.json();
 
     if (!response.ok || !data.success) {
-      logger.error("Baileys send failed", {
+      logger.error('Baileys send failed', {
         status: response.status,
-        error: data.error || "Unknown error",
+        error: data.error || 'Unknown error',
         to,
       });
       return { success: false, error: data.error || `HTTP ${response.status}` };
     }
 
-    logger.info("WhatsApp message sent successfully", {
+    logger.info('WhatsApp message sent successfully', {
       to,
       messageId: data.data?.key?.id || null,
     });
 
     return { success: true, data: data.data };
   } catch (error) {
-    logger.error("Error calling Baileys service", {
+    logger.error('Error calling Baileys service', {
       error: error.message,
       url: `${BAILEYS_URL}/api/messages/send`,
       to,
@@ -122,5 +122,5 @@ const sendWhatsAppMessage = async ({ to, message, mediaUrl, mediaType, from }) =
 
 module.exports = {
   sendWhatsAppMessage,
-  getRandomConnectedSession
+  getRandomConnectedSession,
 };

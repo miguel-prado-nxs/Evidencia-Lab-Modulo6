@@ -1,7 +1,7 @@
 /**
  * Ventas Enrichment Service
  * Servicios específicos para el flujo de ventas de easyorder-leads
- * 
+ *
  * FLUJO DE VENTAS:
  * 1. Usuario ve establecimiento en mapa → puede "Agregar a Contactos" o "Enriquecer manualmente"
  * 2. Al agregarlo a contactos → se crea en nivel CONTACT
@@ -9,15 +9,15 @@
  *    - Usar "Enriquecer automático" (llamada)
  *    - "Convertir a Prospecto" (agregar datos del tomador de decisiones)
  * 4. Desde Prospecto puede actualizar datos y eventualmente convertir a Lead/Client
- * 
+ *
  * NOTA: Estos métodos son exclusivos para ventas, NO modifican enrichmentService.js
  */
 
-const prisma = require("../config/database");
-const prismaGeo = require("../config/database-geo");
-const logger = require("../config/logger");
-const { enqueueSync } = require("./twenty/twentySyncService");
-const { logEnrichmentEvent } = require("./enrichmentService");
+const prisma = require('../config/database');
+const prismaGeo = require('../config/database-geo');
+const logger = require('../config/logger');
+const { enqueueSync } = require('./twenty/twentySyncService');
+const { logEnrichmentEvent } = require('./enrichmentService');
 
 /**
  * Agregar un establecimiento a contactos del usuario de ventas
@@ -50,7 +50,7 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     });
 
     if (!establishment) {
-      throw new Error("Establecimiento no encontrado en la base de datos");
+      throw new Error('Establecimiento no encontrado en la base de datos');
     }
 
     // Usar UUID como establishmentId
@@ -74,7 +74,7 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     const enrichment = await prisma.establishmentEnrichment.create({
       data: {
         establishmentId: estabId, // Usar UUID
-        level: "CONTACT",
+        level: 'CONTACT',
         enrichedBy: partnerId,
         enrichedAt: new Date(),
         lastUpdatedBy: partnerId,
@@ -95,7 +95,9 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
       },
     });
 
-    logger.info(`[VentasEnrichment] Contacto agregado: ${establishment.name} por partner ${partnerId}`);
+    logger.info(
+      `[VentasEnrichment] Contacto agregado: ${establishment.name} por partner ${partnerId}`
+    );
 
     // Log de evento de enriquecimiento (non-blocking)
     logEnrichmentEvent({
@@ -112,9 +114,9 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
     enqueueSync({
       establishmentId: estabId,
       partnerId,
-      reason: "ADD_TO_CONTACTS",
+      reason: 'ADD_TO_CONTACTS',
     }).catch((err) => {
-      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
+      logger.warn('[VentasEnrichment] Error encolando sync (no critico)', { error: err.message });
     });
 
     return {
@@ -123,7 +125,7 @@ async function addToContacts(establishmentId, partnerId, notes = null) {
       isNew: true,
     };
   } catch (error) {
-    logger.error("[VentasEnrichment] Error agregando contacto:", error);
+    logger.error('[VentasEnrichment] Error agregando contacto:', error);
     throw error;
   }
 }
@@ -140,14 +142,14 @@ async function bulkAddToContacts(establishmentIds, partnerId) {
       success: 0,
       failed: 0,
       errors: [],
-      data: []
+      data: [],
     };
 
-    // Procesar en promesas paralelas pero limitadas si fueran demasiadas, 
+    // Procesar en promesas paralelas pero limitadas si fueran demasiadas,
     // pero usualmente serán < 50, así que Promise.all está bien
     const promises = establishmentIds.map(async (id) => {
       try {
-        const result = await addToContacts(id, partnerId, "Agregado masivamente desde mapa");
+        const result = await addToContacts(id, partnerId, 'Agregado masivamente desde mapa');
         return { success: true, id, result };
       } catch (error) {
         return { success: false, id, error: error.message };
@@ -156,7 +158,7 @@ async function bulkAddToContacts(establishmentIds, partnerId) {
 
     const outcomes = await Promise.all(promises);
 
-    outcomes.forEach(outcome => {
+    outcomes.forEach((outcome) => {
       if (outcome.success) {
         results.success++;
         results.data.push(outcome.result);
@@ -168,7 +170,7 @@ async function bulkAddToContacts(establishmentIds, partnerId) {
 
     return results;
   } catch (error) {
-    logger.error("[VentasEnrichment] Error en bulkAddToContacts:", error);
+    logger.error('[VentasEnrichment] Error en bulkAddToContacts:', error);
     throw error;
   }
 }
@@ -201,7 +203,7 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     });
 
     if (!establishment) {
-      throw new Error("Establecimiento no encontrado");
+      throw new Error('Establecimiento no encontrado');
     }
 
     const estabId = establishment.id;
@@ -212,16 +214,16 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     });
 
     if (!existing) {
-      throw new Error("No se encontró el contacto. Primero agrégalo a tus contactos.");
+      throw new Error('No se encontró el contacto. Primero agrégalo a tus contactos.');
     }
 
     // 3. Validar que tiene datos mínimos requeridos
     if (!contactData.decisionMakerName) {
-      throw new Error("El nombre del tomador de decisiones es requerido");
+      throw new Error('El nombre del tomador de decisiones es requerido');
     }
 
     if (!contactData.decisionMakerPhone && !contactData.decisionMakerWhatsApp) {
-      throw new Error("Se requiere al menos un teléfono o WhatsApp");
+      throw new Error('Se requiere al menos un teléfono o WhatsApp');
     }
 
     // 4. Actualizar a nivel PROSPECT en establishmentEnrichment
@@ -233,7 +235,7 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
         decisionMakerPhone: contactData.decisionMakerPhone || null,
         decisionMakerWhatsApp: contactData.decisionMakerWhatsApp || null,
         decisionMakerEmail: contactData.decisionMakerEmail || null,
-        level: "PROSPECT",
+        level: 'PROSPECT',
         lastUpdatedBy: partnerId,
       },
     });
@@ -249,7 +251,7 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
         where: { id: prospect.id },
         data: {
           partnerId,
-          status: "ASSIGNED",
+          status: 'ASSIGNED',
           assignedAt: new Date(),
           notes: `Actualizado a Prospecto el ${new Date().toLocaleDateString('es-MX')}. Partner: ${partnerId}`,
         },
@@ -260,14 +262,16 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
         data: {
           establishmentId: estabId,
           partnerId,
-          status: "ASSIGNED",
+          status: 'ASSIGNED',
           assignedAt: new Date(),
           notes: `Creado como Prospecto el ${new Date().toLocaleDateString('es-MX')}. Tomador de decisiones: ${contactData.decisionMakerName}`,
         },
       });
     }
 
-    logger.info(`[VentasEnrichment] Contacto convertido a prospecto: ${establishment.name} por partner ${partnerId}`);
+    logger.info(
+      `[VentasEnrichment] Contacto convertido a prospecto: ${establishment.name} por partner ${partnerId}`
+    );
 
     // Log de evento de enriquecimiento (non-blocking)
     logEnrichmentEvent({
@@ -288,9 +292,9 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
     enqueueSync({
       establishmentId: estabId,
       partnerId,
-      reason: "CONTACT_TO_PROSPECT",
+      reason: 'CONTACT_TO_PROSPECT',
     }).catch((err) => {
-      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
+      logger.warn('[VentasEnrichment] Error encolando sync (no critico)', { error: err.message });
     });
 
     return {
@@ -299,7 +303,7 @@ async function convertContactToProspect(establishmentId, contactData, partnerId)
       prospect,
     };
   } catch (error) {
-    logger.error("[VentasEnrichment] Error convirtiendo contacto a prospecto:", error);
+    logger.error('[VentasEnrichment] Error convirtiendo contacto a prospecto:', error);
     throw error;
   }
 }
@@ -315,9 +319,9 @@ async function getMyContacts(partnerId) {
     const enrichments = await prisma.establishmentEnrichment.findMany({
       where: {
         enrichedBy: partnerId,
-        level: "CONTACT",
+        level: 'CONTACT',
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (enrichments.length === 0) {
@@ -357,7 +361,7 @@ async function getMyContacts(partnerId) {
       establishment: establishmentMap[enrichment.establishmentId] || null,
     }));
   } catch (error) {
-    logger.error("[VentasEnrichment] Error obteniendo contactos:", error);
+    logger.error('[VentasEnrichment] Error obteniendo contactos:', error);
     throw error;
   }
 }
@@ -370,7 +374,7 @@ async function getMyContacts(partnerId) {
 async function getVentasStats(partnerId) {
   try {
     const stats = await prisma.establishmentEnrichment.groupBy({
-      by: ["level"],
+      by: ['level'],
       where: { enrichedBy: partnerId },
       _count: { id: true },
     });
@@ -384,7 +388,7 @@ async function getVentasStats(partnerId) {
     };
 
     stats.forEach((stat) => {
-      if (result.hasOwnProperty(stat.level)) {
+      if (Object.hasOwn(result, stat.level)) {
         result[stat.level] = stat._count.id;
         result.total += stat._count.id;
       }
@@ -392,7 +396,7 @@ async function getVentasStats(partnerId) {
 
     return result;
   } catch (error) {
-    logger.error("[VentasEnrichment] Error obteniendo estadísticas:", error);
+    logger.error('[VentasEnrichment] Error obteniendo estadísticas:', error);
     throw error;
   }
 }
@@ -411,22 +415,37 @@ async function updateProspect(establishmentId, data, partnerId) {
     });
 
     if (!existing) {
-      throw new Error("No se encontró el prospecto");
+      throw new Error('No se encontró el prospecto');
     }
 
     // Solo permitir actualizar si es PROSPECT o mayor
-    if (existing.level !== "PROSPECT" && existing.level !== "LEAD" && existing.level !== "CLIENT") {
-      throw new Error("El establecimiento debe ser al menos un prospecto para actualizar");
+    if (existing.level !== 'PROSPECT' && existing.level !== 'LEAD' && existing.level !== 'CLIENT') {
+      throw new Error('El establecimiento debe ser al menos un prospecto para actualizar');
     }
 
     const enrichment = await prisma.establishmentEnrichment.update({
       where: { establishmentId },
       data: {
-        decisionMakerName: data.decisionMakerName !== undefined ? data.decisionMakerName : existing.decisionMakerName,
-        decisionMakerPosition: data.decisionMakerPosition !== undefined ? data.decisionMakerPosition : existing.decisionMakerPosition,
-        decisionMakerPhone: data.decisionMakerPhone !== undefined ? data.decisionMakerPhone : existing.decisionMakerPhone,
-        decisionMakerWhatsApp: data.decisionMakerWhatsApp !== undefined ? data.decisionMakerWhatsApp : existing.decisionMakerWhatsApp,
-        decisionMakerEmail: data.decisionMakerEmail !== undefined ? data.decisionMakerEmail : existing.decisionMakerEmail,
+        decisionMakerName:
+          data.decisionMakerName !== undefined
+            ? data.decisionMakerName
+            : existing.decisionMakerName,
+        decisionMakerPosition:
+          data.decisionMakerPosition !== undefined
+            ? data.decisionMakerPosition
+            : existing.decisionMakerPosition,
+        decisionMakerPhone:
+          data.decisionMakerPhone !== undefined
+            ? data.decisionMakerPhone
+            : existing.decisionMakerPhone,
+        decisionMakerWhatsApp:
+          data.decisionMakerWhatsApp !== undefined
+            ? data.decisionMakerWhatsApp
+            : existing.decisionMakerWhatsApp,
+        decisionMakerEmail:
+          data.decisionMakerEmail !== undefined
+            ? data.decisionMakerEmail
+            : existing.decisionMakerEmail,
         lastUpdatedBy: partnerId,
       },
     });
@@ -452,9 +471,9 @@ async function updateProspect(establishmentId, data, partnerId) {
     enqueueSync({
       establishmentId: syncEstablishmentId,
       partnerId,
-      reason: "UPDATE_PROSPECT",
+      reason: 'UPDATE_PROSPECT',
     }).catch((err) => {
-      logger.warn("[VentasEnrichment] Error encolando sync (no critico)", { error: err.message });
+      logger.warn('[VentasEnrichment] Error encolando sync (no critico)', { error: err.message });
     });
 
     return {
@@ -462,7 +481,7 @@ async function updateProspect(establishmentId, data, partnerId) {
       establishment,
     };
   } catch (error) {
-    logger.error("[VentasEnrichment] Error actualizando prospecto:", error);
+    logger.error('[VentasEnrichment] Error actualizando prospecto:', error);
     throw error;
   }
 }
@@ -481,7 +500,7 @@ async function removeFromMyList(establishmentId, partnerId) {
     });
 
     if (!establishment || !establishment.clee) {
-      throw new Error("Establecimiento no encontrado o sin clave DENUE");
+      throw new Error('Establecimiento no encontrado o sin clave DENUE');
     }
 
     const clee = establishment.clee;
@@ -491,12 +510,12 @@ async function removeFromMyList(establishmentId, partnerId) {
     });
 
     if (!existing) {
-      throw new Error("No se encontro el registro");
+      throw new Error('No se encontro el registro');
     }
 
     // Verificar que pertenece al partner
     if (existing.enrichedBy !== partnerId) {
-      throw new Error("No tienes permiso para eliminar este registro");
+      throw new Error('No tienes permiso para eliminar este registro');
     }
 
     await prisma.establishmentEnrichment.delete({
@@ -507,7 +526,7 @@ async function removeFromMyList(establishmentId, partnerId) {
 
     return { success: true };
   } catch (error) {
-    logger.error("[VentasEnrichment] Error eliminando registro:", error);
+    logger.error('[VentasEnrichment] Error eliminando registro:', error);
     throw error;
   }
 }

@@ -1,5 +1,5 @@
-const dealService = require("../services/dealService");
-const logger = require("../config/logger");
+const dealService = require('../services/dealService');
+const logger = require('../config/logger');
 
 // Listar deals
 const list = async (req, res, next) => {
@@ -7,9 +7,7 @@ const list = async (req, res, next) => {
     const { partnerId, status, dateFrom, dateTo, page, limit, sortBy, sortOrder } = req.query;
 
     // Si no es admin, filtrar solo por su partnerId
-    const filterPartnerId = req.user.role === "ADMIN" 
-      ? partnerId 
-      : req.user.partner?.id;
+    const filterPartnerId = req.user.role === 'ADMIN' ? partnerId : req.user.partner?.id;
 
     const result = await dealService.listDeals({
       partnerId: filterPartnerId,
@@ -18,8 +16,8 @@ const list = async (req, res, next) => {
       dateTo,
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 20,
-      sortBy: sortBy || "closedAt",
-      sortOrder: sortOrder || "desc",
+      sortBy: sortBy || 'closedAt',
+      sortOrder: sortOrder || 'desc',
     });
 
     res.json({
@@ -40,15 +38,15 @@ const getById = async (req, res, next) => {
     if (!deal) {
       return res.status(404).json({
         success: false,
-        error: "Deal no encontrado",
+        error: 'Deal no encontrado',
       });
     }
 
     // Verificar permisos
-    if (req.user.role !== "ADMIN" && req.user.partner?.id !== deal.partnerId) {
+    if (req.user.role !== 'ADMIN' && req.user.partner?.id !== deal.partnerId) {
       return res.status(403).json({
         success: false,
-        error: "No tienes permisos para ver este deal",
+        error: 'No tienes permisos para ver este deal',
       });
     }
 
@@ -81,7 +79,10 @@ const create = async (req, res, next) => {
       data: deal,
     });
   } catch (error) {
-    if (error.message.includes("Lead no encontrado") || error.message.includes("ya tiene un deal")) {
+    if (
+      error.message.includes('Lead no encontrado') ||
+      error.message.includes('ya tiene un deal')
+    ) {
       return res.status(400).json({
         success: false,
         error: error.message,
@@ -106,7 +107,7 @@ const updateStatus = async (req, res, next) => {
       data: deal,
     });
   } catch (error) {
-    if (error.message === "Deal no encontrado") {
+    if (error.message === 'Deal no encontrado') {
       return res.status(404).json({
         success: false,
         error: error.message,
@@ -122,4 +123,3 @@ module.exports = {
   create,
   updateStatus,
 };
-

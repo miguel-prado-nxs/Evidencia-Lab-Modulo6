@@ -1,17 +1,18 @@
-const bcrypt = require("bcryptjs");
-const crypto = require("crypto");
-const prisma = require("../config/database");
-const { generateToken } = require("../middleware/auth");
-const partnerService = require("../services/partnerService");
-const emailService = require("../services/emailService");
-const notificationService = require("../services/notificationService");
-const logger = require("../config/logger");
-const { v4: uuidv4 } = require("uuid");
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const prisma = require('../config/database');
+const { generateToken } = require('../middleware/auth');
+const partnerService = require('../services/partnerService');
+const emailService = require('../services/emailService');
+const notificationService = require('../services/notificationService');
+const logger = require('../config/logger');
+const { v4: uuidv4 } = require('uuid');
 
 // Registro de nuevo partner
 const register = async (req, res, next) => {
   try {
-    const { email, password, name, type, companyName, phone, website, country, state, city } = req.body;
+    const { email, password, name, type, companyName, phone, website, country, state, city } =
+      req.body;
 
     // Verificar si el email ya existe
     const existingUser = await prisma.user.findUnique({
@@ -21,7 +22,7 @@ const register = async (req, res, next) => {
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        error: "Ya existe una cuenta con este email",
+        error: 'Ya existe una cuenta con este email',
       });
     }
 
@@ -42,12 +43,13 @@ const register = async (req, res, next) => {
     logger.info(`Nuevo partner registrado: ${email}`);
 
     // Enviar email de bienvenida (async, no bloquea)
-    notificationService.notifyPartnerRegistered(user.id, partner)
-      .catch(err => logger.error("Error sending welcome email:", err));
+    notificationService
+      .notifyPartnerRegistered(user.id, partner)
+      .catch((err) => logger.error('Error sending welcome email:', err));
 
     res.status(201).json({
       success: true,
-      message: "Solicitud de partner recibida. Te contactaremos pronto.",
+      message: 'Solicitud de partner recibida. Te contactaremos pronto.',
       data: {
         user: {
           id: user.id,
@@ -82,7 +84,7 @@ const login = async (req, res, next) => {
     if (!user || !user.passwordHash) {
       return res.status(401).json({
         success: false,
-        error: "Credenciales inválidas",
+        error: 'Credenciales inválidas',
       });
     }
 
@@ -91,15 +93,15 @@ const login = async (req, res, next) => {
     if (!validPassword) {
       return res.status(401).json({
         success: false,
-        error: "Credenciales inválidas",
+        error: 'Credenciales inválidas',
       });
     }
 
     // Verificar estado del partner
-    if (user.partner && user.partner.status === "SUSPENDED") {
+    if (user.partner && user.partner.status === 'SUSPENDED') {
       return res.status(403).json({
         success: false,
-        error: "Tu cuenta está suspendida. Contacta a soporte.",
+        error: 'Tu cuenta está suspendida. Contacta a soporte.',
       });
     }
 
@@ -108,8 +110,8 @@ const login = async (req, res, next) => {
       await prisma.activity.create({
         data: {
           partnerId: user.partner.id,
-          type: "LOGIN",
-          description: "Inicio de sesión exitoso",
+          type: 'LOGIN',
+          description: 'Inicio de sesión exitoso',
         },
       });
 
@@ -135,12 +137,12 @@ const login = async (req, res, next) => {
           role: user.role,
           partner: user.partner
             ? {
-              id: user.partner.id,
-              code: user.partner.code,
-              type: user.partner.type,
-              tier: user.partner.tier,
-              status: user.partner.status,
-            }
+                id: user.partner.id,
+                code: user.partner.code,
+                type: user.partner.type,
+                tier: user.partner.tier,
+                status: user.partner.status,
+              }
             : null,
         },
       },
@@ -163,13 +165,13 @@ const me = async (req, res) => {
       role: user.role,
       partner: user.partner
         ? {
-          id: user.partner.id,
-          code: user.partner.code,
-          type: user.partner.type,
-          tier: user.partner.tier,
-          status: user.partner.status,
-          referralLink: user.partner.referralLink,
-        }
+            id: user.partner.id,
+            code: user.partner.code,
+            type: user.partner.type,
+            tier: user.partner.tier,
+            status: user.partner.status,
+            referralLink: user.partner.referralLink,
+          }
         : null,
     },
   });
@@ -190,7 +192,7 @@ const changePassword = async (req, res, next) => {
     if (!validPassword) {
       return res.status(400).json({
         success: false,
-        error: "La contraseña actual es incorrecta",
+        error: 'La contraseña actual es incorrecta',
       });
     }
 
@@ -203,7 +205,7 @@ const changePassword = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Contraseña actualizada exitosamente",
+      message: 'Contraseña actualizada exitosamente',
     });
   } catch (error) {
     next(error);
@@ -218,7 +220,7 @@ const oauthCallback = async (req, res, next) => {
     if (!provider || !providerAccountId || !email) {
       return res.status(400).json({
         success: false,
-        error: "Datos de OAuth incompletos",
+        error: 'Datos de OAuth incompletos',
       });
     }
 
@@ -255,7 +257,7 @@ const oauthCallback = async (req, res, next) => {
         await prisma.activity.create({
           data: {
             partnerId: user.partner.id,
-            type: "LOGIN",
+            type: 'LOGIN',
             description: `Inicio de sesión con ${provider}`,
           },
         });
@@ -281,13 +283,13 @@ const oauthCallback = async (req, res, next) => {
             role: user.role,
             partner: user.partner
               ? {
-                id: user.partner.id,
-                code: user.partner.code,
-                type: user.partner.type,
-                tier: user.partner.tier,
-                status: user.partner.status,
-                referralLink: user.partner.referralLink,
-              }
+                  id: user.partner.id,
+                  code: user.partner.code,
+                  type: user.partner.type,
+                  tier: user.partner.tier,
+                  status: user.partner.status,
+                  referralLink: user.partner.referralLink,
+                }
               : null,
           },
         },
@@ -295,7 +297,7 @@ const oauthCallback = async (req, res, next) => {
     }
 
     // Buscar si existe un usuario con este email
-    let user = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email },
       include: { partner: true },
     });
@@ -306,7 +308,7 @@ const oauthCallback = async (req, res, next) => {
       await prisma.account.create({
         data: {
           userId: user.id,
-          type: "oauth",
+          type: 'oauth',
           provider,
           providerAccountId,
           access_token: accessToken,
@@ -337,13 +339,13 @@ const oauthCallback = async (req, res, next) => {
             role: user.role,
             partner: user.partner
               ? {
-                id: user.partner.id,
-                code: user.partner.code,
-                type: user.partner.type,
-                tier: user.partner.tier,
-                status: user.partner.status,
-                referralLink: user.partner.referralLink,
-              }
+                  id: user.partner.id,
+                  code: user.partner.code,
+                  type: user.partner.type,
+                  tier: user.partner.tier,
+                  status: user.partner.status,
+                  referralLink: user.partner.referralLink,
+                }
               : null,
           },
         },
@@ -356,8 +358,8 @@ const oauthCallback = async (req, res, next) => {
       const newUser = await tx.user.create({
         data: {
           email,
-          name: name || email.split("@")[0],
-          role: "PENDING",
+          name: name || email.split('@')[0],
+          role: 'PENDING',
           image,
           emailVerified: new Date(), // OAuth verifica el email
         },
@@ -367,7 +369,7 @@ const oauthCallback = async (req, res, next) => {
       await tx.account.create({
         data: {
           userId: newUser.id,
-          type: "oauth",
+          type: 'oauth',
           provider,
           providerAccountId,
           access_token: accessToken,
@@ -381,9 +383,9 @@ const oauthCallback = async (req, res, next) => {
         data: {
           userId: newUser.id,
           code,
-          type: "AFFILIATE",
-          tier: "REGISTERED",
-          status: "PENDING",
+          type: 'AFFILIATE',
+          tier: 'REGISTERED',
+          status: 'PENDING',
           commissionRate: 0.15,
           referralLink: `https://easyorder.mx/?ref=${code}`,
         },
@@ -393,7 +395,7 @@ const oauthCallback = async (req, res, next) => {
       await tx.activity.create({
         data: {
           partnerId: partner.id,
-          type: "PARTNER_REGISTERED",
+          type: 'PARTNER_REGISTERED',
           description: `Partner registrado via ${provider}`,
         },
       });
@@ -426,7 +428,7 @@ const oauthCallback = async (req, res, next) => {
       },
     });
   } catch (error) {
-    logger.error("Error en OAuth callback:", error);
+    logger.error('Error en OAuth callback:', error);
     next(error);
   }
 };
@@ -451,12 +453,12 @@ const linkOAuthAccount = async (req, res, next) => {
       if (existingAccount.userId === userId) {
         return res.json({
           success: true,
-          message: "Esta cuenta ya está vinculada",
+          message: 'Esta cuenta ya está vinculada',
         });
       }
       return res.status(409).json({
         success: false,
-        error: "Esta cuenta ya está vinculada a otro usuario",
+        error: 'Esta cuenta ya está vinculada a otro usuario',
       });
     }
 
@@ -464,7 +466,7 @@ const linkOAuthAccount = async (req, res, next) => {
     await prisma.account.create({
       data: {
         userId,
-        type: "oauth",
+        type: 'oauth',
         provider,
         providerAccountId,
         access_token: accessToken,
@@ -502,7 +504,7 @@ const forgotPassword = async (req, res, next) => {
       logger.info(`Forgot password attempt for non-existent email: ${email}`);
       return res.json({
         success: true,
-        message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña.",
+        message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña.',
       });
     }
 
@@ -518,7 +520,7 @@ const forgotPassword = async (req, res, next) => {
     });
 
     // Generar nuevo token
-    const token = crypto.randomBytes(32).toString("hex");
+    const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
 
     await prisma.passwordResetToken.create({
@@ -540,7 +542,7 @@ const forgotPassword = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña.",
+      message: 'Si el email existe, recibirás instrucciones para restablecer tu contraseña.',
     });
   } catch (error) {
     next(error);
@@ -561,21 +563,21 @@ const resetPassword = async (req, res, next) => {
     if (!resetToken) {
       return res.status(400).json({
         success: false,
-        error: "El enlace de recuperación es inválido.",
+        error: 'El enlace de recuperación es inválido.',
       });
     }
 
     if (resetToken.usedAt) {
       return res.status(400).json({
         success: false,
-        error: "Este enlace ya fue utilizado. Solicita uno nuevo.",
+        error: 'Este enlace ya fue utilizado. Solicita uno nuevo.',
       });
     }
 
     if (resetToken.expiresAt < new Date()) {
       return res.status(400).json({
         success: false,
-        error: "El enlace ha expirado. Solicita uno nuevo.",
+        error: 'El enlace ha expirado. Solicita uno nuevo.',
       });
     }
 
@@ -597,7 +599,7 @@ const resetPassword = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Tu contraseña ha sido actualizada exitosamente.",
+      message: 'Tu contraseña ha sido actualizada exitosamente.',
     });
   } catch (error) {
     next(error);
@@ -620,14 +622,14 @@ const sendVerificationEmail = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: "Usuario no encontrado",
+        error: 'Usuario no encontrado',
       });
     }
 
     if (user.emailVerified) {
       return res.json({
         success: true,
-        message: "Tu email ya está verificado.",
+        message: 'Tu email ya está verificado.',
       });
     }
 
@@ -637,7 +639,7 @@ const sendVerificationEmail = async (req, res, next) => {
     });
 
     // Generar nuevo token
-    const token = crypto.randomBytes(32).toString("hex");
+    const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
 
     await prisma.emailVerificationToken.create({
@@ -656,13 +658,13 @@ const sendVerificationEmail = async (req, res, next) => {
       logger.error(`Failed to send verification email to ${user.email}:`, emailError);
       return res.status(500).json({
         success: false,
-        error: "Error al enviar el email de verificación. Intenta más tarde.",
+        error: 'Error al enviar el email de verificación. Intenta más tarde.',
       });
     }
 
     res.json({
       success: true,
-      message: "Se ha enviado un email de verificación a tu correo.",
+      message: 'Se ha enviado un email de verificación a tu correo.',
     });
   } catch (error) {
     next(error);
@@ -683,7 +685,7 @@ const verifyEmail = async (req, res, next) => {
     if (!verificationToken) {
       return res.status(400).json({
         success: false,
-        error: "El enlace de verificación es inválido.",
+        error: 'El enlace de verificación es inválido.',
       });
     }
 
@@ -694,7 +696,7 @@ const verifyEmail = async (req, res, next) => {
       });
       return res.status(400).json({
         success: false,
-        error: "El enlace ha expirado. Solicita uno nuevo.",
+        error: 'El enlace ha expirado. Solicita uno nuevo.',
       });
     }
 
@@ -705,7 +707,7 @@ const verifyEmail = async (req, res, next) => {
       });
       return res.json({
         success: true,
-        message: "Tu email ya está verificado.",
+        message: 'Tu email ya está verificado.',
       });
     }
 
@@ -724,7 +726,7 @@ const verifyEmail = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Tu email ha sido verificado exitosamente.",
+      message: 'Tu email ha sido verificado exitosamente.',
     });
   } catch (error) {
     next(error);
@@ -743,4 +745,3 @@ module.exports = {
   sendVerificationEmail,
   verifyEmail,
 };
-

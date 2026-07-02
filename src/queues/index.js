@@ -5,12 +5,8 @@
  * Redis y el setup del dashboard de Bull Board.
  */
 
-const {
-  createRedisClient,
-  getBullOptions,
-  getHealthClient,
-} = require("./config");
-const { setupBullBoard } = require("./dashboard");
+const { createRedisClient, getBullOptions, getHealthClient } = require('./config');
+const { setupBullBoard } = require('./dashboard');
 
 module.exports = {
   // Configuración Redis

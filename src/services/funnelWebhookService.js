@@ -5,28 +5,30 @@
  * Cubre Discovery, Activation, Qualification y Conversion.
  */
 
-const prisma = require("../config/database");
-const prismaGeo = require("../config/database-geo");
-const logger = require("../config/logger");
-const { logEnrichmentEvent } = require("./enrichmentService");
-const whatsappService = require("./whatsappService");
+const prisma = require('../config/database');
+const prismaGeo = require('../config/database-geo');
+const logger = require('../config/logger');
+const { logEnrichmentEvent } = require('./enrichmentService');
+const whatsappService = require('./whatsappService');
+const { enqueueInteractionSync } = require('./twenty/twentyActivityService');
+const { enqueueSync } = require('./twenty/twentySyncService');
 
-const AGENT_PARTNER_ID = process.env.AGENT_SYSTEM_PARTNER_ID || "AGENT_FUNNEL";
+const AGENT_PARTNER_ID = process.env.AGENT_SYSTEM_PARTNER_ID || 'AGENT_FUNNEL';
 
 // Mapea outcomes de agentes al call_status permitido por el check constraint:
 // ('completed', 'no_answer', 'voicemail', 'failed')
 function toCallStatus(outcome) {
-  if (!outcome) return "completed";
+  if (!outcome) return 'completed';
   const o = outcome.toUpperCase();
-  if (o === "NO_ANSWER") return "no_answer";
-  if (o === "VOICEMAIL") return "voicemail";
-  if (o === "WRONG_NUMBER" || o === "FAILED") return "failed";
-  return "completed";
+  if (o === 'NO_ANSWER') return 'no_answer';
+  if (o === 'VOICEMAIL') return 'voicemail';
+  if (o === 'WRONG_NUMBER' || o === 'FAILED') return 'failed';
+  return 'completed';
 }
 const CALENDLY_TOKEN = process.env.CALENDLY_API_TOKEN;
 const CALENDLY_EVENT_TYPE_URI =
   process.env.CALENDLY_EVENT_TYPE_URI ||
-  "https://api.calendly.com/event_types/f68abb7b-2edf-40a9-b966-3b00da3152f9";
+  'https://api.calendly.com/event_types/f68abb7b-2edf-40a9-b966-3b00da3152f9';
 
 // Plan prices (MXN/month)
 const PLAN_PRICES = {
@@ -48,10 +50,10 @@ function truncateCallSummary(summary, maxLength = 1000) {
 // Valida email: rechaza placeholders sin resolver ({{...}}) y strings obviamente
 // invalidos. Evita guardar basura como "{{previousEmail}}" en BD.
 function isValidEmail(value) {
-  if (!value || typeof value !== "string") return false;
+  if (!value || typeof value !== 'string') return false;
   const trimmed = value.trim();
   if (!trimmed) return false;
-  if (trimmed.includes("{{") || trimmed.includes("}}")) return false;
+  if (trimmed.includes('{{') || trimmed.includes('}}')) return false;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
@@ -78,16 +80,17 @@ async function upsertEnrichmentSnapshot(establishmentId, stage, data, agentTag =
   };
 
   // Solo setear enrichedBy/enrichedAt si el registro no los tiene aún
-  const backfillFields = agentTag && !existing?.enrichedBy
-    ? { enrichedBy: agentTag, enrichedAt: new Date() }
-    : {};
+  const backfillFields =
+    agentTag && !existing?.enrichedBy ? { enrichedBy: agentTag, enrichedAt: new Date() } : {};
 
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
     create: {
       establishmentId,
       establishmentData: updatedData,
-      ...(agentTag ? { enrichedBy: agentTag, enrichedAt: new Date(), lastUpdatedBy: agentTag } : {}),
+      ...(agentTag
+        ? { enrichedBy: agentTag, enrichedAt: new Date(), lastUpdatedBy: agentTag }
+        : {}),
     },
     update: {
       establishmentData: updatedData,
@@ -130,14 +133,15 @@ async function syncCampaignContactStatus({
     const contact = await prisma.campaignContact.findFirst({
       where: {
         establishmentId,
-        status: "CALLING",
-        campaign: { status: "ACTIVE" },
+        status: 'CALLING',
+        campaign: { status: 'ACTIVE' },
       },
-      orderBy: { createdAt: "desc" },
+      include: { campaign: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!contact) {
-      logger.debug("[syncCampaignContact] No active CampaignContact found for establishment", {
+      logger.debug('[syncCampaignContact] No active CampaignContact found for establishment', {
         establishmentId,
         agentStage,
       });
@@ -146,37 +150,37 @@ async function syncCampaignContactStatus({
 
     // Determinar el nuevo status
     const positiveOutcomes = [
-      "ADVANCE_TO_ACTIVATION",
-      "DEMO_SCHEDULED",
-      "CLOSED_WON",
-      "FOLLOW_UP_LATER",
-      "FOLLOW_UP",
-      "FOLLOW_UP_NEEDED",
-      "DEMO_DECLINED",
-      "OBJECTION_UNRESOLVED",
+      'ADVANCE_TO_ACTIVATION',
+      'DEMO_SCHEDULED',
+      'CLOSED_WON',
+      'FOLLOW_UP_LATER',
+      'FOLLOW_UP',
+      'FOLLOW_UP_NEEDED',
+      'DEMO_DECLINED',
+      'OBJECTION_UNRESOLVED',
     ];
 
     const failedOutcomes = [
-      "NOT_INTERESTED",
-      "DISQUALIFIED",
-      "LOST",
-      "WRONG_NUMBER",
-      "NO_ANSWER",
-      "VOICEMAIL",
-      "FAILED",
+      'NOT_INTERESTED',
+      'DISQUALIFIED',
+      'LOST',
+      'WRONG_NUMBER',
+      'NO_ANSWER',
+      'VOICEMAIL',
+      'FAILED',
     ];
 
     let newStatus;
-    if (outcome === "CLOSED_WON") {
-      newStatus = "CONVERTED";
+    if (outcome === 'CLOSED_WON') {
+      newStatus = 'CONVERTED';
     } else if (couponSent) {
-      newStatus = "RESPONDED"; // Se envió cupón → al menos respondió
+      newStatus = 'RESPONDED'; // Se envió cupón → al menos respondió
     } else if (positiveOutcomes.includes(outcome?.toUpperCase())) {
-      newStatus = "RESPONDED";
+      newStatus = 'RESPONDED';
     } else if (failedOutcomes.includes(outcome?.toUpperCase())) {
-      newStatus = "FAILED";
+      newStatus = 'FAILED';
     } else {
-      newStatus = "RESPONDED"; // Default conservador
+      newStatus = 'RESPONDED'; // Default conservador
     }
 
     // Actualizar CampaignContact
@@ -197,22 +201,27 @@ async function syncCampaignContactStatus({
       },
     });
 
-    logger.info("[syncCampaignContact] CampaignContact status updated", {
+    logger.info('[syncCampaignContact] CampaignContact status updated', {
       contactId: contact.id,
       campaignId: contact.campaignId,
       establishmentId,
-      previousStatus: "CALLING",
+      previousStatus: 'CALLING',
       newStatus,
       outcome,
       agentStage,
     });
 
     // Recalcular métricas de la campaña (non-blocking)
-    _recalculateCampaignMetrics(contact.campaignId).catch(() => { });
+    _recalculateCampaignMetrics(contact.campaignId).catch(() => {});
 
-    return { contactId: contact.id, campaignId: contact.campaignId, newStatus };
+    return {
+      contactId: contact.id,
+      campaignId: contact.campaignId,
+      campaignName: contact.campaign?.name || null,
+      newStatus,
+    };
   } catch (err) {
-    logger.error("[syncCampaignContact] Error syncing contact status", {
+    logger.error('[syncCampaignContact] Error syncing contact status', {
       error: err.message,
       establishmentId,
       outcome,
@@ -240,7 +249,12 @@ async function _recalculateCampaignMetrics(campaignId) {
       statusCount[c.status] = (statusCount[c.status] || 0) + 1;
 
       // Contar cupones si el contacto tiene `couponId` O su metadata de establishment indica que se envió cupón
-      if (c.couponId || (c.establishmentData && typeof c.establishmentData === 'object' && c.establishmentData.couponSent)) {
+      if (
+        c.couponId ||
+        (c.establishmentData &&
+          typeof c.establishmentData === 'object' &&
+          c.establishmentData.couponSent)
+      ) {
         couponsSent++;
       }
     }
@@ -249,7 +263,11 @@ async function _recalculateCampaignMetrics(campaignId) {
       where: { id: campaignId },
       data: {
         totalContacts: contacts.length,
-        totalCalled: (statusCount.CALLING || 0) + (statusCount.RESPONDED || 0) + (statusCount.CONVERTED || 0) + (statusCount.FAILED || 0),
+        totalCalled:
+          (statusCount.CALLING || 0) +
+          (statusCount.RESPONDED || 0) +
+          (statusCount.CONVERTED || 0) +
+          (statusCount.FAILED || 0),
         totalResponded: statusCount.RESPONDED || 0,
         totalConverted: statusCount.CONVERTED || 0,
         totalFailed: statusCount.FAILED || 0,
@@ -257,9 +275,9 @@ async function _recalculateCampaignMetrics(campaignId) {
       },
     });
 
-    logger.debug("[_recalculateCampaignMetrics] Metrics updated", { campaignId, statusCount });
+    logger.debug('[_recalculateCampaignMetrics] Metrics updated', { campaignId, statusCount });
   } catch (err) {
-    logger.error("[_recalculateCampaignMetrics] Error", { error: err.message, campaignId });
+    logger.error('[_recalculateCampaignMetrics] Error', { error: err.message, campaignId });
   }
 }
 
@@ -274,9 +292,9 @@ async function sendWhatsappInfo({
   prospectName,
   businessName,
 }) {
-  if (!phone) throw new Error("phone requerido");
+  if (!phone) throw new Error('phone requerido');
 
-  const saludo = prospectName ? `¡Hola ${prospectName}!` : "¡Hola!";
+  const saludo = prospectName ? `¡Hola ${prospectName}!` : '¡Hola!';
 
   const message =
     `${saludo}\n\n` +
@@ -290,13 +308,61 @@ async function sendWhatsappInfo({
     message,
   });
 
-  logger.info("[FunnelWebhook:Discovery] sendWhatsappInfo", {
+  logger.info('[FunnelWebhook:Discovery] sendWhatsappInfo', {
     phone,
     establishmentId,
     success: result.success,
   });
 
   return result;
+}
+
+// ============================================================
+// HELPER: Encolar sync de pipeline + nota de interaccion en Twenty
+// ============================================================
+
+/**
+ * Encola los dos jobs de Twenty al cerrar una llamada de campaña:
+ *   - PIPELINE: actualiza nivelPipeline del Company en Twenty
+ *   - INTERACTION: crea la Note de la llamada en Twenty
+ *
+ * Ambos son non-blocking. Los errores son absorbidos para no afectar el flujo principal.
+ *
+ * @param {string} stage - discovery | qualification | activation | conversion
+ * @param {Object} params
+ */
+function enqueueCampaignSync(
+  stage,
+  { establishmentId, conversationId, outcome, callSummary, callDuration, campaignId, campaignName }
+) {
+  enqueueSync({
+    establishmentId,
+    partnerId: null,
+    reason: `CALL_${stage.toUpperCase()}`,
+  }).catch((err) =>
+    logger.error('[FunnelWebhook:enqueueCampaignSync] Error encolando pipeline sync', {
+      error: err.message,
+      stage,
+      establishmentId,
+    })
+  );
+
+  enqueueInteractionSync({
+    establishmentId,
+    conversationId,
+    stage,
+    outcome,
+    callSummary,
+    callDuration: callDuration || null,
+    campaignId: campaignId || null,
+    campaignName: campaignName || null,
+  }).catch((err) =>
+    logger.error('[FunnelWebhook:enqueueCampaignSync] Error encolando interaction sync', {
+      error: err.message,
+      stage,
+      establishmentId,
+    })
+  );
 }
 
 // ============================================================
@@ -327,7 +393,7 @@ async function saveDiscoveryData({
   problemPriority,
   dailyOrders,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   // 1. Persistir decisionMakerName y decisionMakerEmail si vienen
   //    Son columnas planas que consultan los siguientes agentes
@@ -343,13 +409,13 @@ async function saveDiscoveryData({
       create: {
         establishmentId,
         ...columnUpdate,
-        enrichedBy: "DISCOVERY_AGENT",
+        enrichedBy: 'DISCOVERY_AGENT',
         enrichedAt: new Date(),
-        lastUpdatedBy: "DISCOVERY_AGENT",
+        lastUpdatedBy: 'DISCOVERY_AGENT',
       },
       update: {
         ...columnUpdate,
-        lastUpdatedBy: "DISCOVERY_AGENT",
+        lastUpdatedBy: 'DISCOVERY_AGENT',
       },
     });
   }
@@ -380,13 +446,13 @@ async function saveDiscoveryData({
     dailyOrders,
   };
   const cleanSnapshot = Object.fromEntries(
-    Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== '')
   );
   if (Object.keys(cleanSnapshot).length > 0) {
-    await upsertEnrichmentSnapshot(establishmentId, "discovery", cleanSnapshot, "DISCOVERY_AGENT");
+    await upsertEnrichmentSnapshot(establishmentId, 'discovery', cleanSnapshot, 'DISCOVERY_AGENT');
   }
 
-  logger.info("[FunnelWebhook:Discovery] saveDiscoveryData", {
+  logger.info('[FunnelWebhook:Discovery] saveDiscoveryData', {
     establishmentId,
     contactName,
     interestLevel,
@@ -408,18 +474,14 @@ async function endDiscoveryCall({
   callSummary,
   callDuration,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   // Outcomes que marcan discovery_completed y avanzan el funnel.
   // Usar originalOutcome (antes del mapeo INTERESTED->ADVANCE_TO_ACTIVATION).
   // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
   // el establishment queda elegible para re-llamada en la misma etapa.
-  const CONVERSATIONAL_OUTCOMES = [
-    "INTERESTED",
-    "ADVANCE_TO_ACTIVATION",
-    "NOT_INTERESTED",
-  ];
-  const effectiveOutcome = (originalOutcome || outcome || "").toUpperCase();
+  const CONVERSATIONAL_OUTCOMES = ['INTERESTED', 'ADVANCE_TO_ACTIVATION', 'NOT_INTERESTED'];
+  const effectiveOutcome = (originalOutcome || outcome || '').toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
 
   // 1. Guardar datos finales (incluye decisionMakerName y email en columna plana)
@@ -450,8 +512,8 @@ async function endDiscoveryCall({
 
   // SOLO actualizar enrichmentStatus si hubo conversación
   if (isConversational) {
-    updateData.enrichmentStatus = "discovery_completed";
-    updateData.level = "CONTACT";
+    updateData.enrichmentStatus = 'discovery_completed';
+    updateData.level = 'CONTACT';
   }
 
   await prisma.establishmentEnrichment.upsert({
@@ -459,23 +521,23 @@ async function endDiscoveryCall({
     create: {
       establishmentId,
       ...updateData,
-      enrichedBy: "DISCOVERY_AGENT",
+      enrichedBy: 'DISCOVERY_AGENT',
       enrichedAt: new Date(),
-      lastUpdatedBy: "DISCOVERY_AGENT",
+      lastUpdatedBy: 'DISCOVERY_AGENT',
     },
     update: {
       ...updateData,
-      lastUpdatedBy: "DISCOVERY_AGENT",
+      lastUpdatedBy: 'DISCOVERY_AGENT',
     },
   });
 
   // 3. Log en campaign_enrichments (non-blocking)
   logEnrichmentEvent({
     establishmentId,
-    source: "CAMPAIGN",
+    source: 'CAMPAIGN',
     conversationId,
-    agentStage: "DISCOVERY",
-    levelReached: interestLevel === "HIGH" ? "PROSPECT" : "CONTACT",
+    agentStage: 'DISCOVERY',
+    levelReached: interestLevel === 'HIGH' ? 'PROSPECT' : 'CONTACT',
     enrichmentSnapshot: {
       outcome,
       contactName,
@@ -484,23 +546,32 @@ async function endDiscoveryCall({
       interestLevel,
       callSummary,
     },
-    enrichedByType: "AGENT",
+    enrichedByType: 'AGENT',
     notes: `Discovery outcome: ${outcome}`,
-  }).catch(() => { });
+  }).catch(() => {});
 
-  logger.info("[FunnelWebhook:Discovery] endDiscoveryCall", {
+  logger.info('[FunnelWebhook:Discovery] endDiscoveryCall', {
     establishmentId,
     outcome,
   });
 
-
   // Sincronizar CampaignContact
-  await syncCampaignContactStatus({
+  const discoverySyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
-    agentStage: "DISCOVERY",
+    agentStage: 'DISCOVERY',
     callSummary,
+  });
+
+  enqueueCampaignSync('discovery', {
+    establishmentId,
+    conversationId,
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration,
+    campaignId: discoverySyncResult?.campaignId || null,
+    campaignName: discoverySyncResult?.campaignName || null,
   });
 
   return { success: true, outcome };
@@ -527,7 +598,7 @@ async function saveActivationData({
   soloOrTeam,
   perceivedComplexity,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   const snapshot = {
     conversationId,
@@ -546,12 +617,12 @@ async function saveActivationData({
     perceivedComplexity,
   };
   const cleanSnapshot = Object.fromEntries(
-    Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    Object.entries(snapshot).filter(([, v]) => v !== undefined && v !== null && v !== '')
   );
 
-  await upsertEnrichmentSnapshot(establishmentId, "activation", cleanSnapshot, "ACTIVATION_AGENT");
+  await upsertEnrichmentSnapshot(establishmentId, 'activation', cleanSnapshot, 'ACTIVATION_AGENT');
 
-  logger.info("[FunnelWebhook:Activation] saveActivationData", {
+  logger.info('[FunnelWebhook:Activation] saveActivationData', {
     establishmentId,
     urgencyLevel,
     accountCreated,
@@ -560,29 +631,31 @@ async function saveActivationData({
   return { success: true };
 }
 
-async function confirmOrUpdateEmail({
-  conversationId,
-  establishmentId,
-  email,
-}) {
-  if (!establishmentId || !email) throw new Error("establishment_id y email requeridos");
+async function confirmOrUpdateEmail({ conversationId, establishmentId, email }) {
+  if (!establishmentId || !email) throw new Error('establishment_id y email requeridos');
 
   // Rechazar placeholders no resueltos ({{previousEmail}}) y emails invalidos.
   if (!isValidEmail(email)) {
-    logger.warn("[FunnelWebhook:Activation] confirmOrUpdateEmail email invalido, ignorado", {
+    logger.warn('[FunnelWebhook:Activation] confirmOrUpdateEmail email invalido, ignorado', {
       establishmentId,
       email,
     });
-    return { success: false, error: "invalid_email", email };
+    return { success: false, error: 'invalid_email', email };
   }
 
   await prisma.establishmentEnrichment.upsert({
     where: { establishmentId },
-    create: { establishmentId, decisionMakerEmail: email, enrichedBy: "ACTIVATION_AGENT", enrichedAt: new Date(), lastUpdatedBy: "ACTIVATION_AGENT" },
-    update: { decisionMakerEmail: email, lastUpdatedBy: "ACTIVATION_AGENT" },
+    create: {
+      establishmentId,
+      decisionMakerEmail: email,
+      enrichedBy: 'ACTIVATION_AGENT',
+      enrichedAt: new Date(),
+      lastUpdatedBy: 'ACTIVATION_AGENT',
+    },
+    update: { decisionMakerEmail: email, lastUpdatedBy: 'ACTIVATION_AGENT' },
   });
 
-  logger.info("[FunnelWebhook:Activation] confirmOrUpdateEmail", {
+  logger.info('[FunnelWebhook:Activation] confirmOrUpdateEmail', {
     establishmentId,
     email,
   });
@@ -598,14 +671,14 @@ async function scheduleDemo({
   featuresOfInterest,
 }) {
   if (!establishmentId || !startTime || !email)
-    throw new Error("establishment_id, email y start_time requeridos");
+    throw new Error('establishment_id, email y start_time requeridos');
 
   if (!isValidEmail(email)) {
-    logger.warn("[FunnelWebhook:Activation] scheduleDemo email invalido", {
+    logger.warn('[FunnelWebhook:Activation] scheduleDemo email invalido', {
       establishmentId,
       email,
     });
-    return { success: false, error: "invalid_email", email };
+    return { success: false, error: 'invalid_email', email };
   }
 
   // Ensure email is saved before Calendly call
@@ -615,14 +688,14 @@ async function scheduleDemo({
       establishmentId,
       decisionMakerEmail: email,
       decisionMakerName: contactName || null,
-      enrichedBy: "ACTIVATION_AGENT",
+      enrichedBy: 'ACTIVATION_AGENT',
       enrichedAt: new Date(),
-      lastUpdatedBy: "ACTIVATION_AGENT",
+      lastUpdatedBy: 'ACTIVATION_AGENT',
     },
     update: {
       decisionMakerEmail: email,
       ...(contactName ? { decisionMakerName: contactName } : {}),
-      lastUpdatedBy: "ACTIVATION_AGENT",
+      lastUpdatedBy: 'ACTIVATION_AGENT',
     },
   });
 
@@ -634,26 +707,31 @@ async function scheduleDemo({
   });
 
   // Save activation snapshot
-  await upsertEnrichmentSnapshot(establishmentId, "activation", {
-    conversationId,
-    demoScheduled: true,
-    demoDate: startTime,
-    featuresOfInterest,
-    calendlyResult: result.success ? "scheduled" : "failed",
-  }, "ACTIVATION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'activation',
+    {
+      conversationId,
+      demoScheduled: true,
+      demoDate: startTime,
+      featuresOfInterest,
+      calendlyResult: result.success ? 'scheduled' : 'failed',
+    },
+    'ACTIVATION_AGENT'
+  );
 
   logEnrichmentEvent({
     establishmentId,
-    source: "CAMPAIGN",
+    source: 'CAMPAIGN',
     conversationId,
-    agentStage: "ACTIVATION",
-    levelReached: "PROSPECT",
+    agentStage: 'ACTIVATION',
+    levelReached: 'PROSPECT',
     enrichmentSnapshot: { demoDate: startTime, featuresOfInterest },
-    enrichedByType: "AGENT",
-    notes: "Demo agendada desde Activation Agent",
-  }).catch(() => { });
+    enrichedByType: 'AGENT',
+    notes: 'Demo agendada desde Activation Agent',
+  }).catch(() => {});
 
-  logger.info("[FunnelWebhook:Activation] scheduleDemo", {
+  logger.info('[FunnelWebhook:Activation] scheduleDemo', {
     establishmentId,
     startTime,
     success: result.success,
@@ -668,18 +746,14 @@ async function endActivationCall({
   demoDate,
   callSummary,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   // Outcomes conversacionales que marcan activation_completed
   // Solo outcomes terminales (ACTIVATED/DEMO_SCHEDULED) y NOT_INTERESTED avanzan la etapa.
   // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
   // el establishment queda elegible para re-llamada en la misma etapa.
-  const CONVERSATIONAL_OUTCOMES = [
-    "ACTIVATED",
-    "DEMO_SCHEDULED",
-    "NOT_INTERESTED",
-  ];
-  const effectiveOutcome = (outcome || "").toUpperCase();
+  const CONVERSATIONAL_OUTCOMES = ['ACTIVATED', 'DEMO_SCHEDULED', 'NOT_INTERESTED'];
+  const effectiveOutcome = (outcome || '').toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
@@ -691,9 +765,9 @@ async function endActivationCall({
   // SOLO subir enrichmentStatus y level si hubo conversacion util.
   // LEAD solo para los outcomes que realmente avanzan (ACTIVATED/DEMO_SCHEDULED).
   if (isConversational) {
-    updateData.enrichmentStatus = "activation_completed";
-    if (effectiveOutcome === "ACTIVATED" || effectiveOutcome === "DEMO_SCHEDULED") {
-      updateData.level = "LEAD";
+    updateData.enrichmentStatus = 'activation_completed';
+    if (effectiveOutcome === 'ACTIVATED' || effectiveOutcome === 'DEMO_SCHEDULED') {
+      updateData.level = 'LEAD';
     }
   }
 
@@ -702,47 +776,62 @@ async function endActivationCall({
     create: {
       establishmentId,
       ...updateData,
-      enrichedBy: "ACTIVATION_AGENT",
+      enrichedBy: 'ACTIVATION_AGENT',
       enrichedAt: new Date(),
-      lastUpdatedBy: "ACTIVATION_AGENT",
+      lastUpdatedBy: 'ACTIVATION_AGENT',
     },
     update: {
       ...updateData,
-      lastUpdatedBy: "ACTIVATION_AGENT",
+      lastUpdatedBy: 'ACTIVATION_AGENT',
     },
   });
 
   // Guardar la snapshot final de activation con outcome y resumen
-  await upsertEnrichmentSnapshot(establishmentId, "activation", {
-    conversationId,
-    outcome,
-    demoDate,
-    callSummary,
-  }, "ACTIVATION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'activation',
+    {
+      conversationId,
+      outcome,
+      demoDate,
+      callSummary,
+    },
+    'ACTIVATION_AGENT'
+  );
 
   logEnrichmentEvent({
     establishmentId,
-    source: "CAMPAIGN",
+    source: 'CAMPAIGN',
     conversationId,
-    agentStage: "ACTIVATION",
-    levelReached: outcome === "DEMO_SCHEDULED" ? "PROSPECT" : "CONTACT",
+    agentStage: 'ACTIVATION',
+    levelReached: outcome === 'DEMO_SCHEDULED' ? 'PROSPECT' : 'CONTACT',
     enrichmentSnapshot: { outcome, demoDate, callSummary },
-    enrichedByType: "AGENT",
+    enrichedByType: 'AGENT',
     notes: `Activation outcome: ${outcome}`,
-  }).catch(() => { });
+  }).catch(() => {});
 
-  logger.info("[FunnelWebhook:Activation] endActivationCall", {
+  logger.info('[FunnelWebhook:Activation] endActivationCall', {
     establishmentId,
     outcome,
   });
 
   // Sincronizar CampaignContact
-  await syncCampaignContactStatus({
+  const activationSyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
-    agentStage: "ACTIVATION",
+    agentStage: 'ACTIVATION',
     callSummary,
+  });
+
+  enqueueCampaignSync('activation', {
+    establishmentId,
+    conversationId,
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration: null,
+    campaignId: activationSyncResult?.campaignId || null,
+    campaignName: activationSyncResult?.campaignName || null,
   });
 
   return { success: true, outcome };
@@ -765,11 +854,12 @@ async function saveQualificationResult({
   intent,
   qualificationNotes,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   const update = {};
   if (needScore !== undefined && needScore !== -1) update.need_score = needScore;
-  if (authorityScore !== undefined && authorityScore !== -1) update.authority_score = authorityScore;
+  if (authorityScore !== undefined && authorityScore !== -1)
+    update.authority_score = authorityScore;
   if (budgetScore !== undefined && budgetScore !== -1) update.budget_score = budgetScore;
   if (timelineScore !== undefined && timelineScore !== -1) update.timeline_score = timelineScore;
   if (fear) update.fear = fear;
@@ -792,33 +882,44 @@ async function saveQualificationResult({
     create: {
       establishmentId,
       ...update,
-      enrichedBy: "QUALIFICATION_AGENT",
+      enrichedBy: 'QUALIFICATION_AGENT',
       enrichedAt: new Date(),
-      lastUpdatedBy: "QUALIFICATION_AGENT",
+      lastUpdatedBy: 'QUALIFICATION_AGENT',
     },
     update: {
       ...update,
-      lastUpdatedBy: "QUALIFICATION_AGENT",
+      lastUpdatedBy: 'QUALIFICATION_AGENT',
     },
   });
 
   // Guardar datos de qualification en establishment_data
-  if (conversationId || needScore !== undefined || authorityScore !== undefined || budgetScore !== undefined || timelineScore !== undefined) {
-    await upsertEnrichmentSnapshot(establishmentId, "qualification", {
-      conversationId,
-      needScore,
-      authorityScore,
-      budgetScore,
-      timelineScore,
-      fear,
-      pain,
-      desire,
-      intent,
-      qualificationNotes,
-    }, "QUALIFICATION_AGENT");
+  if (
+    conversationId ||
+    needScore !== undefined ||
+    authorityScore !== undefined ||
+    budgetScore !== undefined ||
+    timelineScore !== undefined
+  ) {
+    await upsertEnrichmentSnapshot(
+      establishmentId,
+      'qualification',
+      {
+        conversationId,
+        needScore,
+        authorityScore,
+        budgetScore,
+        timelineScore,
+        fear,
+        pain,
+        desire,
+        intent,
+        qualificationNotes,
+      },
+      'QUALIFICATION_AGENT'
+    );
   }
 
-  logger.info("[FunnelWebhook:Qualification] saveQualificationResult", {
+  logger.info('[FunnelWebhook:Qualification] saveQualificationResult', {
     establishmentId,
     needScore,
     authorityScore,
@@ -856,8 +957,8 @@ async function sendCouponWhatsapp({
           select: {
             id: true,
             couponPrefix: true,
-            couponTemplate: { select: { couponType: true } }
-          }
+            couponTemplate: { select: { couponType: true } },
+          },
         },
       },
     });
@@ -869,7 +970,11 @@ async function sendCouponWhatsapp({
         resolvedCouponType = contactByConv.campaign.couponTemplate.couponType;
       }
       if (!resolvedPhone) {
-        resolvedPhone = contactByConv.establishmentPhone || contactByConv.establishmentData?.phone || contactByConv.establishmentData?.whatsapp || null;
+        resolvedPhone =
+          contactByConv.establishmentPhone ||
+          contactByConv.establishmentData?.phone ||
+          contactByConv.establishmentData?.whatsapp ||
+          null;
       }
       establishmentId = establishmentId || contactByConv.establishmentId;
     }
@@ -880,7 +985,7 @@ async function sendCouponWhatsapp({
     const activeContact = await prisma.campaignContact.findFirst({
       where: {
         establishmentId,
-        campaign: { status: "ACTIVE" },
+        campaign: { status: 'ACTIVE' },
       },
       include: {
         campaign: {
@@ -888,11 +993,11 @@ async function sendCouponWhatsapp({
             id: true,
             couponPrefix: true,
             couponTemplateIds: true,
-            couponTemplate: { select: { couponType: true } }
+            couponTemplate: { select: { couponType: true } },
           },
         },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (activeContact) {
@@ -922,7 +1027,7 @@ async function sendCouponWhatsapp({
           decisionMakerName: true,
         },
       });
-      if (!resolvedProspectName) resolvedProspectName = enrichment?.decisionMakerName || "Cliente";
+      if (!resolvedProspectName) resolvedProspectName = enrichment?.decisionMakerName || 'Cliente';
 
       // Obtener datos del establecimiento desde prismaGeo
       if (!resolvedBusinessName || !resolvedPhone) {
@@ -936,7 +1041,7 @@ async function sendCouponWhatsapp({
     }
   }
 
-  if (!resolvedPhone) throw new Error("phone no pudo ser resuelto (ni por el agente ni en la BD)");
+  if (!resolvedPhone) throw new Error('phone no pudo ser resuelto (ni por el agente ni en la BD)');
 
   // Fallback de couponType: si no vino del agente, resolverlo desde la campaña
   if (!resolvedCouponType && resolvedCampaignId) {
@@ -945,7 +1050,7 @@ async function sendCouponWhatsapp({
       select: {
         couponPrefix: true,
         couponTemplateIds: true,
-        couponTemplate: { select: { couponType: true } }
+        couponTemplate: { select: { couponType: true } },
       },
     });
 
@@ -958,7 +1063,7 @@ async function sendCouponWhatsapp({
     if (!resolvedCouponType && campaignData?.couponTemplateIds?.length > 0) {
       const tpl = await prisma.couponTemplate.findFirst({
         where: { id: { in: campaignData.couponTemplateIds } },
-        orderBy: { priority: "desc" },
+        orderBy: { priority: 'desc' },
         select: { couponType: true },
       });
       if (tpl) resolvedCouponType = tpl.couponType;
@@ -970,14 +1075,17 @@ async function sendCouponWhatsapp({
   // el fallback de campaña pueda resolverlo correctamente en el siguiente bloque.
   if (resolvedCouponType) {
     const templateExists = await prisma.couponTemplate.findFirst({
-      where: { couponType: resolvedCouponType, active: true }
+      where: { couponType: resolvedCouponType, active: true },
     });
     if (!templateExists) {
-      logger.warn("[sendCouponWhatsapp] Invalid couponType from agent, will resolve from campaign", {
-        invalidCouponType: resolvedCouponType,
-        scenario,
-        establishmentId
-      });
+      logger.warn(
+        '[sendCouponWhatsapp] Invalid couponType from agent, will resolve from campaign',
+        {
+          invalidCouponType: resolvedCouponType,
+          scenario,
+          establishmentId,
+        }
+      );
       resolvedCouponType = null;
     }
   }
@@ -990,7 +1098,7 @@ async function sendCouponWhatsapp({
       select: {
         couponPrefix: true,
         couponTemplateIds: true,
-        couponTemplate: { select: { couponType: true } }
+        couponTemplate: { select: { couponType: true } },
       },
     });
 
@@ -999,7 +1107,7 @@ async function sendCouponWhatsapp({
     } else if (campaignData?.couponTemplateIds?.length > 0) {
       const tpl = await prisma.couponTemplate.findFirst({
         where: { id: { in: campaignData.couponTemplateIds } },
-        orderBy: { priority: "desc" },
+        orderBy: { priority: 'desc' },
         select: { couponType: true },
       });
       if (tpl) resolvedCouponType = tpl.couponType;
@@ -1007,7 +1115,7 @@ async function sendCouponWhatsapp({
   }
 
   if (!resolvedCouponType && !scenario) {
-    resolvedCouponType = "PLUS30"; // Tipo por defecto si no se puede resolver de ninguna fuente
+    resolvedCouponType = 'PLUS30'; // Tipo por defecto si no se puede resolver de ninguna fuente
   }
 
   // Obtener nombre si no viene
@@ -1016,26 +1124,26 @@ async function sendCouponWhatsapp({
       where: { establishmentId },
       select: { decisionMakerName: true },
     });
-    resolvedProspectName = enrichment?.decisionMakerName || "Cliente";
+    resolvedProspectName = enrichment?.decisionMakerName || 'Cliente';
   }
 
   // Generar cupón real
-  const couponWhatsappService = require("./couponWhatsappService");
+  const couponWhatsappService = require('./couponWhatsappService');
 
   try {
     const result = await couponWhatsappService.generateAndSendCoupon({
       phone: resolvedPhone,
-      prospectName: resolvedProspectName || "Cliente",
-      businessName: resolvedBusinessName || "Tu negocio",
-      scenario: scenario || "qualification_offer",
-      agentId: "mcp-qualification-agent",
-      callId: conversationId || "unknown",
+      prospectName: resolvedProspectName || 'Cliente',
+      businessName: resolvedBusinessName || 'Tu negocio',
+      scenario: scenario || 'qualification_offer',
+      agentId: 'mcp-qualification-agent',
+      callId: conversationId || 'unknown',
       campaignId: resolvedCampaignId,
       campaignContactId: resolvedContactId,
       couponType: resolvedCouponType,
     });
 
-    logger.info("[FunnelWebhook:Qualification] sendCouponWhatsapp - cupón real generado", {
+    logger.info('[FunnelWebhook:Qualification] sendCouponWhatsapp - cupón real generado', {
       phone: resolvedPhone,
       couponId: result.coupon?.id,
       couponCode: result.coupon?.code,
@@ -1043,6 +1151,20 @@ async function sendCouponWhatsapp({
       campaignId: resolvedCampaignId,
       success: result.success,
     });
+
+    // Registrar envio de cupon en Twenty (non-blocking, solo si fue exitoso)
+    if (result.success && establishmentId) {
+      enqueueInteractionSync({
+        establishmentId,
+        conversationId,
+        stage: 'coupon_sent',
+        outcome: 'SENT',
+        callSummary: null,
+        callDuration: null,
+        campaignId: resolvedCampaignId || null,
+        campaignName: null,
+      }).catch(() => {});
+    }
 
     return {
       success: result.success,
@@ -1051,7 +1173,7 @@ async function sendCouponWhatsapp({
       messageId: result.messageId,
     };
   } catch (err) {
-    logger.error("[FunnelWebhook:Qualification] Error generando cupón real", {
+    logger.error('[FunnelWebhook:Qualification] Error generando cupón real', {
       error: err.message,
       phone: resolvedPhone,
       couponType: resolvedCouponType,
@@ -1064,12 +1186,14 @@ async function sendCouponWhatsapp({
       `Visítanos en el siguiente enlace:\n` +
       `👉 https://easyorder.mx/`;
 
-    await whatsappService.sendWhatsAppMessage({ to: resolvedPhone, message: fallbackMessage }).catch(e => {
-      logger.error("[FunnelWebhook:Qualification] Error enviando fallback WhatsApp", {
-        error: e.message,
-        phone: resolvedPhone
+    await whatsappService
+      .sendWhatsAppMessage({ to: resolvedPhone, message: fallbackMessage })
+      .catch((e) => {
+        logger.error('[FunnelWebhook:Qualification] Error enviando fallback WhatsApp', {
+          error: e.message,
+          phone: resolvedPhone,
+        });
       });
-    });
 
     return { success: false, error: err.message, fallbackSent: true };
   }
@@ -1077,7 +1201,7 @@ async function sendCouponWhatsapp({
 
 async function getCalendlyAvailability({ daysAhead = 7 } = {}) {
   if (!CALENDLY_TOKEN) {
-    logger.warn("[FunnelWebhook] CALENDLY_API_TOKEN no configurado — devolviendo slots mock");
+    logger.warn('[FunnelWebhook] CALENDLY_API_TOKEN no configurado — devolviendo slots mock');
     return _getMockSlots(daysAhead);
   }
 
@@ -1087,22 +1211,22 @@ async function getCalendlyAvailability({ daysAhead = 7 } = {}) {
     endDate.setDate(endDate.getDate() + daysAhead);
     const endTime = endDate.toISOString();
 
-    const url = new URL("https://api.calendly.com/event_type_available_times");
-    url.searchParams.set("event_type", CALENDLY_EVENT_TYPE_URI);
-    url.searchParams.set("start_time", startTime);
-    url.searchParams.set("end_time", endTime);
+    const url = new URL('https://api.calendly.com/event_type_available_times');
+    url.searchParams.set('event_type', CALENDLY_EVENT_TYPE_URI);
+    url.searchParams.set('start_time', startTime);
+    url.searchParams.set('end_time', endTime);
 
     const response = await fetch(url.toString(), {
-      method: "GET",
+      method: 'GET',
       headers: {
         Authorization: `Bearer ${CALENDLY_TOKEN}`,
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
     });
 
     if (!response.ok) {
       const err = await response.text();
-      logger.error("[FunnelWebhook] Calendly availability error", { status: response.status, err });
+      logger.error('[FunnelWebhook] Calendly availability error', { status: response.status, err });
       return _getMockSlots(daysAhead);
     }
 
@@ -1113,12 +1237,12 @@ async function getCalendlyAvailability({ daysAhead = 7 } = {}) {
       invitees_remaining: s.invitees_remaining,
     }));
 
-    logger.info("[FunnelWebhook:Qualification] getCalendlyAvailability", {
+    logger.info('[FunnelWebhook:Qualification] getCalendlyAvailability', {
       slotsFound: slots.length,
     });
     return { success: true, slots };
   } catch (error) {
-    logger.error("[FunnelWebhook] Error consultando Calendly availability", {
+    logger.error('[FunnelWebhook] Error consultando Calendly availability', {
       error: error.message,
     });
     return _getMockSlots(daysAhead);
@@ -1132,9 +1256,9 @@ function _getMockSlots(daysAhead) {
     const date = new Date(now);
     date.setDate(date.getDate() + d);
     date.setHours(10, 0, 0, 0);
-    slots.push({ start_time: date.toISOString(), status: "available" });
+    slots.push({ start_time: date.toISOString(), status: 'available' });
     date.setHours(15, 0, 0, 0);
-    slots.push({ start_time: date.toISOString(), status: "available" });
+    slots.push({ start_time: date.toISOString(), status: 'available' });
   }
   return { success: true, slots, mock: true };
 }
@@ -1149,14 +1273,14 @@ async function scheduleCalendlyDemo({
   fpdi,
 }) {
   if (!establishmentId || !startTime || !email)
-    throw new Error("establishment_id, email y start_time requeridos");
+    throw new Error('establishment_id, email y start_time requeridos');
 
   if (!isValidEmail(email)) {
-    logger.warn("[FunnelWebhook:Qualification] scheduleCalendlyDemo email invalido", {
+    logger.warn('[FunnelWebhook:Qualification] scheduleCalendlyDemo email invalido', {
       establishmentId,
       email,
     });
-    return { success: false, error: "invalid_email", email };
+    return { success: false, error: 'invalid_email', email };
   }
 
   // Ensure contact data is saved
@@ -1166,14 +1290,14 @@ async function scheduleCalendlyDemo({
       establishmentId,
       decisionMakerEmail: email,
       decisionMakerName: contactName || null,
-      enrichedBy: "QUALIFICATION_AGENT",
+      enrichedBy: 'QUALIFICATION_AGENT',
       enrichedAt: new Date(),
-      lastUpdatedBy: "QUALIFICATION_AGENT",
+      lastUpdatedBy: 'QUALIFICATION_AGENT',
     },
     update: {
       decisionMakerEmail: email,
       ...(contactName ? { decisionMakerName: contactName } : {}),
-      lastUpdatedBy: "QUALIFICATION_AGENT",
+      lastUpdatedBy: 'QUALIFICATION_AGENT',
     },
   });
 
@@ -1186,27 +1310,32 @@ async function scheduleCalendlyDemo({
 
   // Save BANT + FPDI in qualification snapshot
   if (bantScores || fpdi) {
-    await upsertEnrichmentSnapshot(establishmentId, "qualification", {
-      conversationId,
-      demoScheduled: true,
-      demoDate: startTime,
-      bantScores,
-      fpdi,
-    }, "QUALIFICATION_AGENT");
+    await upsertEnrichmentSnapshot(
+      establishmentId,
+      'qualification',
+      {
+        conversationId,
+        demoScheduled: true,
+        demoDate: startTime,
+        bantScores,
+        fpdi,
+      },
+      'QUALIFICATION_AGENT'
+    );
   }
 
   logEnrichmentEvent({
     establishmentId,
-    source: "CAMPAIGN",
+    source: 'CAMPAIGN',
     conversationId,
-    agentStage: "QUALIFICATION",
-    levelReached: "LEAD",
+    agentStage: 'QUALIFICATION',
+    levelReached: 'LEAD',
     enrichmentSnapshot: { demoDate: startTime, bantScores, fpdi },
-    enrichedByType: "AGENT",
-    notes: "Demo agendada desde Qualification Agent",
-  }).catch(() => { });
+    enrichedByType: 'AGENT',
+    notes: 'Demo agendada desde Qualification Agent',
+  }).catch(() => {});
 
-  logger.info("[FunnelWebhook:Qualification] scheduleCalendlyDemo", {
+  logger.info('[FunnelWebhook:Qualification] scheduleCalendlyDemo', {
     establishmentId,
     startTime,
     success: result.success,
@@ -1214,46 +1343,37 @@ async function scheduleCalendlyDemo({
   return result;
 }
 
-async function handleNegativeResponse({
-  conversationId,
-  establishmentId,
-  reason,
-  followUpDate,
-}) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+async function handleNegativeResponse({ conversationId, establishmentId, reason, followUpDate }) {
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
-  await upsertEnrichmentSnapshot(establishmentId, "qualification", {
-    conversationId,
-    negativeReason: reason,
-    followUpDate,
-    demoDeclined: true,
-  }, "QUALIFICATION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'qualification',
+    {
+      conversationId,
+      negativeReason: reason,
+      followUpDate,
+      demoDeclined: true,
+    },
+    'QUALIFICATION_AGENT'
+  );
 
-  logger.info("[FunnelWebhook:Qualification] handleNegativeResponse", {
+  logger.info('[FunnelWebhook:Qualification] handleNegativeResponse', {
     establishmentId,
     reason,
   });
   return { success: true };
 }
 
-async function endQualificationCall({
-  conversationId,
-  establishmentId,
-  outcome,
-  callSummary,
-}) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+async function endQualificationCall({ conversationId, establishmentId, outcome, callSummary }) {
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   // Outcomes conversacionales que marcan qualification_completed
   // Solo QUALIFIED/NOT_QUALIFIED y NOT_INTERESTED avanzan la etapa.
   // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
   // el establishment queda elegible para re-llamada en la misma etapa.
-  const CONVERSATIONAL_OUTCOMES = [
-    "QUALIFIED",
-    "NOT_QUALIFIED",
-    "NOT_INTERESTED",
-  ];
-  const effectiveOutcome = (outcome || "").toUpperCase();
+  const CONVERSATIONAL_OUTCOMES = ['QUALIFIED', 'NOT_QUALIFIED', 'NOT_INTERESTED'];
+  const effectiveOutcome = (outcome || '').toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
@@ -1265,10 +1385,10 @@ async function endQualificationCall({
 
   // Subir enrichmentStatus a qualification_completed si hubo conversacion
   if (isConversational) {
-    updateData.enrichmentStatus = "qualification_completed";
-    const advancesToProspect = ["QUALIFIED"];
+    updateData.enrichmentStatus = 'qualification_completed';
+    const advancesToProspect = ['QUALIFIED'];
     if (advancesToProspect.includes(effectiveOutcome)) {
-      updateData.level = "PROSPECT";
+      updateData.level = 'PROSPECT';
     }
     updateData.qualification_completed = true;
     if (truncatedSummary) {
@@ -1281,52 +1401,69 @@ async function endQualificationCall({
     create: {
       establishmentId,
       ...updateData,
-      enrichedBy: "QUALIFICATION_AGENT",
+      enrichedBy: 'QUALIFICATION_AGENT',
       enrichedAt: new Date(),
-      lastUpdatedBy: "QUALIFICATION_AGENT",
+      lastUpdatedBy: 'QUALIFICATION_AGENT',
     },
     update: {
       ...updateData,
-      lastUpdatedBy: "QUALIFICATION_AGENT",
+      lastUpdatedBy: 'QUALIFICATION_AGENT',
     },
   });
 
   // Guardar la snapshot final de qualification con outcome
-  await upsertEnrichmentSnapshot(establishmentId, "qualification", {
-    conversationId,
-    outcome,
-    callSummary,
-  }, "QUALIFICATION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'qualification',
+    {
+      conversationId,
+      outcome,
+      callSummary,
+    },
+    'QUALIFICATION_AGENT'
+  );
 
   logEnrichmentEvent({
     establishmentId,
-    source: "CAMPAIGN",
+    source: 'CAMPAIGN',
     conversationId,
-    agentStage: "QUALIFICATION",
-    levelReached: ["QUALIFIED", "FOLLOW_UP_LATER"].includes(effectiveOutcome) ? "PROSPECT" : "CONTACT",
+    agentStage: 'QUALIFICATION',
+    levelReached: ['QUALIFIED', 'FOLLOW_UP_LATER'].includes(effectiveOutcome)
+      ? 'PROSPECT'
+      : 'CONTACT',
     enrichmentSnapshot: { outcome, callSummary },
-    enrichedByType: "AGENT",
+    enrichedByType: 'AGENT',
     notes: `Qualification outcome: ${outcome}`,
-  }).catch(() => { });
+  }).catch(() => {});
 
-  logger.info("[FunnelWebhook:Qualification] endQualificationCall", {
+  logger.info('[FunnelWebhook:Qualification] endQualificationCall', {
     establishmentId,
     outcome,
   });
 
-  await syncCampaignContactStatus({
+  const qualificationSyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
-    agentStage: "QUALIFICATION",
+    agentStage: 'QUALIFICATION',
     callSummary,
+  });
+
+  enqueueCampaignSync('qualification', {
+    establishmentId,
+    conversationId,
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration: null,
+    campaignId: qualificationSyncResult?.campaignId || null,
+    campaignName: qualificationSyncResult?.campaignName || null,
   });
 
   return { success: true, outcome };
 }
 
 async function endCall({ conversationId, establishmentId } = {}) {
-  logger.info("[FunnelWebhook] endCall ack", { establishmentId, conversationId });
+  logger.info('[FunnelWebhook] endCall ack', { establishmentId, conversationId });
   return { success: true };
 }
 
@@ -1342,10 +1479,10 @@ async function calculateROI({
   plan,
 }) {
   if (!currentMonthlyOrders || !averageTicket || !plan)
-    throw new Error("current_monthly_orders, average_ticket y plan requeridos");
+    throw new Error('current_monthly_orders, average_ticket y plan requeridos');
 
   const planCost = PLAN_PRICES[plan?.toUpperCase()] || PLAN_PRICES.PROFESSIONAL;
-  const growthRate = 0.30; // 30% promedio EasyOrder
+  const growthRate = 0.3; // 30% promedio EasyOrder
   const additionalOrders = Math.round(currentMonthlyOrders * growthRate);
   const additionalRevenue = additionalOrders * averageTicket;
   const roiMultiple = parseFloat((additionalRevenue / planCost).toFixed(2));
@@ -1359,18 +1496,23 @@ async function calculateROI({
     additionalRevenue,
     roiMultiple,
     breakEvenDays,
-    summary: `Con ${additionalOrders} pedidos extra al mes (${(growthRate * 100).toFixed(0)}% de crecimiento), generas $${additionalRevenue.toLocaleString("es-MX")} MXN adicionales. El plan cuesta $${planCost.toLocaleString("es-MX")} MXN. Tu ROI es ${roiMultiple}x en el primer mes.`,
+    summary: `Con ${additionalOrders} pedidos extra al mes (${(growthRate * 100).toFixed(0)}% de crecimiento), generas $${additionalRevenue.toLocaleString('es-MX')} MXN adicionales. El plan cuesta $${planCost.toLocaleString('es-MX')} MXN. Tu ROI es ${roiMultiple}x en el primer mes.`,
   };
 
   // Save ROI calculation to enrichment snapshot
   if (establishmentId) {
-    await upsertEnrichmentSnapshot(establishmentId, "conversion", {
-      conversationId,
-      roiCalculation: roi,
-    }, "CONVERSION_AGENT").catch(() => { });
+    await upsertEnrichmentSnapshot(
+      establishmentId,
+      'conversion',
+      {
+        conversationId,
+        roiCalculation: roi,
+      },
+      'CONVERSION_AGENT'
+    ).catch(() => {});
   }
 
-  logger.info("[FunnelWebhook:Conversion] calculateROI", {
+  logger.info('[FunnelWebhook:Conversion] calculateROI', {
     establishmentId,
     plan,
     roiMultiple,
@@ -1389,7 +1531,7 @@ async function saveDealTerms({
   paymentMethod,
   notes,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   const dealData = {
     conversationId,
@@ -1403,19 +1545,21 @@ async function saveDealTerms({
     savedAt: new Date().toISOString(),
   };
 
-  await upsertEnrichmentSnapshot(establishmentId, "conversion", dealData, "CONVERSION_AGENT");
+  await upsertEnrichmentSnapshot(establishmentId, 'conversion', dealData, 'CONVERSION_AGENT');
 
   // Also store in productPurchased for quick reference
-  await prisma.establishmentEnrichment.update({
-    where: { establishmentId },
-    data: {
-      productPurchased: planSelected,
-      ...(monthlyPrice ? { purchaseAmount: monthlyPrice } : {}),
-      ...(startDate ? { purchaseDate: new Date(startDate) } : {}),
-    },
-  }).catch(() => { });
+  await prisma.establishmentEnrichment
+    .update({
+      where: { establishmentId },
+      data: {
+        productPurchased: planSelected,
+        ...(monthlyPrice ? { purchaseAmount: monthlyPrice } : {}),
+        ...(startDate ? { purchaseDate: new Date(startDate) } : {}),
+      },
+    })
+    .catch(() => {});
 
-  logger.info("[FunnelWebhook:Conversion] saveDealTerms", {
+  logger.info('[FunnelWebhook:Conversion] saveDealTerms', {
     establishmentId,
     planSelected,
     monthlyPrice,
@@ -1433,7 +1577,7 @@ async function scheduleOnboarding({
   specialRequirements,
 }) {
   if (!establishmentId || !onboardingDate)
-    throw new Error("establishment_id y onboarding_date requeridos");
+    throw new Error('establishment_id y onboarding_date requeridos');
 
   // Ensure email is up to date (solo si es valido, no placeholder)
   const emailOk = isValidEmail(email);
@@ -1451,14 +1595,14 @@ async function scheduleOnboarding({
       },
     });
   } else if (email) {
-    logger.warn("[FunnelWebhook:Conversion] scheduleOnboarding email invalido, no se persiste", {
+    logger.warn('[FunnelWebhook:Conversion] scheduleOnboarding email invalido, no se persiste', {
       establishmentId,
       email,
     });
   }
 
   // Create a Calendly invitee for onboarding if token available
-  let calendlyResult = { success: false, note: "No Calendly token" };
+  let calendlyResult = { success: false, note: 'No Calendly token' };
   if (CALENDLY_TOKEN && emailOk) {
     calendlyResult = await _createCalendlyInvitee({
       establishmentId,
@@ -1468,27 +1612,32 @@ async function scheduleOnboarding({
     });
   }
 
-  await upsertEnrichmentSnapshot(establishmentId, "conversion", {
-    conversationId,
-    onboardingScheduled: true,
-    onboardingDate,
-    planSelected,
-    specialRequirements,
-    calendlyResult: calendlyResult.success ? "scheduled" : "pending",
-  }, "CONVERSION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'conversion',
+    {
+      conversationId,
+      onboardingScheduled: true,
+      onboardingDate,
+      planSelected,
+      specialRequirements,
+      calendlyResult: calendlyResult.success ? 'scheduled' : 'pending',
+    },
+    'CONVERSION_AGENT'
+  );
 
   logEnrichmentEvent({
     establishmentId,
-    source: "CAMPAIGN",
+    source: 'CAMPAIGN',
     conversationId,
-    agentStage: "CONVERSION",
-    levelReached: "CLIENT",
+    agentStage: 'CONVERSION',
+    levelReached: 'CLIENT',
     enrichmentSnapshot: { onboardingDate, planSelected, specialRequirements },
-    enrichedByType: "AGENT",
-    notes: "Onboarding agendado desde Conversion Agent",
-  }).catch(() => { });
+    enrichedByType: 'AGENT',
+    notes: 'Onboarding agendado desde Conversion Agent',
+  }).catch(() => {});
 
-  logger.info("[FunnelWebhook:Conversion] scheduleOnboarding", {
+  logger.info('[FunnelWebhook:Conversion] scheduleOnboarding', {
     establishmentId,
     onboardingDate,
   });
@@ -1504,17 +1653,22 @@ async function saveObjectionData({
   objectionResolved,
   resolutionMethod,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
-  await upsertEnrichmentSnapshot(establishmentId, "conversion", {
-    conversationId,
-    objectionType,
-    objectionDetail,
-    objectionResolved,
-    resolutionMethod,
-  }, "CONVERSION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'conversion',
+    {
+      conversationId,
+      objectionType,
+      objectionDetail,
+      objectionResolved,
+      resolutionMethod,
+    },
+    'CONVERSION_AGENT'
+  );
 
-  logger.info("[FunnelWebhook:Conversion] saveObjectionData", {
+  logger.info('[FunnelWebhook:Conversion] saveObjectionData', {
     establishmentId,
     objectionType,
     objectionResolved,
@@ -1534,20 +1688,25 @@ async function saveConversationOutcome({
   couponOffered,
   couponTypeOffered,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
-  await upsertEnrichmentSnapshot(establishmentId, "conversion", {
-    conversationId,
-    decisionStatus,
-    decisionTimeline,
-    dependsOnOthers,
-    conditionsToAdvance,
-    perceivedValue,
-    couponOffered,
-    couponTypeOffered,
-  }, "CONVERSION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'conversion',
+    {
+      conversationId,
+      decisionStatus,
+      decisionTimeline,
+      dependsOnOthers,
+      conditionsToAdvance,
+      perceivedValue,
+      couponOffered,
+      couponTypeOffered,
+    },
+    'CONVERSION_AGENT'
+  );
 
-  logger.info("[FunnelWebhook:Conversion] saveConversationOutcome", {
+  logger.info('[FunnelWebhook:Conversion] saveConversationOutcome', {
     establishmentId,
     decisionStatus,
     perceivedValue,
@@ -1563,21 +1722,16 @@ async function endConversionCall({
   monthlyRevenue,
   callSummary,
 }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
   // Outcomes conversacionales que marcan conversion_completed
   // Solo CLOSED_WON, NEEDS_VALIDATION, NOT_INTERESTED y LOST cierran/avanzan la etapa.
   // FOLLOW_UP_LATER, NO_ANSWER y VOICEMAIL NO avanzan: la etapa no se completo,
   // el establishment queda elegible para re-llamada en la misma etapa.
-  const CONVERSATIONAL_OUTCOMES = [
-    "CLOSED_WON",
-    "NEEDS_VALIDATION",
-    "NOT_INTERESTED",
-    "LOST",
-  ];
-  const effectiveOutcome = (outcome || "").toUpperCase();
+  const CONVERSATIONAL_OUTCOMES = ['CLOSED_WON', 'NEEDS_VALIDATION', 'NOT_INTERESTED', 'LOST'];
+  const effectiveOutcome = (outcome || '').toUpperCase();
   const isConversational = CONVERSATIONAL_OUTCOMES.includes(effectiveOutcome);
-  const isWon = effectiveOutcome === "CLOSED_WON";
+  const isWon = effectiveOutcome === 'CLOSED_WON';
 
   // Actualizar callStatus (SIEMPRE) y enrichmentStatus (SOLO si conversacional)
   const updateData = {
@@ -1587,10 +1741,10 @@ async function endConversionCall({
 
   // SOLO actualizar enrichmentStatus si hubo conversación
   if (isConversational) {
-    updateData.enrichmentStatus = "conversion_completed";
+    updateData.enrichmentStatus = 'conversion_completed';
     if (isWon) {
-      updateData.level = "CLIENT";
-      updateData.clientStatus = "active";
+      updateData.level = 'CLIENT';
+      updateData.clientStatus = 'active';
       updateData.clientSince = new Date();
     }
   }
@@ -1600,48 +1754,63 @@ async function endConversionCall({
     create: {
       establishmentId,
       ...updateData,
-      enrichedBy: "CONVERSION_AGENT",
+      enrichedBy: 'CONVERSION_AGENT',
       enrichedAt: new Date(),
-      lastUpdatedBy: "CONVERSION_AGENT",
+      lastUpdatedBy: 'CONVERSION_AGENT',
     },
     update: {
       ...updateData,
-      lastUpdatedBy: "CONVERSION_AGENT",
+      lastUpdatedBy: 'CONVERSION_AGENT',
     },
   });
 
   // Guardar la snapshot final de conversion con outcome y datos del cierre
-  await upsertEnrichmentSnapshot(establishmentId, "conversion", {
-    conversationId,
-    outcome,
-    planClosed,
-    monthlyRevenue,
-    callSummary,
-  }, "CONVERSION_AGENT");
+  await upsertEnrichmentSnapshot(
+    establishmentId,
+    'conversion',
+    {
+      conversationId,
+      outcome,
+      planClosed,
+      monthlyRevenue,
+      callSummary,
+    },
+    'CONVERSION_AGENT'
+  );
 
   logEnrichmentEvent({
     establishmentId,
-    source: "CAMPAIGN",
+    source: 'CAMPAIGN',
     conversationId,
-    agentStage: "CONVERSION",
-    levelReached: isWon ? "CLIENT" : "LEAD",
+    agentStage: 'CONVERSION',
+    levelReached: isWon ? 'CLIENT' : 'LEAD',
     enrichmentSnapshot: { outcome, planClosed, monthlyRevenue, callSummary },
-    enrichedByType: "AGENT",
-    notes: `Conversion outcome: ${outcome}${planClosed ? `, plan: ${planClosed}` : ""}`,
-  }).catch(() => { });
+    enrichedByType: 'AGENT',
+    notes: `Conversion outcome: ${outcome}${planClosed ? `, plan: ${planClosed}` : ''}`,
+  }).catch(() => {});
 
-  logger.info("[FunnelWebhook:Conversion] endConversionCall", {
+  logger.info('[FunnelWebhook:Conversion] endConversionCall', {
     establishmentId,
     outcome,
     planClosed,
   });
 
-  await syncCampaignContactStatus({
+  const conversionSyncResult = await syncCampaignContactStatus({
     establishmentId,
     conversationId,
     outcome,
-    agentStage: "CONVERSION",
+    agentStage: 'CONVERSION',
     callSummary,
+  });
+
+  enqueueCampaignSync('conversion', {
+    establishmentId,
+    conversationId,
+    outcome: effectiveOutcome,
+    callSummary,
+    callDuration: null,
+    campaignId: conversionSyncResult?.campaignId || null,
+    campaignName: conversionSyncResult?.campaignName || null,
   });
 
   return { success: true, outcome };
@@ -1653,7 +1822,7 @@ async function endConversionCall({
 
 async function _createCalendlyInvitee({ establishmentId, contactName, email, startTime }) {
   if (!CALENDLY_TOKEN) {
-    return { success: false, note: "CALENDLY_API_TOKEN no configurado" };
+    return { success: false, note: 'CALENDLY_API_TOKEN no configurado' };
   }
 
   try {
@@ -1665,22 +1834,22 @@ async function _createCalendlyInvitee({ establishmentId, contactName, email, sta
       start_time: startDate.toISOString(),
       end_time: endDate.toISOString(),
       invitee: {
-        name: contactName || "Cliente EasyOrder",
+        name: contactName || 'Cliente EasyOrder',
         email,
-        timezone: "America/Mexico_City",
+        timezone: 'America/Mexico_City',
       },
       questions_and_responses: [
         {
-          question_uuid: "establishment_id",
+          question_uuid: 'establishment_id',
           response: establishmentId,
         },
       ],
     };
 
-    const response = await fetch("https://api.calendly.com/invitees", {
-      method: "POST",
+    const response = await fetch('https://api.calendly.com/invitees', {
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${CALENDLY_TOKEN}`,
       },
       body: JSON.stringify(payload),
@@ -1689,14 +1858,14 @@ async function _createCalendlyInvitee({ establishmentId, contactName, email, sta
     const data = await response.json();
 
     if (!response.ok) {
-      logger.error("[FunnelWebhook] Calendly invitee creation failed", {
+      logger.error('[FunnelWebhook] Calendly invitee creation failed', {
         status: response.status,
         data,
       });
       return { success: false, error: data };
     }
 
-    logger.info("[FunnelWebhook] Calendly invitee created", {
+    logger.info('[FunnelWebhook] Calendly invitee created', {
       email,
       startTime,
     });
@@ -1706,7 +1875,7 @@ async function _createCalendlyInvitee({ establishmentId, contactName, email, sta
       eventUri: data.resource?.scheduled_event,
     };
   } catch (error) {
-    logger.error("[FunnelWebhook] Error creating Calendly invitee", {
+    logger.error('[FunnelWebhook] Error creating Calendly invitee', {
       error: error.message,
     });
     return { success: false, error: error.message };
@@ -1717,17 +1886,23 @@ async function _createCalendlyInvitee({ establishmentId, contactName, email, sta
 // EXPORTS
 // ============================================================
 
-async function markVoicemail({ conversationId, establishmentId, detectionReason, transcriptSnippet, detectedAt }) {
-  if (!establishmentId) throw new Error("establishment_id requerido");
+async function markVoicemail({
+  conversationId,
+  establishmentId,
+  detectionReason,
+  transcriptSnippet,
+  detectedAt,
+}) {
+  if (!establishmentId) throw new Error('establishment_id requerido');
 
-  logger.info("[markVoicemail] Voicemail detectado", {
+  logger.info('[markVoicemail] Voicemail detectado', {
     establishmentId,
     conversationId,
     detectionReason,
     detectedAt,
   });
 
-  return { success: true, message: "Voicemail detectado y registrado" };
+  return { success: true, message: 'Voicemail detectado y registrado' };
 }
 
 module.exports = {

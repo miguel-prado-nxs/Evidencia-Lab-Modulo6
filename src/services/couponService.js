@@ -1,10 +1,10 @@
-const prisma = require("../config/database");
-const logger = require("../config/logger");
-const crypto = require("crypto");
-const validityService = require("./couponValidityService");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
+const crypto = require('crypto');
+const validityService = require('./couponValidityService');
 
-const generateCouponCode = (prefix = "COUPON") => {
-  const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase();
+const generateCouponCode = (prefix = 'COUPON') => {
+  const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
   return `${prefix}-${randomPart}`;
 };
 
@@ -12,7 +12,7 @@ const createCoupon = async (data) => {
   const { campaignId, code, offer, validFrom, validUntil, couponTemplateId } = data;
 
   if (!campaignId || !offer) {
-    throw new Error("campaignId and offer are required");
+    throw new Error('campaignId and offer are required');
   }
 
   const campaign = await prisma.campaign.findUnique({
@@ -20,10 +20,11 @@ const createCoupon = async (data) => {
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
-  const couponCode = code || generateCouponCode(campaign.name.substring(0, 8).toUpperCase().replace(/\s/g, ""));
+  const couponCode =
+    code || generateCouponCode(campaign.name.substring(0, 8).toUpperCase().replace(/\s/g, ''));
 
   const existingCoupon = await prisma.campaignCoupon.findUnique({
     where: { code: couponCode },
@@ -35,13 +36,13 @@ const createCoupon = async (data) => {
 
   // Calcular fechas de validez si no se proporcionan
   let validityDates = { validFrom: null, validUntil: null };
-  
+
   if (couponTemplateId) {
     // Si hay template, usar sus configuraciones
     const template = await prisma.couponTemplate.findUnique({
-      where: { id: couponTemplateId }
+      where: { id: couponTemplateId },
     });
-    
+
     if (template) {
       validityDates = validityService.calculateCouponValidityDates(template);
     }
@@ -60,29 +61,29 @@ const createCoupon = async (data) => {
       campaignId,
       code: couponCode,
       offer,
-      status: "GENERATED",
+      status: 'GENERATED',
       validFrom: validityDates.validFrom,
       validUntil: validityDates.validUntil,
     },
   });
 
-  logger.info(`Coupon created: ${coupon.code}`, { 
-    couponId: coupon.id, 
+  logger.info(`Coupon created: ${coupon.code}`, {
+    couponId: coupon.id,
     campaignId,
     validFrom: validityDates.validFrom,
-    validUntil: validityDates.validUntil
+    validUntil: validityDates.validUntil,
   });
-  
+
   return coupon;
 };
 
 const generateBulkCoupons = async (campaignId, count, offerTemplate, options = {}) => {
   if (!campaignId || !count || !offerTemplate) {
-    throw new Error("campaignId, count, and offerTemplate are required");
+    throw new Error('campaignId, count, and offerTemplate are required');
   }
 
   if (count < 1 || count > 1000) {
-    throw new Error("count must be between 1 and 1000");
+    throw new Error('count must be between 1 and 1000');
   }
 
   const campaign = await prisma.campaign.findUnique({
@@ -90,17 +91,17 @@ const generateBulkCoupons = async (campaignId, count, offerTemplate, options = {
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
   // Calcular fechas de validez si se proporciona un template
   let validityDates = { validFrom: null, validUntil: null };
-  
+
   if (options.couponTemplateId) {
     const template = await prisma.couponTemplate.findUnique({
-      where: { id: options.couponTemplateId }
+      where: { id: options.couponTemplateId },
     });
-    
+
     if (template) {
       validityDates = validityService.calculateCouponValidityDates(template);
     }
@@ -115,7 +116,7 @@ const generateBulkCoupons = async (campaignId, count, offerTemplate, options = {
   }
 
   const coupons = [];
-  const prefix = campaign.name.substring(0, 8).toUpperCase().replace(/\s/g, "");
+  const prefix = campaign.name.substring(0, 8).toUpperCase().replace(/\s/g, '');
 
   for (let i = 0; i < count; i++) {
     let attempts = 0;
@@ -142,7 +143,7 @@ const generateBulkCoupons = async (campaignId, count, offerTemplate, options = {
         campaignId,
         code: couponCode,
         offer: offerTemplate,
-        status: "GENERATED",
+        status: 'GENERATED',
         validFrom: validityDates.validFrom,
         validUntil: validityDates.validUntil,
       },
@@ -162,13 +163,13 @@ const getCouponByCode = async (code) => {
       campaign: true,
       contacts: {
         take: 5,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       },
     },
   });
 
   if (!coupon) {
-    throw new Error("Coupon not found");
+    throw new Error('Coupon not found');
   }
 
   return coupon;
@@ -181,13 +182,13 @@ const getCouponById = async (id) => {
       campaign: true,
       contacts: {
         take: 5,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: 'desc' },
       },
     },
   });
 
   if (!coupon) {
-    throw new Error("Coupon not found");
+    throw new Error('Coupon not found');
   }
 
   return coupon;
@@ -203,7 +204,7 @@ const listCoupons = async (filters = {}) => {
   const [coupons, total] = await Promise.all([
     prisma.campaignCoupon.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       skip: (page - 1) * limit,
       take: limit,
       include: {
@@ -241,7 +242,7 @@ const trackCouponVisit = async (code, metadata = {}) => {
   });
 
   if (!coupon) {
-    throw new Error("Coupon not found");
+    throw new Error('Coupon not found');
   }
 
   const updateData = {
@@ -249,8 +250,8 @@ const trackCouponVisit = async (code, metadata = {}) => {
     lastVisitedAt: new Date(),
   };
 
-  if (coupon.status === "GENERATED" || coupon.status === "SENT") {
-    updateData.status = "VISITED";
+  if (coupon.status === 'GENERATED' || coupon.status === 'SENT') {
+    updateData.status = 'VISITED';
     updateData.visitedAt = new Date();
   }
 
@@ -264,11 +265,11 @@ const trackCouponVisit = async (code, metadata = {}) => {
   });
 
   for (const contact of contacts) {
-    if (contact.status !== "CONVERTED") {
+    if (contact.status !== 'CONVERTED') {
       await prisma.campaignContact.update({
         where: { id: contact.id },
         data: {
-          status: "VISITED",
+          status: 'VISITED',
           visitedAt: new Date(),
         },
       });
@@ -285,10 +286,10 @@ const markCouponAsConverted = async (code, conversionData = {}) => {
   });
 
   if (!coupon) {
-    throw new Error("Coupon not found");
+    throw new Error('Coupon not found');
   }
 
-  if (coupon.status === "CONVERTED") {
+  if (coupon.status === 'CONVERTED') {
     logger.warn(`Coupon ${code} is already marked as converted`);
     return coupon;
   }
@@ -296,7 +297,7 @@ const markCouponAsConverted = async (code, conversionData = {}) => {
   const updatedCoupon = await prisma.campaignCoupon.update({
     where: { code },
     data: {
-      status: "CONVERTED",
+      status: 'CONVERTED',
       convertedAt: new Date(),
       conversionData,
     },
@@ -310,7 +311,7 @@ const markCouponAsConverted = async (code, conversionData = {}) => {
     await prisma.campaignContact.update({
       where: { id: contact.id },
       data: {
-        status: "CONVERTED",
+        status: 'CONVERTED',
         convertedAt: new Date(),
       },
     });
@@ -326,7 +327,7 @@ const assignCouponToContact = async (couponId, contactId) => {
   });
 
   if (!coupon) {
-    throw new Error("Coupon not found");
+    throw new Error('Coupon not found');
   }
 
   const contact = await prisma.campaignContact.findUnique({
@@ -334,11 +335,11 @@ const assignCouponToContact = async (couponId, contactId) => {
   });
 
   if (!contact) {
-    throw new Error("Contact not found");
+    throw new Error('Contact not found');
   }
 
   if (contact.campaignId !== coupon.campaignId) {
-    throw new Error("Coupon and contact must belong to the same campaign");
+    throw new Error('Coupon and contact must belong to the same campaign');
   }
 
   const updatedContact = await prisma.campaignContact.update({
@@ -356,12 +357,12 @@ const getAvailableCoupons = async (campaignId) => {
   const coupons = await prisma.campaignCoupon.findMany({
     where: {
       campaignId,
-      status: "GENERATED",
+      status: 'GENERATED',
       contacts: {
         none: {},
       },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: 'asc' },
   });
 
   return coupons;
@@ -386,7 +387,7 @@ const getCouponStats = async (couponId) => {
   });
 
   if (!coupon) {
-    throw new Error("Coupon not found");
+    throw new Error('Coupon not found');
   }
 
   return {
@@ -416,13 +417,13 @@ const getCouponStats = async (couponId) => {
  */
 const getActiveCouponsWithTimeRemaining = async (filters = {}) => {
   const { campaignId } = filters;
-  
+
   const where = {
-    status: { in: ["GENERATED", "SENT", "VISITED"] }
+    status: { in: ['GENERATED', 'SENT', 'VISITED'] },
   };
-  
+
   if (campaignId) where.campaignId = campaignId;
-  
+
   const coupons = await prisma.campaignCoupon.findMany({
     where,
     include: {
@@ -434,7 +435,7 @@ const getActiveCouponsWithTimeRemaining = async (filters = {}) => {
       },
     },
   });
-  
+
   return validityService.getActiveCouponsWithTimeRemaining(coupons);
 };
 
@@ -455,32 +456,32 @@ const validateCouponForUse = async (code) => {
   const coupon = await prisma.campaignCoupon.findUnique({
     where: { code },
   });
-  
+
   if (!coupon) {
     return {
       valid: false,
-      reason: "Cupón no encontrado",
+      reason: 'Cupón no encontrado',
     };
   }
-  
-  if (coupon.status === "EXPIRED") {
+
+  if (coupon.status === 'EXPIRED') {
     return {
       valid: false,
-      reason: "Cupón expirado",
+      reason: 'Cupón expirado',
       coupon,
     };
   }
-  
-  if (coupon.status === "CONVERTED") {
+
+  if (coupon.status === 'CONVERTED') {
     return {
       valid: false,
-      reason: "Cupón ya fue utilizado",
+      reason: 'Cupón ya fue utilizado',
       coupon,
     };
   }
-  
+
   const validity = validityService.checkCouponValidity(coupon);
-  
+
   if (!validity.isValid) {
     return {
       valid: false,
@@ -489,7 +490,7 @@ const validateCouponForUse = async (code) => {
       validity,
     };
   }
-  
+
   return {
     valid: true,
     coupon,

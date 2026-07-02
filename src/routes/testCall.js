@@ -1,19 +1,19 @@
 /**
  * Test Call Routes
  * Rutas para llamadas de prueba de configuraciones de agentes
- *  
+ *
  * Autenticación: Opcional (funciona mejor con auth para logging)
  */
 
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const testCallController = require("../controllers/testCallController");
-const { optionalAuth } = require("../middleware/auth");
+const testCallController = require('../controllers/testCallController');
+const { optionalAuth } = require('../middleware/auth');
 
 /**
  * POST /api/v1/test-call
  * Realiza una llamada de prueba con la configuración del agente
- * 
+ *
  * Body: {
  *   phone: string,
  *   message: string,
@@ -35,9 +35,9 @@ const { optionalAuth } = require("../middleware/auth");
  *     transparency_response?: string
  *   }
  * }
- * 
+ *
  * Autenticación opcional (mejora logging si se proporciona)
  */
-router.post("/", optionalAuth, testCallController.handleTestCall);
+router.post('/', optionalAuth, testCallController.handleTestCall);
 
 module.exports = router;

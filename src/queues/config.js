@@ -6,9 +6,9 @@
  * backoff y limpieza de jobs.
  */
 
-const Redis = require("ioredis");
-const config = require("../config/env");
-const logger = require("../config/logger");
+const Redis = require('ioredis');
+const config = require('../config/env');
+const logger = require('../config/logger');
 
 /**
  * Objeto de configuración de conexión Redis.
@@ -38,12 +38,12 @@ function createRedisClient() {
       })
     : new Redis(redisConfig);
 
-  client.on("error", (err) => {
-    logger.error("[Redis] Error de conexión:", { error: err.message });
+  client.on('error', (err) => {
+    logger.error('[Redis] Error de conexión:', { error: err.message });
   });
 
-  client.on("connect", () => {
-    logger.info("[Redis] Conexión establecida");
+  client.on('connect', () => {
+    logger.info('[Redis] Conexión establecida');
   });
 
   return client;
@@ -59,7 +59,7 @@ function createRedisClient() {
 const defaultJobOptions = {
   attempts: 3,
   backoff: {
-    type: "exponential",
+    type: 'exponential',
     delay: 5000,
   },
   removeOnComplete: 100,
@@ -80,11 +80,11 @@ function getBullOptions() {
       // Tiempo máximo que un job puede estar bloqueado antes de considerarse estancado (ms)
       // Por defecto es 30000 (30s), aumentamos a 5 minutos para llamadas largas
       lockDuration: 300000, // 5 minutos
-      
+
       // Intervalo de verificación de jobs estancados (ms)
       // Por defecto es 5000 (5s), aumentamos a 30s para reducir falsos positivos
       stalledInterval: 30000, // 30 segundos
-      
+
       // Número máximo de veces que se verifica si un job está estancado
       // El job solo se marca como estancado después de maxStalledCount comprobaciones
       maxStalledCount: 2, // 2 comprobaciones antes de marcar como estancado

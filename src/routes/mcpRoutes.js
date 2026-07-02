@@ -1,12 +1,14 @@
-const express = require("express");
-const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
-const { SSEServerTransport } = require("@modelcontextprotocol/sdk/server/sse.js");
-const { validateEnrichmentAgent } = require("../middleware/enrichmentAgent");
-const { createDiscoveryServer } = require("../mcp/discoveryMcp");
-const { createActivationServer } = require("../mcp/activationMcp");
-const { createQualificationServer } = require("../mcp/qualificationMcp");
-const { createConversionServer } = require("../mcp/conversionMcp");
-const logger = require("../config/logger");
+const express = require('express');
+const {
+  StreamableHTTPServerTransport,
+} = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
+const { SSEServerTransport } = require('@modelcontextprotocol/sdk/server/sse.js');
+const { validateEnrichmentAgent } = require('../middleware/enrichmentAgent');
+const { createDiscoveryServer } = require('../mcp/discoveryMcp');
+const { createActivationServer } = require('../mcp/activationMcp');
+const { createQualificationServer } = require('../mcp/qualificationMcp');
+const { createConversionServer } = require('../mcp/conversionMcp');
+const logger = require('../config/logger');
 
 const router = express.Router();
 
@@ -25,14 +27,13 @@ const activeTransports = {
  *  POST /mcp/<agent>/messages  → mensajes SSE legacy
  */
 function mountMcpAgent(agentKey, createServer) {
-
   // ── Streamable HTTP stateless (cada request es independiente) ───────────────
   // Sin auth middleware: ElevenLabs no envía headers custom en tool calls
   router.all(`/${agentKey}`, async (req, res) => {
     try {
       // ElevenLabs envía solo Accept: application/json — el SDK requiere text/event-stream
-      if (!req.headers.accept?.includes("text/event-stream")) {
-        req.headers.accept = "application/json, text/event-stream";
+      if (!req.headers.accept?.includes('text/event-stream')) {
+        req.headers.accept = 'application/json, text/event-stream';
       }
       const server = createServer();
       const transport = new StreamableHTTPServerTransport({
@@ -55,7 +56,7 @@ function mountMcpAgent(agentKey, createServer) {
       activeTransports[agentKey].set(transport.sessionId, transport);
       logger.info(`[MCP:${agentKey}] SSE connected`, { sessionId: transport.sessionId });
       await server.connect(transport);
-      req.on("close", () => {
+      req.on('close', () => {
         activeTransports[agentKey].delete(transport.sessionId);
         logger.info(`[MCP:${agentKey}] SSE disconnected`, { sessionId: transport.sessionId });
       });
@@ -70,7 +71,7 @@ function mountMcpAgent(agentKey, createServer) {
     const transport = activeTransports[agentKey].get(sessionId);
     if (!transport) {
       logger.warn(`[MCP:${agentKey}] SSE session not found`, { sessionId });
-      return res.status(404).json({ error: "Session not found" });
+      return res.status(404).json({ error: 'Session not found' });
     }
     try {
       await transport.handlePostMessage(req, res, req.body);
@@ -81,9 +82,9 @@ function mountMcpAgent(agentKey, createServer) {
   });
 }
 
-mountMcpAgent("discovery", createDiscoveryServer);
-mountMcpAgent("activation", createActivationServer);
-mountMcpAgent("qualification", createQualificationServer);
-mountMcpAgent("conversion", createConversionServer);
+mountMcpAgent('discovery', createDiscoveryServer);
+mountMcpAgent('activation', createActivationServer);
+mountMcpAgent('qualification', createQualificationServer);
+mountMcpAgent('conversion', createConversionServer);
 
 module.exports = router;

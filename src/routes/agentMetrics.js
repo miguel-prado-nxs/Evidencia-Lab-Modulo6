@@ -4,30 +4,31 @@ const agentMetricsController = require('../controllers/agentMetricsController');
 
 // API Key middleware for agent metrics
 const validateApiKey = (req, res, next) => {
-    const apiKey = process.env.SDR_API_KEY;
+  const apiKey = process.env.SDR_API_KEY;
 
-    if (!apiKey) {
-        console.warn('SDR_API_KEY not set - skipping API key validation');
-        return next();
-    }
+  if (!apiKey) {
+    console.warn('SDR_API_KEY not set - skipping API key validation');
+    return next();
+  }
 
-    const providedKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+  const providedKey =
+    req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
 
-    if (!providedKey) {
-        return res.status(401).json({
-            success: false,
-            error: 'API key required. Provide X-API-Key header.',
-        });
-    }
+  if (!providedKey) {
+    return res.status(401).json({
+      success: false,
+      error: 'API key required. Provide X-API-Key header.',
+    });
+  }
 
-    if (providedKey !== apiKey) {
-        return res.status(403).json({
-            success: false,
-            error: 'Invalid API key',
-        });
-    }
+  if (providedKey !== apiKey) {
+    return res.status(403).json({
+      success: false,
+      error: 'Invalid API key',
+    });
+  }
 
-    next();
+  next();
 };
 
 // Apply API key validation

@@ -2,7 +2,7 @@
  * Middleware para validar requests del agente de enriquecimiento externo
  * Requiere API Key específica para el agente
  */
-const logger = require("../config/logger");
+const logger = require('../config/logger');
 
 /**
  * Valida que el request provenga del agente de enriquecimiento autorizado
@@ -15,9 +15,9 @@ function validateEnrichmentAgent(req, res, next) {
   // Verificar que la key esté configurada en el servidor
   if (!validAgentKey) {
     logger.error('[Enrichment Agent] ENRICHMENT_AGENT_KEY no configurada en variables de entorno');
-    return res.status(500).json({ 
+    return res.status(500).json({
       success: false,
-      error: 'Configuración del servidor incompleta' 
+      error: 'Configuración del servidor incompleta',
     });
   }
 
@@ -27,11 +27,11 @@ function validateEnrichmentAgent(req, res, next) {
       ip: req.ip,
       path: req.path,
       method: req.method,
-      userAgent: req.get('user-agent')
+      userAgent: req.get('user-agent'),
     });
-    return res.status(401).json({ 
+    return res.status(401).json({
       success: false,
-      error: 'X-Enrichment-Agent-Key header requerido' 
+      error: 'X-Enrichment-Agent-Key header requerido',
     });
   }
 
@@ -41,23 +41,23 @@ function validateEnrichmentAgent(req, res, next) {
       ip: req.ip,
       path: req.path,
       providedKey: agentKey.substring(0, 8) + '...',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    return res.status(403).json({ 
+    return res.status(403).json({
       success: false,
-      error: 'X-Enrichment-Agent-Key inválida' 
+      error: 'X-Enrichment-Agent-Key inválida',
     });
   }
 
   // Validación opcional de IP del agente (whitelist)
-  const agentIPs = process.env.ENRICHMENT_AGENT_IPS?.split(',').map(ip => ip.trim()) || [];
+  const agentIPs = process.env.ENRICHMENT_AGENT_IPS?.split(',').map((ip) => ip.trim()) || [];
   if (agentIPs.length > 0) {
     const clientIP = req.ip || req.headers['x-forwarded-for']?.split(',')[0];
     if (!agentIPs.includes(clientIP)) {
       logger.warn('[Enrichment Agent] Request desde IP no autorizada', {
         ip: clientIP,
         allowedIPs: agentIPs,
-        path: req.path
+        path: req.path,
       });
       // No bloqueamos, solo loggeamos (la key es suficiente validación)
     }
@@ -66,7 +66,7 @@ function validateEnrichmentAgent(req, res, next) {
   logger.info('[Enrichment Agent] Request autorizada', {
     path: req.path,
     method: req.method,
-    ip: req.ip
+    ip: req.ip,
   });
 
   next();

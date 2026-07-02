@@ -1,20 +1,21 @@
 /**
  * Twenty Sync Service
  * Orquestador de sincronizacion entre Partners API y Twenty CRM
- * 
+ *
  * Responsabilidades:
  * 1. Encolar jobs de sincronizacion (non-blocking)
  * 2. Procesar jobs pendientes
  * 3. Sincronizar pipeline de establecimiento a Twenty
- * 
+ *
  * Flujo de pipeline:
  * ESTABLISHMENT -> CONTACT -> PROSPECT -> LEAD -> CLIENT
  */
 
-const prisma = require("../../config/database");
+const prisma = require('../../config/database');
 const { PrismaClient: PrismaClientGeo } = require('@prisma/client-geo');
-const logger = require("../../config/logger");
-const twentyService = require("./twentyService");
+const logger = require('../../config/logger');
+const twentyService = require('./twentyService');
+const { processInteractionJob } = require('./twentyActivityService');
 
 const prismaGeo = new PrismaClientGeo();
 
@@ -23,12 +24,12 @@ const prismaGeo = new PrismaClientGeo();
  * NO se mapea pipelineVentasEasyorder
  */
 const LEAD_STATUS_MAP = {
-  NEW: "NUEVO",
-  CONTACTED: "EN_CONTACTO",
-  QUALIFIED: "PROPUESTA_ENVIADA",
-  NEGOTIATION: "NEGOCIANDO",
-  WON: "GANADO",
-  LOST: "PERDIDO",
+  NEW: 'NUEVO',
+  CONTACTED: 'EN_CONTACTO',
+  QUALIFIED: 'PROPUESTA_ENVIADA',
+  NEGOTIATION: 'NEGOCIANDO',
+  WON: 'GANADO',
+  LOST: 'PERDIDO',
 };
 
 /**
@@ -45,7 +46,7 @@ const LEVEL_ORDER = {
 /**
  * Encola un job de sincronizacion (non-blocking)
  * No falla aunque haya error - el error se registra y el job queda para reintento
- * 
+ *
  * @param {Object} params
  * @param {string} params.establishmentId - ID del establecimiento en Partners
  * @param {string} params.partnerId - ID del partner que disparo la accion
@@ -53,21 +54,23 @@ const LEVEL_ORDER = {
  */
 async function enqueueSync({ establishmentId, partnerId, reason }) {
   if (!twentyService.isEnabled()) {
-    logger.debug("[TwentySyncService] Sync deshabilitado - TWENTY_API_KEY no configurada");
+    logger.debug('[TwentySyncService] Sync deshabilitado - TWENTY_API_KEY no configurada');
     return null;
   }
 
   try {
-    // Verificar si ya existe un job pendiente para este establecimiento
+    // Verificar si ya existe un job PIPELINE pendiente para este establecimiento
+    // No colapsar jobs INTERACTION — cada llamada genera su propia Note
     const existingJob = await prisma.twentySyncJob.findFirst({
       where: {
         establishmentId,
-        status: { in: ["PENDING", "PROCESSING"] },
+        type: 'PIPELINE',
+        status: { in: ['PENDING', 'PROCESSING'] },
       },
     });
 
     if (existingJob) {
-      logger.info("[TwentySyncService] Job existente encontrado, actualizando reason", {
+      logger.info('[TwentySyncService] Job existente encontrado, actualizando reason', {
         establishmentId,
         jobId: existingJob.id,
         oldReason: existingJob.reason,
@@ -87,18 +90,19 @@ async function enqueueSync({ establishmentId, partnerId, reason }) {
       return existingJob.id;
     }
 
-    // Crear nuevo job
+    // Crear nuevo job PIPELINE
     const job = await prisma.twentySyncJob.create({
       data: {
         establishmentId,
         partnerId,
         reason,
-        status: "PENDING",
+        type: 'PIPELINE',
+        status: 'PENDING',
         nextRunAt: new Date(),
       },
     });
 
-    logger.info("[TwentySyncService] Job de sync encolado", {
+    logger.info('[TwentySyncService] Job de sync encolado', {
       jobId: job.id,
       establishmentId,
       partnerId,
@@ -108,7 +112,7 @@ async function enqueueSync({ establishmentId, partnerId, reason }) {
     return job.id;
   } catch (error) {
     // No fallar el request principal - solo loggear
-    logger.error("[TwentySyncService] Error encolando sync (no critico)", {
+    logger.error('[TwentySyncService] Error encolando sync (no critico)', {
       error: error.message,
       establishmentId,
       partnerId,
@@ -121,7 +125,7 @@ async function enqueueSync({ establishmentId, partnerId, reason }) {
 /**
  * Procesa jobs pendientes de sincronizacion
  * Diseñado para ser llamado periodicamente por el worker
- * 
+ *
  * @param {number} limit - Numero maximo de jobs a procesar
  * @returns {Object} - Resultado del procesamiento
  */
@@ -134,10 +138,10 @@ async function processPendingJobs(limit = 10) {
     // Obtener jobs pendientes ordenados por nextRunAt
     const jobs = await prisma.twentySyncJob.findMany({
       where: {
-        status: "PENDING",
+        status: 'PENDING',
         nextRunAt: { lte: new Date() },
       },
-      orderBy: { nextRunAt: "asc" },
+      orderBy: { nextRunAt: 'asc' },
       take: limit,
     });
 
@@ -155,36 +159,48 @@ async function processPendingJobs(limit = 10) {
         // Marcar como procesando
         await prisma.twentySyncJob.update({
           where: { id: job.id },
-          data: { status: "PROCESSING" },
+          data: { status: 'PROCESSING' },
         });
 
-        // Ejecutar sincronizacion
-        await syncEstablishmentPipelineToTwenty(job.establishmentId, job.partnerId, job.reason);
+        // Despachar por tipo
+        if (job.type === 'INTERACTION') {
+          await processInteractionJob(job);
+        } else {
+          await syncEstablishmentPipelineToTwenty(job.establishmentId, job.partnerId, job.reason);
+        }
 
         // Marcar como completado
         await prisma.twentySyncJob.update({
           where: { id: job.id },
           data: {
-            status: "DONE",
+            status: 'DONE',
             completedAt: new Date(),
           },
         });
 
         success++;
-        logger.info("[TwentySyncService] Job completado exitosamente", {
+        logger.info('[TwentySyncService] Job completado exitosamente', {
           jobId: job.id,
           establishmentId: job.establishmentId,
+          type: job.type,
         });
       } catch (error) {
         failed++;
         const newAttempts = job.attempts + 1;
-        const maxRetries = 5;
 
         // Calcular backoff: min(60s * 2^attempts, 1h)
         const backoffSeconds = Math.min(60 * Math.pow(2, newAttempts), 3600);
         const nextRunAt = new Date(Date.now() + backoffSeconds * 1000);
 
-        const newStatus = newAttempts >= maxRetries ? "FAILED" : "PENDING";
+        // INTERACTION conversacional (maxAttempts=null): reintentar indefinidamente
+        // INTERACTION no-conversacional (maxAttempts=5) y PIPELINE: fallar tras limite
+        let newStatus;
+        if (job.type === 'INTERACTION' && job.maxAttempts === null) {
+          newStatus = 'PENDING';
+        } else {
+          const maxRetries = job.maxAttempts ?? 5;
+          newStatus = newAttempts >= maxRetries ? 'FAILED' : 'PENDING';
+        }
 
         await prisma.twentySyncJob.update({
           where: { id: job.id },
@@ -197,9 +213,10 @@ async function processPendingJobs(limit = 10) {
           },
         });
 
-        logger.error("[TwentySyncService] Error procesando job", {
+        logger.error('[TwentySyncService] Error procesando job', {
           jobId: job.id,
           establishmentId: job.establishmentId,
+          type: job.type,
           error: error.message,
           attempts: newAttempts,
           nextRunAt: nextRunAt.toISOString(),
@@ -210,7 +227,7 @@ async function processPendingJobs(limit = 10) {
 
     return { processed: jobs.length, success, failed };
   } catch (error) {
-    logger.error("[TwentySyncService] Error en processPendingJobs", {
+    logger.error('[TwentySyncService] Error en processPendingJobs', {
       error: error.message,
     });
     return { processed: 0, success: 0, failed: 0 };
@@ -220,13 +237,13 @@ async function processPendingJobs(limit = 10) {
 /**
  * Sincroniza el pipeline de un establecimiento hacia Twenty CRM
  * Esta es la funcion principal que maneja toda la logica de upsert
- * 
+ *
  * @param {string} establishmentId - UUID del establecimiento en Partners DB
  * @param {string} partnerId - ID del partner (para logs)
  * @param {string} reason - Razon del sync
  */
 async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, reason) {
-  logger.info("[TwentySyncService] Iniciando sync de pipeline", {
+  logger.info('[TwentySyncService] Iniciando sync de pipeline', {
     establishmentId,
     partnerId,
     reason,
@@ -238,14 +255,14 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
   });
 
   if (!enrichment) {
-    logger.warn("[TwentySyncService] Enrichment no encontrado", { establishmentId });
+    logger.warn('[TwentySyncService] Enrichment no encontrado', { establishmentId });
     throw new Error(`Enrichment no encontrado para establishmentId: ${establishmentId}`);
   }
 
-  const currentLevel = enrichment.level || "ESTABLISHMENT";
+  const currentLevel = enrichment.level || 'ESTABLISHMENT';
   const establishmentData = enrichment.establishmentData || {};
 
-  logger.info("[TwentySyncService] Datos de enrichment cargados", {
+  logger.info('[TwentySyncService] Datos de enrichment cargados', {
     establishmentId,
     currentLevel,
     hasEstablishmentData: !!establishmentData,
@@ -289,7 +306,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
     // 5. Procesar SOLO el nivel actual (no todos los anteriores)
     // Los registros anteriores se eliminan al avanzar de nivel
 
-    if (currentLevel === "CONTACT") {
+    if (currentLevel === 'CONTACT') {
       // Nivel CONTACT: Solo crear/actualizar Person
       twentyIds.contactoId = await upsertContacto(
         establishmentData,
@@ -297,8 +314,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
         twentyIds.establecimientoId,
         twentyIds.contactoId
       );
-    }
-    else if (currentLevel === "PROSPECT") {
+    } else if (currentLevel === 'PROSPECT') {
       // Nivel PROSPECT: Crear Prospecto y eliminar Contacto anterior
       twentyIds.prospectoId = await upsertProspecto(
         establishmentId,
@@ -311,8 +327,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
       );
       // El upsertProspecto ya elimina el contacto, solo limpiamos el ID
       twentyIds.contactoId = null;
-    }
-    else if (currentLevel === "LEAD") {
+    } else if (currentLevel === 'LEAD') {
       // Nivel LEAD: Crear Opportunity y eliminar Prospecto anterior
       twentyIds.opportunityId = await upsertOpportunity(
         establishmentData,
@@ -324,8 +339,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
       );
       // El upsertOpportunity ya elimina el prospecto, solo limpiamos el ID
       twentyIds.prospectoId = null;
-    }
-    else if (currentLevel === "CLIENT") {
+    } else if (currentLevel === 'CLIENT') {
       // Nivel CLIENT: Crear Cliente y eliminar Opportunity anterior
       twentyIds.clienteId = await upsertCliente(
         establishmentData,
@@ -354,7 +368,7 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
       },
     });
 
-    logger.info("[TwentySyncService] Sync completado exitosamente", {
+    logger.info('[TwentySyncService] Sync completado exitosamente', {
       establishmentId,
       partnerId,
       currentLevel,
@@ -378,14 +392,21 @@ async function syncEstablishmentPipelineToTwenty(establishmentId, partnerId, rea
 
 /**
  * Upsert de Establecimiento (Company) en Twenty
- * 
+ *
  * Si el establecimiento no existe en Twenty, lo crea usando datos de la BD geo (DENUE).
  * Si existe, solo actualiza nivelPipeline.
- * 
+ *
  * @param {string} clee - Clave DENUE del establecimiento (para buscar en Twenty)
  * @param {string} establishmentIdUuid - UUID del establecimiento en BD local
  */
-async function upsertEstablecimiento(clee, establishmentData, enrichment, currentLevel, existingId, establishmentIdUuid) {
+async function upsertEstablecimiento(
+  clee,
+  establishmentData,
+  enrichment,
+  currentLevel,
+  existingId,
+  establishmentIdUuid
+) {
   // Solo actualizar nivelPipeline
   const updateData = {
     nivelPipeline: currentLevel,
@@ -394,7 +415,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
   // Si ya tenemos el ID de Twenty, actualizar directamente
   if (existingId) {
     await twentyService.updateEstablecimiento(existingId, updateData);
-    logger.info("[TwentySyncService] Company actualizado (nivelPipeline)", {
+    logger.info('[TwentySyncService] Company actualizado (nivelPipeline)', {
       twentyId: existingId,
       nivelPipeline: currentLevel,
     });
@@ -409,7 +430,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
 
   if (existing) {
     await twentyService.updateEstablecimiento(existing.id, updateData);
-    logger.info("[TwentySyncService] Company encontrado y actualizado (nivelPipeline)", {
+    logger.info('[TwentySyncService] Company encontrado y actualizado (nivelPipeline)', {
       twentyId: existing.id,
       claveDenue: clee,
       nivelPipeline: currentLevel,
@@ -418,24 +439,26 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
   }
 
   // El establecimiento NO existe en Twenty - crearlo usando datos de BD geo
-  logger.warn("[TwentySyncService] Establecimiento NO encontrado en Twenty, creándolo desde BD geo", {
-    claveDenue: clee,
-    establishmentId: establishmentIdUuid,
-  });
+  logger.warn(
+    '[TwentySyncService] Establecimiento NO encontrado en Twenty, creándolo desde BD geo',
+    {
+      claveDenue: clee,
+      establishmentId: establishmentIdUuid,
+    }
+  );
 
   try {
     // Obtener datos completos del establecimiento de la BD geo
     const establishment = await prismaGeo.establishment.findFirst({
       where: {
-        OR: [
-          { clee: clee },
-          { id: establishmentIdUuid }
-        ]
-      }
+        OR: [{ clee: clee }, { id: establishmentIdUuid }],
+      },
     });
 
     if (!establishment) {
-      throw new Error(`Establecimiento no encontrado en BD geo: clee=${clee}, id=${establishmentIdUuid}`);
+      throw new Error(
+        `Establecimiento no encontrado en BD geo: clee=${clee}, id=${establishmentIdUuid}`
+      );
     }
 
     // Preparar dirección
@@ -443,7 +466,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
       establishment.streetType,
       establishment.streetName,
       establishment.exteriorNum,
-      establishment.interiorNum
+      establishment.interiorNum,
     ].filter(Boolean);
 
     const addressStreet = addressParts.join(' ') || 'Sin dirección';
@@ -461,7 +484,7 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
         addressCity: addressCity,
         addressState: establishment.stateName || '',
         addressPostcode: establishment.postalCode || '',
-        addressCountry: 'México'
+        addressCountry: 'México',
       },
 
       // Ubicación
@@ -475,53 +498,64 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
       giro: establishment.activityName || establishment.activityCode || '',
 
       // Contacto (si existe)
-      telefonoDenue: establishment.phone ? {
-        primaryPhoneNumber: establishment.phone,
-        primaryPhoneCountryCode: 'MX'
-      } : undefined,
+      telefonoDenue: establishment.phone
+        ? {
+            primaryPhoneNumber: establishment.phone,
+            primaryPhoneCountryCode: 'MX',
+          }
+        : undefined,
 
-      emailDenue: establishment.email ? {
-        primaryEmail: establishment.email
-      } : undefined,
+      emailDenue: establishment.email
+        ? {
+            primaryEmail: establishment.email,
+          }
+        : undefined,
 
-      websiteDenue: establishment.website ? {
-        primaryLinkUrl: establishment.website,
-        primaryLinkLabel: establishment.website
-      } : undefined,
+      websiteDenue: establishment.website
+        ? {
+            primaryLinkUrl: establishment.website,
+            primaryLinkLabel: establishment.website,
+          }
+        : undefined,
 
       // Metadata
       fechaAltaDenue: establishment.addedDate
-        ? (establishment.addedDate.length === 7 ? `${establishment.addedDate}-01T00:00:00.000Z` : establishment.addedDate)
+        ? establishment.addedDate.length === 7
+          ? `${establishment.addedDate}-01T00:00:00.000Z`
+          : establishment.addedDate
         : new Date().toISOString(),
 
       // Dominio para deduplicación
       dominio: (() => {
         if (establishment.website) {
           try {
-            const url = new URL(establishment.website.startsWith('http') ? establishment.website : `https://${establishment.website}`);
+            const url = new URL(
+              establishment.website.startsWith('http')
+                ? establishment.website
+                : `https://${establishment.website}`
+            );
             return url.hostname.replace('www.', '');
           } catch (e) {
             return establishment.name.toLowerCase().replace(/\s+/g, '-').substring(0, 50);
           }
         }
         return establishment.name.toLowerCase().replace(/\s+/g, '-').substring(0, 50);
-      })()
+      })(),
     };
 
     const response = await twentyService.client.post('/companies?upsert=true', companyData);
     const created = response.data.data?.createCompany || response.data;
 
-    logger.info("[TwentySyncService] Establecimiento creado en Twenty desde BD geo", {
+    logger.info('[TwentySyncService] Establecimiento creado en Twenty desde BD geo', {
       twentyId: created.id,
       claveDenue: establishment.clee,
       name: establishment.name,
-      nivelPipeline: currentLevel
+      nivelPipeline: currentLevel,
     });
 
     return created.id;
-
   } catch (error) {
-    logger.error("[TwentySyncService] Error creando establecimiento en Twenty desde BD geo", {
+    logger.error('[TwentySyncService] Error creando establecimiento en Twenty desde BD geo', {
       error: error.response?.data || error.message,
       claveDenue: clee,
       establishmentId: establishmentIdUuid,
@@ -533,7 +567,13 @@ async function upsertEstablecimiento(clee, establishmentData, enrichment, curren
 /**
  * Upsert de Contacto en Twenty
  */
-async function upsertContacto(establishmentData, enrichment, establecimientoId, existingId, useDecisionMakerData = false) {
+async function upsertContacto(
+  establishmentData,
+  enrichment,
+  establecimientoId,
+  existingId,
+  useDecisionMakerData = false
+) {
   // Determinar phone y email a usar
   let phone = establishmentData.phone;
   let email = establishmentData.email;
@@ -543,29 +583,29 @@ async function upsertContacto(establishmentData, enrichment, establecimientoId, 
     email = email || enrichment.decisionMakerEmail;
   }
 
-  const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
+  const name = establishmentData.name || enrichment.decisionMakerName || 'Sin nombre';
 
   const contactoData = {
     name,
-    fuenteDelDato: "DENUE",
+    fuenteDelDato: 'DENUE',
     establecimientoId,
   };
 
   // Formatear telefono - agregar codigo de pais Mexico si es necesario
   if (phone) {
-    let formattedPhone = String(phone).replace(/\D/g, ""); // Solo digitos
+    let formattedPhone = String(phone).replace(/\D/g, ''); // Solo digitos
     // Si tiene 10 digitos, es telefono mexicano sin codigo de pais
     if (formattedPhone.length === 10) {
-      formattedPhone = "+52" + formattedPhone;
-    } else if (formattedPhone.length === 12 && formattedPhone.startsWith("52")) {
-      formattedPhone = "+" + formattedPhone;
-    } else if (!formattedPhone.startsWith("+")) {
-      formattedPhone = "+" + formattedPhone;
+      formattedPhone = '+52' + formattedPhone;
+    } else if (formattedPhone.length === 12 && formattedPhone.startsWith('52')) {
+      formattedPhone = '+' + formattedPhone;
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+' + formattedPhone;
     }
     contactoData.telefonoPrincipal = {
       primaryPhoneNumber: formattedPhone,
-      primaryPhoneCountryCode: "MX",
-      primaryPhoneCallingCode: "+52"
+      primaryPhoneCountryCode: 'MX',
+      primaryPhoneCallingCode: '+52',
     };
   }
 
@@ -573,7 +613,7 @@ async function upsertContacto(establishmentData, enrichment, establecimientoId, 
     contactoData.emailPrincipal = { primaryEmail: email };
   }
 
-  let contactoId = null;
+  let contactoId;
   if (existingId) {
     await twentyService.updateContacto(existingId, contactoData);
     contactoId = existingId;
@@ -604,20 +644,28 @@ async function upsertContacto(establishmentData, enrichment, establecimientoId, 
  * Mapeo de posiciones a valores del ENUM de Twenty
  */
 const TOMADOR_CARGO_MAP = {
-  'dueño': 'DUENO',
-  'dueno': 'DUENO',
-  'gerente': 'GERENTE',
-  'encargado': 'ENCARGADO',
-  'administrador': 'ADMINISTRADOR',
-  'socio': 'SOCIO',
-  'otro': 'OTRO',
+  dueño: 'DUENO',
+  dueno: 'DUENO',
+  gerente: 'GERENTE',
+  encargado: 'ENCARGADO',
+  administrador: 'ADMINISTRADOR',
+  socio: 'SOCIO',
+  otro: 'OTRO',
 };
 
 /**
  * Upsert de Prospecto en Twenty
  */
-async function upsertProspecto(establishmentId, establishmentData, enrichment, establecimientoId, contactoId, existingId, partnerId) {
-  const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
+async function upsertProspecto(
+  establishmentId,
+  establishmentData,
+  enrichment,
+  establecimientoId,
+  contactoId,
+  existingId,
+  partnerId
+) {
+  const name = establishmentData.name || enrichment.decisionMakerName || 'Sin nombre';
 
   const prospectoData = {
     name, // Nombre del establecimiento
@@ -650,7 +698,7 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
   // Buscar notas en lead_prospects
   const leadProspect = await prisma.leadProspect.findFirst({
     where: { establishmentId },
-    select: { notes: true }
+    select: { notes: true },
   });
   if (leadProspect && leadProspect.notes) {
     prospectoData.notasProspecto = leadProspect.notes;
@@ -689,39 +737,39 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
 
   // WhatsApp del tomador
   if (enrichment.decisionMakerWhatsApp) {
-    let phone = String(enrichment.decisionMakerWhatsApp).replace(/\D/g, "");
+    let phone = String(enrichment.decisionMakerWhatsApp).replace(/\D/g, '');
     if (phone.length === 10) {
-      phone = "+52" + phone;
-    } else if (phone.length === 12 && phone.startsWith("52")) {
-      phone = "+" + phone;
-    } else if (!phone.startsWith("+")) {
-      phone = "+" + phone;
+      phone = '+52' + phone;
+    } else if (phone.length === 12 && phone.startsWith('52')) {
+      phone = '+' + phone;
+    } else if (!phone.startsWith('+')) {
+      phone = '+' + phone;
     }
     prospectoData.tomadorWhatsapp = {
       primaryPhoneNumber: phone,
-      primaryPhoneCountryCode: "MX",
-      primaryPhoneCallingCode: "+52"
+      primaryPhoneCountryCode: 'MX',
+      primaryPhoneCallingCode: '+52',
     };
   }
 
   // Teléfono directo del tomador
   if (enrichment.decisionMakerPhone) {
-    let phone = String(enrichment.decisionMakerPhone).replace(/\D/g, "");
+    let phone = String(enrichment.decisionMakerPhone).replace(/\D/g, '');
     if (phone.length === 10) {
-      phone = "+52" + phone;
-    } else if (phone.length === 12 && phone.startsWith("52")) {
-      phone = "+" + phone;
-    } else if (!phone.startsWith("+")) {
-      phone = "+" + phone;
+      phone = '+52' + phone;
+    } else if (phone.length === 12 && phone.startsWith('52')) {
+      phone = '+' + phone;
+    } else if (!phone.startsWith('+')) {
+      phone = '+' + phone;
     }
     prospectoData.tomadorTelefonoDirecto = {
       primaryPhoneNumber: phone,
-      primaryPhoneCountryCode: "MX",
-      primaryPhoneCallingCode: "+52"
+      primaryPhoneCountryCode: 'MX',
+      primaryPhoneCallingCode: '+52',
     };
   }
 
-  let prospectoId = null;
+  let prospectoId;
   if (existingId) {
     await twentyService.updateProspecto(existingId, prospectoData);
     prospectoId = existingId;
@@ -742,14 +790,14 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
   if (contactoId) {
     try {
       await twentyService.deleteContacto(contactoId);
-      logger.info("[TwentySyncService] Contacto eliminado después de crear prospecto", {
+      logger.info('[TwentySyncService] Contacto eliminado después de crear prospecto', {
         contactoId,
-        prospectoId: prospectoId
+        prospectoId: prospectoId,
       });
     } catch (error) {
-      logger.warn("[TwentySyncService] Error eliminando contacto anterior (no crítico)", {
+      logger.warn('[TwentySyncService] Error eliminando contacto anterior (no crítico)', {
         contactoId,
-        error: error.message
+        error: error.message,
       });
     }
   }
@@ -759,16 +807,23 @@ async function upsertProspecto(establishmentId, establishmentData, enrichment, e
 /**
  * Upsert de Opportunity (Lead) en Twenty
  */
-async function upsertOpportunity(establishmentData, enrichment, establecimientoId, prospectoId, existingId, leadStatus) {
-  const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
-  const decisionMakerName = enrichment.decisionMakerName || "";
+async function upsertOpportunity(
+  establishmentData,
+  enrichment,
+  establecimientoId,
+  prospectoId,
+  existingId,
+  leadStatus
+) {
+  const name = establishmentData.name || enrichment.decisionMakerName || 'Sin nombre';
+  const decisionMakerName = enrichment.decisionMakerName || '';
 
   const opportunityData = {
-    name: `Lead - ${name}${decisionMakerName ? ` - ${decisionMakerName}` : ""}`,
+    name: `Lead - ${name}${decisionMakerName ? ` - ${decisionMakerName}` : ''}`,
     establecimientoId,
-    estadoLead: "NUEVO", // Estado inicial
-    pipelineVentasEasyorder: "DISCOVERY", // Etapa inicial del pipeline
-    prioridad: "B_WARM", // Prioridad por defecto
+    estadoLead: 'NUEVO', // Estado inicial
+    pipelineVentasEasyorder: 'DISCOVERY', // Etapa inicial del pipeline
+    prioridad: 'B_WARM', // Prioridad por defecto
   };
 
   // NO incluir prospectoId porque el prospecto se eliminará
@@ -787,12 +842,12 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
     opportunityData.desire = enrichment.desire;
   }
 
-  let opportunityId = null;
+  let opportunityId;
   if (existingId) {
     await twentyService.updateOpportunity(existingId, opportunityData);
     opportunityId = existingId;
   } else {
-    let existing = await twentyService.findOpportunityByEstablecimientoId(establecimientoId);
+    const existing = await twentyService.findOpportunityByEstablecimientoId(establecimientoId);
     if (existing) {
       await twentyService.updateOpportunity(existing.id, opportunityData);
       opportunityId = existing.id;
@@ -805,14 +860,14 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
   if (prospectoId) {
     try {
       await twentyService.deleteProspecto(prospectoId);
-      logger.info("[TwentySyncService] Prospecto eliminado después de crear opportunity", {
+      logger.info('[TwentySyncService] Prospecto eliminado después de crear opportunity', {
         prospectoId,
-        opportunityId: opportunityId
+        opportunityId: opportunityId,
       });
     } catch (error) {
-      logger.warn("[TwentySyncService] Error eliminando prospecto anterior (no crítico)", {
+      logger.warn('[TwentySyncService] Error eliminando prospecto anterior (no crítico)', {
         prospectoId,
-        error: error.message
+        error: error.message,
       });
     }
   }
@@ -822,19 +877,25 @@ async function upsertOpportunity(establishmentData, enrichment, establecimientoI
 /**
  * Upsert de Cliente en Twenty
  */
-async function upsertCliente(establishmentData, enrichment, establecimientoId, opportunityId, existingId) {
-  const name = establishmentData.name || enrichment.decisionMakerName || "Sin nombre";
+async function upsertCliente(
+  establishmentData,
+  enrichment,
+  establecimientoId,
+  opportunityId,
+  existingId
+) {
+  const name = establishmentData.name || enrichment.decisionMakerName || 'Sin nombre';
 
   // Mapeo de estatusCliente - normalizar a mayúsculas
-  let estatusCliente = "ACTIVO"; // Default
+  let estatusCliente = 'ACTIVO'; // Default
   if (enrichment.clientStatus) {
     const statusMap = {
-      ACTIVO: "ACTIVO",
-      INACTIVO: "INACTIVO",
-      CHURNED: "CHURNED",
-      SUSPENDIDO: "SUSPENDIDO",
+      ACTIVO: 'ACTIVO',
+      INACTIVO: 'INACTIVO',
+      CHURNED: 'CHURNED',
+      SUSPENDIDO: 'SUSPENDIDO',
     };
-    estatusCliente = statusMap[enrichment.clientStatus.toUpperCase()] || "ACTIVO";
+    estatusCliente = statusMap[enrichment.clientStatus.toUpperCase()] || 'ACTIVO';
   }
 
   const clienteData = {
@@ -849,42 +910,42 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
   if (enrichment.productPurchased) {
     const productValue = enrichment.productPurchased.trim().toLowerCase();
     const productMap = {
-      starter: "STARTER",
-      "plan starter": "STARTER",
-      "plan básico": "STARTER",
-      "plan basico": "STARTER",
-      basic: "STARTER",
-      "starter pos": "STARTER",
-      "pos starter": "STARTER",
-      growth: "GROWTH",
-      "plan growth": "GROWTH",
-      "growth pos": "GROWTH",
-      "pos growth": "GROWTH",
-      premium: "PREMIUM",
-      "plan premium": "PREMIUM",
-      "premium pos": "PREMIUM",
-      "pos premium": "PREMIUM",
-      "pos terminal premium": "PREMIUM",
-      "terminal premium": "PREMIUM",
-      "pos terminal": "PREMIUM",
-      "terminal": "PREMIUM",
-      avanzado: "PREMIUM",
-      "plan avanzado": "PREMIUM",
-      profesional: "PREMIUM",
-      "plan profesional": "PREMIUM",
-      enterprise: "ENTERPRISE",
-      "plan enterprise": "ENTERPRISE",
-      "enterprise pos": "ENTERPRISE",
-      "pos enterprise": "ENTERPRISE",
+      starter: 'STARTER',
+      'plan starter': 'STARTER',
+      'plan básico': 'STARTER',
+      'plan basico': 'STARTER',
+      basic: 'STARTER',
+      'starter pos': 'STARTER',
+      'pos starter': 'STARTER',
+      growth: 'GROWTH',
+      'plan growth': 'GROWTH',
+      'growth pos': 'GROWTH',
+      'pos growth': 'GROWTH',
+      premium: 'PREMIUM',
+      'plan premium': 'PREMIUM',
+      'premium pos': 'PREMIUM',
+      'pos premium': 'PREMIUM',
+      'pos terminal premium': 'PREMIUM',
+      'terminal premium': 'PREMIUM',
+      'pos terminal': 'PREMIUM',
+      terminal: 'PREMIUM',
+      avanzado: 'PREMIUM',
+      'plan avanzado': 'PREMIUM',
+      profesional: 'PREMIUM',
+      'plan profesional': 'PREMIUM',
+      enterprise: 'ENTERPRISE',
+      'plan enterprise': 'ENTERPRISE',
+      'enterprise pos': 'ENTERPRISE',
+      'pos enterprise': 'ENTERPRISE',
     };
-    clienteData.productoAdquirido = productMap[productValue] || "OTRO";
+    clienteData.productoAdquirido = productMap[productValue] || 'OTRO';
   }
 
   // Monto primera compra
   if (enrichment.purchaseAmount) {
     clienteData.montoPrimeraCompra = {
       amountMicros: Math.round(parseFloat(enrichment.purchaseAmount) * 1000000),
-      currencyCode: "MXN"
+      currencyCode: 'MXN',
     };
   }
 
@@ -900,14 +961,14 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
     clienteData.notasDeCliente = enrichment.clientNotes;
   }
 
-  let clienteId = null;
+  let clienteId;
   // Si ya existe en Twenty, actualizar
   if (existingId) {
     await twentyService.updateCliente(existingId, clienteData);
     clienteId = existingId;
   } else {
     // Buscar por establecimientoId
-    let existing = await twentyService.findClienteByEstablecimientoId(establecimientoId);
+    const existing = await twentyService.findClienteByEstablecimientoId(establecimientoId);
     if (existing) {
       await twentyService.updateCliente(existing.id, clienteData);
       clienteId = existing.id;
@@ -922,14 +983,14 @@ async function upsertCliente(establishmentData, enrichment, establecimientoId, o
   if (opportunityId) {
     try {
       await twentyService.deleteOpportunity(opportunityId);
-      logger.info("[TwentySyncService] Opportunity eliminado después de crear cliente", {
+      logger.info('[TwentySyncService] Opportunity eliminado después de crear cliente', {
         opportunityId,
-        clienteId: clienteId
+        clienteId: clienteId,
       });
     } catch (error) {
-      logger.warn("[TwentySyncService] Error eliminando opportunity anterior (no crítico)", {
+      logger.warn('[TwentySyncService] Error eliminando opportunity anterior (no crítico)', {
         opportunityId,
-        error: error.message
+        error: error.message,
       });
     }
   }
@@ -951,7 +1012,7 @@ async function updateOpportunityStatus(establishmentId, leadStatus) {
     });
 
     if (!syncState?.twentyOpportunityId) {
-      logger.warn("[TwentySyncService] No hay opportunity mapeada para actualizar estadoLead", {
+      logger.warn('[TwentySyncService] No hay opportunity mapeada para actualizar estadoLead', {
         establishmentId,
       });
       return null;
@@ -959,7 +1020,7 @@ async function updateOpportunityStatus(establishmentId, leadStatus) {
 
     const estadoLead = LEAD_STATUS_MAP[leadStatus];
     if (!estadoLead) {
-      logger.warn("[TwentySyncService] LeadStatus no mapeado", { leadStatus });
+      logger.warn('[TwentySyncService] LeadStatus no mapeado', { leadStatus });
       return null;
     }
 
@@ -967,7 +1028,7 @@ async function updateOpportunityStatus(establishmentId, leadStatus) {
       estadoLead,
     });
 
-    logger.info("[TwentySyncService] Opportunity estadoLead actualizado", {
+    logger.info('[TwentySyncService] Opportunity estadoLead actualizado', {
       establishmentId,
       opportunityId: syncState.twentyOpportunityId,
       estadoLead,
@@ -975,7 +1036,7 @@ async function updateOpportunityStatus(establishmentId, leadStatus) {
 
     return syncState.twentyOpportunityId;
   } catch (error) {
-    logger.error("[TwentySyncService] Error actualizando opportunity status", {
+    logger.error('[TwentySyncService] Error actualizando opportunity status', {
       error: error.message,
       establishmentId,
       leadStatus,
@@ -989,10 +1050,10 @@ async function updateOpportunityStatus(establishmentId, leadStatus) {
  */
 async function getSyncStats() {
   const [pending, processing, done, failed] = await Promise.all([
-    prisma.twentySyncJob.count({ where: { status: "PENDING" } }),
-    prisma.twentySyncJob.count({ where: { status: "PROCESSING" } }),
-    prisma.twentySyncJob.count({ where: { status: "DONE" } }),
-    prisma.twentySyncJob.count({ where: { status: "FAILED" } }),
+    prisma.twentySyncJob.count({ where: { status: 'PENDING' } }),
+    prisma.twentySyncJob.count({ where: { status: 'PROCESSING' } }),
+    prisma.twentySyncJob.count({ where: { status: 'DONE' } }),
+    prisma.twentySyncJob.count({ where: { status: 'FAILED' } }),
   ]);
 
   const totalSyncStates = await prisma.twentySyncState.count();

@@ -1,9 +1,10 @@
-const prisma = require("../config/database");
-const logger = require("../config/logger");
-const crypto = require("crypto");
-const config = require("../config/env");
+const prisma = require('../config/database');
+const logger = require('../config/logger');
+const crypto = require('crypto');
+const config = require('../config/env');
+const { enqueueInteractionSync } = require('./twenty/twentyActivityService');
 
-const URL_MICROSTRIPE = process.env.MICROSTRIPE || "http://localhost:3002/api/stripe";
+const URL_MICROSTRIPE = process.env.MICROSTRIPE || 'http://localhost:3002/api/stripe';
 
 const { URL } = require('url');
 const http = require('http');
@@ -67,11 +68,11 @@ const postJson = (urlString, data, timeoutMs = 10000) => {
  */
 const resolvePlanSlug = (stripeProductIds = []) => {
   if (!Array.isArray(stripeProductIds) || stripeProductIds.length === 0) {
-    return "plus";
+    return 'plus';
   }
   const firstId = stripeProductIds[0];
   const slug = config.coupons.productToPlanSlug[firstId];
-  return slug || "plus";
+  return slug || 'plus';
 };
 
 /**
@@ -81,8 +82,8 @@ const resolvePlanSlug = (stripeProductIds = []) => {
  * @returns {string} URL completo de activación
  */
 const buildCouponActivationUrl = (couponCode, planSlug) => {
-  const base = config.coupons.activationBaseUrl || "https://admin.easyorder.mx";
-  const path = config.coupons.activationPath || "/active-code";
+  const base = config.coupons.activationBaseUrl || 'https://admin.easyorder.mx';
+  const path = config.coupons.activationPath || '/active-code';
   return `${base}${path}?coupon=${couponCode}&plan=${planSlug}`;
 };
 
@@ -93,7 +94,9 @@ const buildCouponActivationUrl = (couponCode, planSlug) => {
  * @returns {string} Código único (ej: "EASY-PLUS30-A3F2X9")
  */
 const generateUniqueCode = (base, contactId = null) => {
-  const suffix = contactId ? contactId.slice(-4).toUpperCase() : crypto.randomBytes(2).toString("hex").toUpperCase();
+  const suffix = contactId
+    ? contactId.slice(-4).toUpperCase()
+    : crypto.randomBytes(2).toString('hex').toUpperCase();
   return `${base}-${suffix}`;
 };
 
@@ -106,7 +109,7 @@ const generateUniqueCode = (base, contactId = null) => {
 const renderTemplate = (template, data) => {
   let rendered = template;
 
-  Object.keys(data).forEach(key => {
+  Object.keys(data).forEach((key) => {
     const regex = new RegExp(`{{${key}}}`, 'g');
     rendered = rendered.replace(regex, data[key] || '');
   });
@@ -123,11 +126,11 @@ const renderTemplate = (template, data) => {
 const checkEligibility = async (phone, couponType) => {
   // Obtener template para verificar reglas
   const template = await prisma.couponTemplate.findUnique({
-    where: { couponType }
+    where: { couponType },
   });
 
   if (!template) {
-    return { eligible: false, reason: "Template not found" };
+    return { eligible: false, reason: 'Template not found' };
   }
 
   // Lógica de validación deshabilitada a petición del usuario.
@@ -144,8 +147,8 @@ const selectTemplateByCouponType = async (couponType) => {
   const template = await prisma.couponTemplate.findFirst({
     where: {
       couponType,
-      active: true
-    }
+      active: true,
+    },
   });
 
   if (!template) {
@@ -167,12 +170,12 @@ const selectTemplateByScenario = async (scenario, bantScores = {}) => {
     where: {
       active: true,
       scenarios: {
-        has: scenario
-      }
+        has: scenario,
+      },
     },
     orderBy: {
-      priority: 'desc'
-    }
+      priority: 'desc',
+    },
   });
 
   if (templates.length === 0) {
@@ -209,22 +212,22 @@ const generateCouponForCall = async ({
   callId,
   campaignId = null,
   campaignContactId = null,
-  couponType = null
+  couponType = null,
 }) => {
   // 1. Seleccionar template: prioridad a couponType, fallback a scenario
   let template;
   if (couponType) {
     template = await selectTemplateByCouponType(couponType);
-    logger.info("Template selected strictly by couponType (scenario used for analytics only)", {
+    logger.info('Template selected strictly by couponType (scenario used for analytics only)', {
       couponType,
       templateId: template.id,
-      scenario
+      scenario,
     });
   } else if (scenario) {
     template = await selectTemplateByScenario(scenario, bantScores);
-    logger.info("Template selected by scenario", { scenario, templateId: template.id });
+    logger.info('Template selected by scenario', { scenario, templateId: template.id });
   } else {
-    throw new Error("Either couponType or scenario is required to select a template");
+    throw new Error('Either couponType or scenario is required to select a template');
   }
 
   // 2. Verificar elegibilidad
@@ -260,18 +263,19 @@ const generateCouponForCall = async ({
       source: 'agent_call',
       agentId,
       callId,
-      status: 'GENERATED'
-    }
+      status: 'GENERATED',
+    },
   });
 
   // Creacion de codigo promocional en stripe
   try {
     // Buscar stripe_coupon_id desde el template en BD (por couponType)
     const tpl = await prisma.couponTemplate.findUnique({
-      where: { couponType: template.couponType }
+      where: { couponType: template.couponType },
     });
 
-    const stripeCouponId = tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId || tpl.stripeCouponId);
+    const stripeCouponId =
+      tpl && (tpl.stripe_coupon_id || tpl.stripeCouponId || tpl.stripeCouponId);
 
     if (stripeCouponId) {
       const endpoint = `${URL_MICROSTRIPE}/promotion-codes/insert-code`;
@@ -283,17 +287,26 @@ const generateCouponForCall = async ({
 
       try {
         const result = await postJson(endpoint, payload);
-        logger.info('Promotion code created in microstripe', { couponId: stripeCouponId, code, result });
+        logger.info('Promotion code created in microstripe', {
+          couponId: stripeCouponId,
+          code,
+          result,
+        });
       } catch (err) {
-        logger.warn('Failed to create promotion code in microstripe', { couponId: stripeCouponId, code, error: err.message || err });
+        logger.warn('Failed to create promotion code in microstripe', {
+          couponId: stripeCouponId,
+          code,
+          error: err.message || err,
+        });
       }
     } else {
-      logger.warn('No stripe_coupon_id found for template; skipping promotion code creation', { couponType: template.couponType });
+      logger.warn('No stripe_coupon_id found for template; skipping promotion code creation', {
+        couponType: template.couponType,
+      });
     }
   } catch (err) {
     logger.error('Error creating promotion code for coupon', { error: err.message || err });
   }
-
 
   // 6. Personalizar mensaje con datos del prospecto
   // codigo = couponType limpio (ej: PLUS30) — lo que ve el cliente
@@ -308,7 +321,7 @@ const generateCouponForCall = async ({
     codigo: code,
     couponId: coupon.id,
     couponLink,
-    beneficio: template.description || template.name
+    beneficio: template.description || template.name,
   });
 
   logger.info(`Coupon generated for call`, {
@@ -320,15 +333,15 @@ const generateCouponForCall = async ({
     agentId,
     callId,
     campaignId,
-    campaignContactId
+    campaignContactId,
   });
 
   return {
     coupon,
     message,
     template: {
-      mediaUrl: template.mediaUrl
-    }
+      mediaUrl: template.mediaUrl,
+    },
   };
 };
 
@@ -341,19 +354,19 @@ const generateCouponForCall = async ({
  */
 const generateBulkCouponsForCampaign = async (campaignId, couponType, count) => {
   if (count < 1 || count > 1000) {
-    throw new Error("Count must be between 1 and 1000");
+    throw new Error('Count must be between 1 and 1000');
   }
 
   const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId }
+    where: { id: campaignId },
   });
 
   if (!campaign) {
-    throw new Error("Campaign not found");
+    throw new Error('Campaign not found');
   }
 
   const template = await prisma.couponTemplate.findUnique({
-    where: { couponType }
+    where: { couponType },
   });
 
   if (!template) {
@@ -371,7 +384,7 @@ const generateBulkCouponsForCampaign = async (campaignId, couponType, count) => 
     while (!isUnique && attempts < 10) {
       code = generateUniqueCode(baseCode);
       const existing = await prisma.campaignCoupon.findUnique({
-        where: { code }
+        where: { code },
       });
       if (!existing) {
         isUnique = true;
@@ -393,8 +406,8 @@ const generateBulkCouponsForCampaign = async (campaignId, couponType, count) => 
         durationMonths: template.durationMonths,
         trialDays: template.trialDays,
         source: 'campaign',
-        status: 'GENERATED'
-      }
+        status: 'GENERATED',
+      },
     });
 
     coupons.push(coupon);
@@ -412,28 +425,28 @@ const generateBulkCouponsForCampaign = async (campaignId, couponType, count) => 
  */
 const redeemCoupon = async (code, userData = {}) => {
   const coupon = await prisma.campaignCoupon.findUnique({
-    where: { code }
+    where: { code },
   });
 
   if (!coupon) {
-    throw new Error("Coupon not found");
+    throw new Error('Coupon not found');
   }
 
   if (coupon.status === 'CONVERTED') {
-    throw new Error("Coupon already redeemed");
+    throw new Error('Coupon already redeemed');
   }
 
   if (coupon.status === 'EXPIRED') {
-    throw new Error("Coupon expired");
+    throw new Error('Coupon expired');
   }
 
   // Verificar expiración
   if (coupon.expiresAt && new Date() > coupon.expiresAt) {
     await prisma.campaignCoupon.update({
       where: { id: coupon.id },
-      data: { status: 'EXPIRED' }
+      data: { status: 'EXPIRED' },
     });
-    throw new Error("Coupon expired");
+    throw new Error('Coupon expired');
   }
 
   // Marcar como convertido
@@ -442,14 +455,39 @@ const redeemCoupon = async (code, userData = {}) => {
     data: {
       status: 'CONVERTED',
       convertedAt: new Date(),
-      conversionData: userData
-    }
+      conversionData: userData,
+    },
   });
 
   logger.info(`Coupon redeemed: ${code}`, {
     couponId: coupon.id,
-    userData
+    userData,
   });
+
+  // Resolver establishmentId para el hook
+  const contactForHook = coupon.campaignContactId
+    ? await prisma.campaignContact.findUnique({
+        where: { id: coupon.campaignContactId },
+        select: { establishmentId: true },
+      })
+    : null;
+
+  // Hook non-blocking: Registrar redencion de cupon en Twenty
+  enqueueInteractionSync({
+    establishmentId: contactForHook?.establishmentId || null,
+    conversationId: coupon.id,
+    stage: 'coupon_redeemed',
+    outcome: 'REDEEMED',
+    callSummary: null,
+    callDuration: null,
+    campaignId: coupon.campaignId || null,
+    campaignName: null,
+  }).catch((err) =>
+    logger.error('[CouponGeneratorService] Error encolando hook coupon_redeemed', {
+      error: err.message,
+      couponId: coupon.id,
+    })
+  );
 
   // Retornar configuración para Stripe
   return {
@@ -457,8 +495,8 @@ const redeemCoupon = async (code, userData = {}) => {
     stripeConfig: {
       percentOff: coupon.percentOff,
       durationMonths: coupon.durationMonths,
-      trialDays: coupon.trialDays
-    }
+      trialDays: coupon.trialDays,
+    },
   };
 };
 
@@ -469,5 +507,5 @@ module.exports = {
   checkEligibility,
   selectTemplateByScenario,
   selectTemplateByCouponType,
-  renderTemplate
+  renderTemplate,
 };

@@ -1,17 +1,17 @@
 /**
  * Admin Enrichment Controller
  * Controladores admin para la gestión global de enriquecimientos
- * 
+ *
  * ARQUITECTURA:
  * - Mapa DB (prismaGeo): Establecimientos base INEGI/DENUE (800k+) - SOLO LECTURA
  * - Partners DB (prisma): Enriquecimientos - ESCRITURA/LECTURA
  */
 
-const enrichmentService = require("../services/enrichmentService");
-const geoService = require("../services/geoService");
-const logger = require("../config/logger");
-const prisma = require("../config/database");
-const prismaGeo = require("../config/database-geo");
+const enrichmentService = require('../services/enrichmentService');
+const geoService = require('../services/geoService');
+const logger = require('../config/logger');
+const prisma = require('../config/database');
+const prismaGeo = require('../config/database-geo');
 
 /**
  * GET /api/v1/geo/enrichment/admin
@@ -27,8 +27,8 @@ async function getAllEnrichments(req, res, next) {
       search,
       page = 1,
       limit = 20,
-      sortBy = "updatedAt",
-      sortOrder = "desc",
+      sortBy = 'updatedAt',
+      sortOrder = 'desc',
     } = req.query;
 
     const result = await enrichmentService.getAllEnrichments({
@@ -48,7 +48,7 @@ async function getAllEnrichments(req, res, next) {
       ...result,
     });
   } catch (error) {
-    logger.error("Error en getAllEnrichments (admin):", error);
+    logger.error('Error en getAllEnrichments (admin):', error);
     next(error);
   }
 }
@@ -66,7 +66,7 @@ async function getGlobalStats(req, res, next) {
       data: stats,
     });
   } catch (error) {
-    logger.error("Error en getGlobalStats (admin):", error);
+    logger.error('Error en getGlobalStats (admin):', error);
     next(error);
   }
 }
@@ -83,11 +83,11 @@ async function deleteEnrichment(req, res, next) {
 
     res.json({
       success: true,
-      message: "Enriquecimiento eliminado correctamente",
+      message: 'Enriquecimiento eliminado correctamente',
     });
   } catch (error) {
-    logger.error("Error en deleteEnrichment (admin):", error);
-    if (error.message === "Enriquecimiento no encontrado") {
+    logger.error('Error en deleteEnrichment (admin):', error);
+    if (error.message === 'Enriquecimiento no encontrado') {
       return res.status(404).json({
         success: false,
         error: error.message,
@@ -101,7 +101,7 @@ async function deleteEnrichment(req, res, next) {
  * GET /api/v1/geo/enrichment/admin/by-level/:level
  * Obtener establecimientos por nivel con info de partner si existe
  * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
- * 
+ *
  * ESTABLISHMENT/CONTACT: Lee de Mapa DB
  * PROSPECT/LEAD/CLIENT: Combina Mapa DB con Partners DB
  */
@@ -115,16 +115,16 @@ async function getByLevel(req, res, next) {
       state,
       municipality,
       partnerId,
-      sortBy = "updatedAt",
-      sortOrder = "desc",
+      sortBy = 'updatedAt',
+      sortOrder = 'desc',
     } = req.query;
 
     // Validar nivel
-    const validLevels = ["ESTABLISHMENT", "CONTACT", "PROSPECT", "LEAD", "CLIENT"];
+    const validLevels = ['ESTABLISHMENT', 'CONTACT', 'PROSPECT', 'LEAD', 'CLIENT'];
     if (!validLevels.includes(level)) {
       return res.status(400).json({
         success: false,
-        error: `Nivel inválido. Debe ser uno de: ${validLevels.join(", ")}`,
+        error: `Nivel inválido. Debe ser uno de: ${validLevels.join(', ')}`,
       });
     }
 
@@ -135,17 +135,13 @@ async function getByLevel(req, res, next) {
     let data = [];
     let total = 0;
 
-    if (level === "ESTABLISHMENT" || level === "CONTACT") {
+    if (level === 'ESTABLISHMENT' || level === 'CONTACT') {
       // Para ESTABLISHMENT y CONTACT: leer de Mapa DB (prismaGeo)
       const where = {};
 
       // Filtro para CONTACT: solo con datos de contacto
-      if (level === "CONTACT") {
-        where.OR = [
-          { phone: { not: null } },
-          { email: { not: null } },
-          { website: { not: null } },
-        ];
+      if (level === 'CONTACT') {
+        where.OR = [{ phone: { not: null } }, { email: { not: null } }, { website: { not: null } }];
       }
 
       // Filtro por estado
@@ -164,10 +160,10 @@ async function getByLevel(req, res, next) {
           ...(where.AND || []),
           {
             OR: [
-              { name: { contains: search, mode: "insensitive" } },
-              { businessName: { contains: search, mode: "insensitive" } },
+              { name: { contains: search, mode: 'insensitive' } },
+              { businessName: { contains: search, mode: 'insensitive' } },
               { phone: { contains: search } },
-              { email: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: 'insensitive' } },
             ],
           },
         ];
@@ -181,13 +177,11 @@ async function getByLevel(req, res, next) {
         where,
         take: limitNum,
         skip: offset,
-        orderBy: level === "CONTACT" 
-          ? [{ phone: "desc" }, { email: "desc" }] 
-          : { id: "asc" },
+        orderBy: level === 'CONTACT' ? [{ phone: 'desc' }, { email: 'desc' }] : { id: 'asc' },
       });
 
       // Obtener enriquecimientos existentes de Partners DB para estos establecimientos
-      const establishmentIds = establishments.map(e => e.id);
+      const establishmentIds = establishments.map((e) => e.id);
       const enrichments = await prisma.establishmentEnrichment.findMany({
         where: { establishmentId: { in: establishmentIds } },
         select: {
@@ -212,7 +206,8 @@ async function getByLevel(req, res, next) {
         phone: e.phone,
         email: e.email,
         website: e.website,
-        address: `${e.streetName || ""} ${e.exteriorNum || ""}, ${e.neighborhood || ""}, ${e.municipalityName || ""}, ${e.stateName || ""}`.trim(),
+        address:
+          `${e.streetName || ''} ${e.exteriorNum || ''}, ${e.neighborhood || ''}, ${e.municipalityName || ''}, ${e.stateName || ''}`.trim(),
         state: e.stateName,
         municipality: e.municipalityName,
         latitude: e.latitude,
@@ -222,7 +217,6 @@ async function getByLevel(req, res, next) {
         updatedAt: enrichmentMap[e.id]?.updatedAt || new Date(),
         partner: null,
       }));
-
     } else {
       // Para PROSPECT, LEAD, CLIENT: combinar Partners DB con Mapa DB
       const result = await enrichmentService.getAllEnrichments({
@@ -241,14 +235,14 @@ async function getByLevel(req, res, next) {
       data = result.data.map((e) => ({
         id: e.id,
         establishmentId: e.establishment?.id || e.establishmentId,
-        businessName: e.establishment?.name || "Sin nombre",
+        businessName: e.establishment?.name || 'Sin nombre',
         tradeName: null,
         phone: e.establishment?.phone || e.decisionMakerPhone,
         email: e.establishment?.email || e.decisionMakerEmail,
         website: e.establishment?.website,
-        address: e.establishment 
-          ? `${e.establishment.municipalityName || ""}, ${e.establishment.stateName || ""}`.trim()
-          : "",
+        address: e.establishment
+          ? `${e.establishment.municipalityName || ''}, ${e.establishment.stateName || ''}`.trim()
+          : '',
         state: e.establishment?.stateName,
         municipality: e.establishment?.municipalityName,
         latitude: e.establishment?.latitude,
@@ -280,7 +274,7 @@ async function getByLevel(req, res, next) {
       level,
     });
   } catch (error) {
-    logger.error("Error en getByLevel (admin):", error);
+    logger.error('Error en getByLevel (admin):', error);
     next(error);
   }
 }

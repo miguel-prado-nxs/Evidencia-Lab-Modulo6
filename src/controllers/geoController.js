@@ -3,8 +3,8 @@
  * Controladores para la API de datos geográficos
  */
 
-const geoService = require("../services/geoService");
-const logger = require("../config/logger");
+const geoService = require('../services/geoService');
+const logger = require('../config/logger');
 
 /**
  * GET /api/v1/geo/establishments
@@ -12,13 +12,25 @@ const logger = require("../config/logger");
  */
 async function getEstablishments(req, res, next) {
   try {
-    const { north, south, east, west, activity, state, municipality, employees, search, limit, offset } = req.query;
+    const {
+      north,
+      south,
+      east,
+      west,
+      activity,
+      state,
+      municipality,
+      employees,
+      search,
+      limit,
+      offset,
+    } = req.query;
 
     // Validar bounds requeridos
     if (!north || !south || !east || !west) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren los parámetros: north, south, east, west",
+        error: 'Se requieren los parámetros: north, south, east, west',
       });
     }
 
@@ -53,7 +65,7 @@ async function getEstablishments(req, res, next) {
       bounds,
     });
   } catch (error) {
-    logger.error("Error en getEstablishments:", error);
+    logger.error('Error en getEstablishments:', error);
     next(error);
   }
 }
@@ -61,7 +73,7 @@ async function getEstablishments(req, res, next) {
 /**
  * GET /api/v1/geo/establishments/:id
  * Obtener detalle de un establecimiento
- * 
+ *
  * Si el usuario está autenticado, filtra enriquecimientos por partnerId
  */
 async function getEstablishmentById(req, res, next) {
@@ -76,7 +88,7 @@ async function getEstablishmentById(req, res, next) {
     if (!establishment) {
       return res.status(404).json({
         success: false,
-        error: "Establecimiento no encontrado",
+        error: 'Establecimiento no encontrado',
       });
     }
 
@@ -85,7 +97,7 @@ async function getEstablishmentById(req, res, next) {
       data: establishment,
     });
   } catch (error) {
-    logger.error("Error en getEstablishmentById:", error);
+    logger.error('Error en getEstablishmentById:', error);
     next(error);
   }
 }
@@ -105,7 +117,7 @@ async function checkIfTaken(req, res, next) {
       isTaken,
     });
   } catch (error) {
-    logger.error("Error en checkIfTaken:", error);
+    logger.error('Error en checkIfTaken:', error);
     next(error);
   }
 }
@@ -121,7 +133,7 @@ async function getClusters(req, res, next) {
     if (!north || !south || !east || !west || !zoom) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren: north, south, east, west, zoom",
+        error: 'Se requieren: north, south, east, west, zoom',
       });
     }
 
@@ -141,7 +153,7 @@ async function getClusters(req, res, next) {
       zoom: parseInt(zoom),
     });
   } catch (error) {
-    logger.error("Error en getClusters:", error);
+    logger.error('Error en getClusters:', error);
     next(error);
   }
 }
@@ -157,7 +169,7 @@ async function getHeatmap(req, res, next) {
     if (!north || !south || !east || !west) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren: north, south, east, west",
+        error: 'Se requieren: north, south, east, west',
       });
     }
 
@@ -181,7 +193,7 @@ async function getHeatmap(req, res, next) {
       count: heatmapData.length,
     });
   } catch (error) {
-    logger.error("Error en getHeatmap:", error);
+    logger.error('Error en getHeatmap:', error);
     next(error);
   }
 }
@@ -202,7 +214,7 @@ async function getZones(req, res, next) {
       count: zones.length,
     });
   } catch (error) {
-    logger.error("Error en getZones:", error);
+    logger.error('Error en getZones:', error);
     next(error);
   }
 }
@@ -222,7 +234,7 @@ async function getStats(req, res, next) {
       data: stats,
     });
   } catch (error) {
-    logger.error("Error en getStats:", error);
+    logger.error('Error en getStats:', error);
     next(error);
   }
 }
@@ -239,14 +251,14 @@ async function assignProspect(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden asignar prospects",
+        error: 'Solo partners pueden asignar prospects',
       });
     }
 
     if (!establishmentId) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere establishmentId",
+        error: 'Se requiere establishmentId',
       });
     }
 
@@ -255,11 +267,11 @@ async function assignProspect(req, res, next) {
     res.status(201).json({
       success: true,
       data: prospect,
-      message: "Prospect asignado correctamente",
+      message: 'Prospect asignado correctamente',
     });
   } catch (error) {
-    logger.error("Error en assignProspect:", error);
-    if (error.message.includes("ya está asignado")) {
+    logger.error('Error en assignProspect:', error);
+    if (error.message.includes('ya está asignado')) {
       return res.status(409).json({
         success: false,
         error: error.message,
@@ -288,11 +300,11 @@ async function convertProspect(req, res, next) {
     res.json({
       success: true,
       data: lead,
-      message: "Prospect convertido a lead correctamente",
+      message: 'Prospect convertido a lead correctamente',
     });
   } catch (error) {
-    logger.error("Error en convertProspect:", error);
-    if (error.message.includes("no encontrado") || error.message.includes("debe estar asignado")) {
+    logger.error('Error en convertProspect:', error);
+    if (error.message.includes('no encontrado') || error.message.includes('debe estar asignado')) {
       return res.status(400).json({
         success: false,
         error: error.message,
@@ -314,7 +326,7 @@ async function getMyProspects(req, res, next) {
     if (!partnerId) {
       return res.status(403).json({
         success: false,
-        error: "Solo partners pueden ver sus prospects",
+        error: 'Solo partners pueden ver sus prospects',
       });
     }
 
@@ -326,7 +338,7 @@ async function getMyProspects(req, res, next) {
       count: prospects.length,
     });
   } catch (error) {
-    logger.error("Error en getMyProspects:", error);
+    logger.error('Error en getMyProspects:', error);
     next(error);
   }
 }
@@ -342,7 +354,7 @@ async function searchEstablishments(req, res, next) {
     if (!q || q.length < 3) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere un término de búsqueda de al menos 3 caracteres",
+        error: 'Se requiere un término de búsqueda de al menos 3 caracteres',
       });
     }
 
@@ -354,7 +366,7 @@ async function searchEstablishments(req, res, next) {
       count: results.length,
     });
   } catch (error) {
-    logger.error("Error en searchEstablishments:", error);
+    logger.error('Error en searchEstablishments:', error);
     next(error);
   }
 }
@@ -383,9 +395,7 @@ async function smartSearch(req, res, next) {
     const results = await geoService.smartSearch(q, options);
 
     const totalCount =
-      results.states.length +
-      results.municipalities.length +
-      results.establishments.length;
+      results.states.length + results.municipalities.length + results.establishments.length;
 
     res.json({
       success: true,
@@ -393,7 +403,7 @@ async function smartSearch(req, res, next) {
       count: totalCount,
     });
   } catch (error) {
-    logger.error("Error en smartSearch:", error);
+    logger.error('Error en smartSearch:', error);
     next(error);
   }
 }
@@ -412,7 +422,7 @@ async function getActivities(req, res, next) {
       count: activities.length,
     });
   } catch (error) {
-    logger.error("Error en getActivities:", error);
+    logger.error('Error en getActivities:', error);
     next(error);
   }
 }
@@ -431,7 +441,7 @@ async function getStates(req, res, next) {
       count: states.length,
     });
   } catch (error) {
-    logger.error("Error en getStates:", error);
+    logger.error('Error en getStates:', error);
     next(error);
   }
 }
@@ -447,7 +457,7 @@ async function getMunicipalities(req, res, next) {
     if (!stateCode) {
       return res.status(400).json({
         success: false,
-        error: "Se requiere el código del estado",
+        error: 'Se requiere el código del estado',
       });
     }
 
@@ -459,7 +469,7 @@ async function getMunicipalities(req, res, next) {
       count: municipalities.length,
     });
   } catch (error) {
-    logger.error("Error en getMunicipalities:", error);
+    logger.error('Error en getMunicipalities:', error);
     next(error);
   }
 }
@@ -468,23 +478,24 @@ async function getMunicipalities(req, res, next) {
  * GET /api/v1/geo/establishments/level/:level
  * Obtener establecimientos filtrados por nivel de enriquecimiento
  * Niveles: ESTABLISHMENT, CONTACT, PROSPECT, LEAD, CLIENT
- * 
+ *
  * Para PROSPECT, LEAD y CLIENT: filtra por partnerId si está autenticado
  */
 async function getEstablishmentsByLevel(req, res, next) {
   try {
     const { level } = req.params;
-    const { north, south, east, west, activity, state, municipality, search, limit, offset } = req.query;
+    const { north, south, east, west, activity, state, municipality, search, limit, offset } =
+      req.query;
 
     // Obtener partnerId si el usuario está autenticado
     const partnerId = req.user?.partner?.id || null;
 
     // Validar nivel
-    const validLevels = ["ESTABLISHMENT", "CONTACT", "PROSPECT", "LEAD", "CLIENT"];
+    const validLevels = ['ESTABLISHMENT', 'CONTACT', 'PROSPECT', 'LEAD', 'CLIENT'];
     if (!validLevels.includes(level)) {
       return res.status(400).json({
         success: false,
-        error: `Nivel inválido. Debe ser uno de: ${validLevels.join(", ")}`,
+        error: `Nivel inválido. Debe ser uno de: ${validLevels.join(', ')}`,
       });
     }
 
@@ -492,7 +503,7 @@ async function getEstablishmentsByLevel(req, res, next) {
     if (!north || !south || !east || !west) {
       return res.status(400).json({
         success: false,
-        error: "Se requieren los parámetros: north, south, east, west",
+        error: 'Se requieren los parámetros: north, south, east, west',
       });
     }
 
@@ -517,7 +528,12 @@ async function getEstablishmentsByLevel(req, res, next) {
       partnerId: partnerId,
     };
 
-    const establishments = await geoService.getEstablishmentsByLevel(bounds, level, filters, options);
+    const establishments = await geoService.getEstablishmentsByLevel(
+      bounds,
+      level,
+      filters,
+      options
+    );
 
     res.json({
       success: true,
@@ -527,7 +543,7 @@ async function getEstablishmentsByLevel(req, res, next) {
       bounds,
     });
   } catch (error) {
-    logger.error("Error en getEstablishmentsByLevel:", error);
+    logger.error('Error en getEstablishmentsByLevel:', error);
     next(error);
   }
 }
