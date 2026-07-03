@@ -92,11 +92,14 @@ class TwentyService {
     { ultimaCampana, fechaUltimaLlamada, totalLlamadasCampana }
   ) {
     try {
-      const response = await this.client.patch(`/companies/${companyId}`, {
-        ultimacampana: ultimaCampana,
-        fechaultimallamada: fechaUltimaLlamada,
-        totalllamadascampana: totalLlamadasCampana,
-      });
+      // Los campos custom en Twenty son NOT NULL — omitir los que no tengan valor
+      // en vez de enviar null, para no violar el constraint ni pisar el dato existente.
+      const data = {};
+      if (ultimaCampana != null) data.ultimacampana = ultimaCampana;
+      if (fechaUltimaLlamada != null) data.fechaultimallamada = fechaUltimaLlamada;
+      if (totalLlamadasCampana != null) data.totalllamadascampana = totalLlamadasCampana;
+
+      const response = await this.client.patch(`/companies/${companyId}`, data);
       const updated = response.data.data?.updateCompany || response.data;
       logger.info('[TwentyService] Campos custom de Company actualizados', {
         companyId,

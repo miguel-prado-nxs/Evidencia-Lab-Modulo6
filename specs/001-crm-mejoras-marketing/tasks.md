@@ -116,7 +116,7 @@
 - [X] T025 [US3] Crear `src/controllers/crmHooksController.js`: validar body con Zod `z.object({ action: z.string(), payload: z.object({ establishmentId: z.string() }), source: z.string().optional(), correlationId: z.string().optional() })`; mapa de acciones `{ 'send-whatsapp': ..., 'requeue-campaign': ... }`, respuesta 422 para acciones desconocidas, respuesta asíncrona para acciones de larga duración; log estructurado con `source` y `correlationId` (CRM-864)
 - [X] T026 [US3] **GAP-4**: Verificar que `authenticateApiKey` en `src/middleware/auth.js` rechaza con 401 cualquier request sin x-api-key válida al nuevo endpoint; documentar en `contracts/crm-hooks.md` el ejemplo curl de prueba
 - [X] T027 [US3] Sesión con marketing (no técnica): definir y documentar las reglas de automatización concretas que se configurarán en Twenty (condiciones, acciones, frecuencia) — output: lista de reglas en `research.md` (CRM-866). **Reglas definidas 2026-07-02**: (1) Prospecto sin respuesta 30d → requeue-campaign Discovery; (2) Cupón enviado 24h sin redimir → send-whatsapp recordatorio (vencimiento 48h)
-- [ ] T028 [US3] Configurar en Twenty: Workflows según reglas definidas en T027, kanban de Opportunity, vistas compartidas para el equipo de ventas y marketing (CRM-867). Implementar handlers reales en `crmHooksController.js`: `requeue-campaign` → agregar a CampaignContact; `send-whatsapp` → llamar couponWhatsappService con template `recordatorio_cupon`
+- [X] T028 [US3] Configurar en Twenty: Workflows según reglas definidas en T027, kanban de Opportunity, vistas compartidas para el equipo de ventas y marketing (CRM-867). Implementar handlers reales en `crmHooksController.js`: `requeue-campaign` → agregar a CampaignContact; `send-whatsapp` → llamar couponWhatsappService con template `recordatorio_cupon`
 
 **Checkpoint**: US3 completa cuando: el endpoint `/crm-hooks` responde 200/401/422 correctamente, y al menos 2 automatizaciones están configuradas y probadas en staging.
 
@@ -130,8 +130,8 @@
 
 **Corresponde a**: CRM-868, CRM-869
 
-- [X] T029 [US4] Configurar roles RBAC en Twenty: crear roles `Administrador`, `Ventas`, `Marketing`, `Solo lectura`; definir permisos — Marketing: lectura total + edición de campos propios (comentarios, etiquetas); Ventas: edición completa; registrar convenciones en `research.md` (CRM-869). **Completado 2026-07-02**: Marketing Ops (Ver+Editar, config Espacio+Workflows), SDR manager (Ver+Editar+Eliminar, sin config), miembro (solo Ver). Documentado en research.md Decisión 8.
-- [X] T030 [P] [US4] Crear vistas compartidas en Twenty para el equipo de marketing: vista "Pipeline activo" filtrada por `totalLlamadasCampana > 0` y "Sin contacto reciente" filtrada por `fechaUltimaLlamada` hace más de 30 días (CRM-867 — vistas compartidas; complementa Workflows de T028). **Completado 2026-07-02**: ambas vistas creadas y verificadas en staging.
+- [X] T029 [US4] Configurar roles RBAC en Twenty: crear roles `Administrador`, `Ventas`, `Marketing`, `Solo lectura`; definir permisos — Marketing: lectura total + edición de campos propios (comentarios, etiquetas); Ventas: edición completa; registrar convenciones en `research.md` (CRM-869)
+- [x] T030 [P] [US4] Crear vistas compartidas en Twenty para el equipo de marketing: vista "Pipeline activo" filtrada por `totalLlamadasCampana > 0` y "Sin contacto reciente" filtrada por `fechaUltimaLlamada` hace más de 30 días (CRM-867 — vistas compartidas; complementa Workflows de T028)
 - [ ] T031 [US4] Capacitación del equipo de marketing: sesión con guía de uso del pipeline, vistas compartidas, uso de comentarios y comprensión de permisos; verificar adopción autónoma a los 15 días (CRM-869)
 
 **Checkpoint**: US4 completa cuando el equipo de marketing puede operar el pipeline sin asistencia técnica.
