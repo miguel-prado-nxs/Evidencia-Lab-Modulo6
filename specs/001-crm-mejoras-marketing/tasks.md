@@ -146,9 +146,9 @@
 
 **Corresponde a**: CRM-870
 
-- [ ] T032 [US5] Discovery técnico Meta Lead Ads: investigar Webhooks API de Meta, requisitos de permisos (Business Manager, app review), formato de payload, mecanismo de deduplicación posible; documentar hallazgos en `research.md` sección "Meta Lead Ads discovery" (CRM-870)
-- [ ] T033 [P] [US5] Discovery técnico Manychat: investigar API de Manychat para extracción de contactos, triggers disponibles, formato de datos, autenticación requerida; documentar en `research.md` sección "Manychat discovery" (CRM-870)
-- [ ] T034 [US5] Decisión go/no-go basada en T032 y T033: si viable, crear nuevo spec independiente para la integración con alcance, datos de entidad, deduplicación multi-canal (FR-017) y estimación de esfuerzo
+- [X] T032 [US5] Discovery técnico Meta Lead Ads: investigar Webhooks API de Meta, requisitos de permisos (Business Manager, app review), formato de payload, mecanismo de deduplicación posible; documentar hallazgos en `research.md` sección "Meta Lead Ads discovery" (CRM-870). **Completado 2026-07-03**: Webhooks solo notifican `leadgen_id` (requiere 2do llamado a Graph API), permisos `leads_retrieval` + `pages_manage_ads` vía App Review + Verificación de Negocio (bloqueante, sin SLA), dedup viable con `leadgen_id` como llave única.
+- [X] T033 [P] [US5] Discovery técnico Manychat: investigar API de Manychat para extracción de contactos, triggers disponibles, formato de datos, autenticación requerida; documentar en `research.md` sección "Manychat discovery" (CRM-870). **Completado 2026-07-03**: modelo inverso (Manychat empuja vía External Request, no requiere App Review), triggers = nuevo suscriptor/tag/keyword, timeout fijo 10s, riesgo sin confirmar sobre cambio de pricing 2026 para API.
+- [X] T034 [US5] Decisión go/no-go basada en T032 y T033: si viable, crear nuevo spec independiente para la integración con alcance, datos de entidad, deduplicación multi-canal (FR-017) y estimación de esfuerzo. **Decidido 2026-07-03, revisado 2026-07-07**: GO solo para Meta Lead Ads por ahora (feedback de ventas: Manychat se pospone — base de usuarios aún chica, la automatización de primer contacto puede interferir con la construcción de confianza que hace ventas manualmente). Meta reduce su estimado a 1–3 semanas al reutilizar la app de Meta de roasify.ai (Business Verification + Tech Provider ya aprobados). Pendiente: crear spec independiente solo para Meta Lead Ads.
 
 **Checkpoint**: US5 (Discovery) completa cuando el documento de decisión go/no-go está disponible para el equipo de producto.
 
