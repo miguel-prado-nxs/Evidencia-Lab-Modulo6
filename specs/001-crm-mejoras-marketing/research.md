@@ -325,6 +325,223 @@ Campos creados en Twenty UI (Settings > Data Model > Establecimientos) y verific
 | miembro | Solo lectura | ✅ | ✗ | ✗ | ✗ | Ninguna |
 | Admin | Administrador | ✅ | ✅ | ✅ | ✅ | Total |
 
+---
+
+## Meta Lead Ads discovery (T032 — investigado 2026-07-03)
+
+**Fuente**: Documentación oficial de Meta for Developers.
+
+### 1. Webhooks — CONFIRMADO
+
+Meta soporta notificaciones webhook en tiempo real para leads de Facebook/Instagram Ads:
+
+- Suscripción al objeto **Page** con el campo **`leadgen`**
+- Instalación de la app en la página vía `POST /{page-id}/subscribed_apps` con el Page Access Token
+- Cuando un usuario completa un lead ad, Meta envía una notificación al endpoint webhook con un `leadgen_id` — **no envía los datos del lead directamente**, solo el ID. Hay que hacer una llamada adicional a la Marketing API para obtener los datos completos.
+
+**Payload del webhook** (notificación, no el lead completo):
+```json
+{
+  "leadgen_id": "...",
+  "page_id": "...",
+  "form_id": "...",
+  "adgroup_id": "...",
+  "ad_id": "...",
+  "created_time": 1234567890
+}
+```
+
+**Implicación para la arquitectura**: el flujo sería de 2 pasos — (1) recibir webhook con `leadgen_id`, (2) hacer `GET /{leadgen_id}` a la Graph API para obtener nombre, teléfono, email, etc. del formulario.
+
+### Endpoints involucrados
+
+| Endpoint | Método | Propósito |
+|---|---|---|
+| `/{page-id}/subscribed_apps` | POST | Suscribir la app a los eventos `leadgen` de la Page |
+| `/{page-id}/subscribed_apps` | GET | Verificar suscripción activa |
+| Webhook propio (`/api/v1/webhooks/meta-leads`, a crear) | POST (recibe) | Endpoint donde Meta hace el `POST` con `{leadgen_id, page_id, form_id, ...}` |
+| `/{leadgen_id}` | GET | Obtener los datos completos del lead (nombre, teléfono, email, respuestas del formulario) usando el Page Access Token |
+| `/{page-id}/leadgen_forms` | GET | Listar los formularios de lead ads de la página (para mapear `form_id` a una campaña/oferta) |
+
+### 2. Permisos y App Review — CONFIRMADO (bloqueante)
+
+Para leer datos de leads se requiere pasar por **App Review de Meta** con los siguientes permisos:
+
+| Permiso | Obligatorio |
+|---|---|
+| `leads_retrieval` | Sí — requerido para leer leads |
+| `pages_manage_ads` | Sí |
+| `pages_read_engagement` | Recomendado |
+| `pages_show_list` | Recomendado |
+| `ads_management` | Recomendado |
+
+Después de la aprobación de permisos, Meta exige adicionalmente **Verificación de Negocio** (Business Verification) — proceso que puede tardar días/semanas y requiere documentación legal de la empresa.
+
+### 3. Deduplicación — VIABLE
+
+El `leadgen_id` es único por lead y puede usarse directamente como clave de deduplicación (mismo patrón que `dedupeKey` en `TwentySyncJob`). No hay riesgo de duplicados del lado de Meta si se usa este ID como llave única en la tabla de destino.
+
+### 4. Riesgos identificados
+
+- **Tiempo de aprobación no controlable**: el App Review de Meta no tiene SLA garantizado — puede tomar semanas y ser rechazado por documentación insuficiente.
+- **Verificación de Negocio** es un proceso administrativo separado, con requisitos legales (RFC, comprobante de domicilio fiscal, etc.) que no depende del equipo técnico.
+- **Page Access Token** tiene rate limits basados en usuarios activos de la página — bajo volumen de la página de EasyOrder podría limitar el throughput inicial.
+- El webhook solo notifica el ID — cada lead implica una llamada adicional a la Graph API, sumando latencia y consumo de rate limit.
+
+### Evaluación de viabilidad
+
+**Veredicto: VIABLE técnicamente, con bloqueante administrativo fuera del control del equipo de desarrollo.**
+
+- La arquitectura es directamente compatible con el patrón ya usado en este proyecto: un webhook entrante + un job de la cola (mismo modelo que `TwentySyncJob`/`CampaignContact`) para el segundo llamado a la Graph API y la deduplicación por `leadgen_id`.
+- No hay obstáculo técnico de integración en sí — el riesgo real es de **plazo y control**: el App Review y la Verificación de Negocio de Meta dependen de un tercero (Meta) y de documentación legal de la empresa, no de trabajo de ingeniería.
+- Recomendación: iniciar el proceso de App Review y Verificación de Negocio **en paralelo** a cualquier otro desarrollo (no bloquea otras tareas), dado que su duración es la variable menos predecible del proyecto.
+
+### Tiempo estimado de integración
+
+| Fase | Estimado | Depende de |
+|---|---|---|
+| Solicitud de App Review + Verificación de Negocio en Meta | 1–4 semanas (fuera de nuestro control, sin SLA de Meta) | Documentación legal de la empresa (RFC, comprobante de domicilio fiscal) |
+| Desarrollo del endpoint webhook + job de procesamiento (siguiendo patrón `TwentySyncJob`) | 2–3 días | Ninguno — puede empezar antes de que Meta apruebe, usando datos de prueba |
+| Mapeo de `form_id` → campaña/oferta y flujo de creación de `LeadProspect`/`CallLead` | 1–2 días | Definición de negocio: qué formularios de Meta corresponden a qué oferta |
+| Pruebas E2E con lead real de Meta Ads | 1–2 días | Que la app ya esté aprobada y el `leads_retrieval` esté activo |
+| **Total estimado (desarrollo)** | **4–7 días de trabajo técnico** | — |
+| **Total estimado (calendario, incluyendo espera de Meta)** | **2–5 semanas** | Depende enteramente del tiempo de respuesta de Meta |
+
+### Fuentes
+
+- [Meta Webhooks for Lead Ads for Customer Relationship Management](https://developers.facebook.com/documentation/ads-commerce/marketing-api/guides/lead-ads/quickstart/webhooks-integration)
+- [Leads - Webhooks from Meta - Documentation](https://developers.facebook.com/docs/graph-api/webhooks/getting-started/webhooks-for-leadgen/)
+- [Retrieving Leads - Meta for Developers](https://developers.facebook.com/documentation/ads-commerce/marketing-api/guides/lead-ads/retrieving)
+
+---
+
+### Addendum (2026-07-07): Reutilización de la App de Meta de `roasify.ai`
+
+Se identificó que el proyecto hermano **roasify.ai** (Nexgen) ya tiene una App de Meta en producción (`1229314395871849`, Business Manager) con:
+
+- **Business Verification** — aprobada.
+- **Access Verification (Tech Provider)** — aprobada.
+- **App Review de `ads_read`** — aprobado y en uso (solo lectura de métricas de campaña, sin `leads_retrieval` ni `ads_management`).
+
+**Hallazgo clave**: el App Review ya enviado y aprobado fue **únicamente para `ads_read`** — `leads_retrieval` y `pages_manage_ads` (los permisos que necesita esta integración) **nunca se solicitaron**. Meta revisa por permiso, no por app completa, así que sigue siendo obligatorio un **App Review nuevo y separado** para estos dos permisos.
+
+**Impacto en el estimado**: se elimina la espera de Business Verification y Access Verification (las partes más largas y menos predecibles del proceso, normalmente 3-5+ días hábiles cada una) porque ya están resueltas a nivel de app. Queda pendiente únicamente el ciclo de App Review del permiso nuevo.
+
+| Fase | Estimado original (T032) | Estimado actualizado (reusando app de Roasify) |
+|---|---|---|
+| Alta de app + Business Verification + Tech Provider | Incluido en las 2–5 semanas | **0 — ya resuelto** |
+| App Review de `leads_retrieval` + `pages_manage_ads` | Incluido en las 2–5 semanas | 1–3 semanas (sin SLA garantizado, pero sin las dependencias previas) |
+| **Total estimado (calendario)** | 2–5 semanas | **1–3 semanas** |
+
+**Acción requerida antes de enviar el nuevo App Review**: coordinar con el operador de `roasify.ai` para (a) obtener acceso a `meta_app_id`/`meta_app_secret` para `config/env.js` de Partners API, y (b) redactar un caso de uso propio para `leads_retrieval`/`pages_manage_ads` — el caso de uso existente de Roasify está explícitamente acotado a "solo lectura, sin permisos de gestión" y no puede reutilizarse tal cual; se necesita una justificación separada y honesta sobre el segundo propósito (captura de leads) dentro de la misma app.
+
+---
+
+## Manychat discovery (T033 — investigado 2026-07-03)
+
+**Fuente**: Documentación oficial de Manychat Help + comunidad de desarrolladores.
+
+### 1. Modelo de integración — INVERSO al de Meta
+
+A diferencia de Meta (nosotros recibimos webhook + hacemos pull), Manychat funciona con **"External Request"**: es una acción dentro de un Flow de Manychat que, al dispararse un trigger, hace un `POST` saliente hacia una URL nuestra con los datos del suscriptor. No hay que suscribirse a nada desde nuestro lado — se configura en la UI de Manychat.
+
+### 2. Autenticación — CONFIRMADO
+
+- Requiere **cuenta Pro** de Manychat para generar la API Key (Bearer token) desde la pantalla de configuración de la página.
+- Para el caso de uso principal (Manychat empuja datos hacia nosotros vía External Request), **no se necesita la API Key de Manychat** — solo protegemos nuestro propio endpoint con `authenticateApiKey`, igual que `/crm-hooks`.
+- La API Key de Manychat solo sería necesaria si quisiéramos hacer el flujo inverso (nosotros consultando datos de un suscriptor específico desde Manychat).
+
+### Endpoints involucrados
+
+| Endpoint | Dirección | Propósito |
+|---|---|---|
+| External Request (configurado en el Flow de Manychat) | Manychat → nosotros | Manychat hace `POST` a nuestra URL cuando se dispara el trigger, con los datos del suscriptor |
+| Endpoint propio (`/api/v1/webhooks/manychat-leads`, a crear) | Recibe | Donde llega el `POST` de Manychat |
+| `GET /fb/subscriber/getInfo` (API de Manychat, opcional) | Nosotros → Manychat | Solo si se necesita consultar datos adicionales de un suscriptor por su `subscriber_id` |
+
+### 3. Formato de datos — CONFIRMADO
+
+Solo se soporta JSON en el body. Ejemplo de payload configurable en el Flow (con "Add Full Subscriber Data" se pueden incluir todos los campos):
+
+```json
+{
+  "id": 123456,
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "me@mail.com",
+  "phone": "+521234567890"
+}
+```
+
+**Limitación técnica**: el timeout del External Request es fijo de 10 segundos y no se puede configurar — nuestro endpoint debe responder rápido (idealmente sin trabajo síncrono pesado, siguiendo el mismo patrón que `/crm-hooks`: responder 200 inmediato y procesar en background).
+
+### 4. Triggers disponibles — CONFIRMADO
+
+- Nuevo suscriptor se une a un Flow
+- Se agrega o se remueve una etiqueta (tag)
+- Se dispara una palabra clave (keyword) en la conversación
+
+**Implicación de negocio**: cualquiera de estos tres puede usarse como punto de entrada de un lead — por ejemplo, un usuario que escribe "quiero información" en WhatsApp/Instagram y dispara la keyword, lo cual activa el External Request hacia nuestro sistema.
+
+### 5. Riesgo importante — cambio de pricing 2026 (SIN CONFIRMAR OFICIALMENTE)
+
+Se encontraron discusiones de comunidad (no documentación oficial) indicando que en 2026 Manychat movió el acceso completo a su API a un plan de **$200/mes**, distinto del Plan Pro de entrada ($15/mes). Esto podría afectar específicamente el uso de la **API Key para consultas** (punto 2), pero no necesariamente el **External Request** saliente de un Flow, que es una función de automatización del producto, no de la API REST.
+
+**Acción requerida antes de comprometerse**: confirmar directamente con soporte de Manychat o con la cuenta actual de EasyOrder si "External Request" sigue disponible en el plan Pro estándar, antes de construir sobre este mecanismo.
+
+### Evaluación de viabilidad
+
+**Veredicto: VIABLE, y de menor complejidad técnica que Meta Lead Ads.**
+
+- No requiere App Review ni verificación de negocio — es configuración dentro de la cuenta de Manychat de EasyOrder.
+- El endpoint que recibiría los datos sigue el mismo patrón ya construido para `/crm-hooks` y los webhooks de ElevenLabs — bajo riesgo de implementación.
+- Único bloqueante potencial: el costo del plan si el pricing 2026 realmente restringió el External Request (pendiente de confirmar, ver punto 5).
+
+### Tiempo estimado de integración
+
+| Fase | Estimado | Depende de |
+|---|---|---|
+| Confirmar plan/pricing de Manychat con soporte o cuenta actual | 1–3 días (espera de respuesta de soporte) | Terceros (Manychat) |
+| Desarrollo del endpoint webhook + job de procesamiento (patrón `/crm-hooks`) | 1–2 días | Ninguno |
+| Configuración del Flow/trigger en Manychat (UI, sin código) | 0.5 día | Acceso a la cuenta de Manychat de EasyOrder |
+| Mapeo de datos del suscriptor → `LeadProspect`/`CallLead` y deduplicación por `id` del suscriptor | 1 día | Definición de negocio: qué tags/keywords corresponden a qué oferta |
+| Pruebas E2E con un Flow real | 0.5–1 día | Que el Flow esté configurado |
+| **Total estimado (desarrollo)** | **3–4.5 días de trabajo técnico** | — |
+| **Total estimado (calendario)** | **1–2 semanas** | Principalmente por la confirmación de pricing, no por desarrollo |
+
+### Comparación rápida Meta vs. Manychat
+
+| Aspecto | Meta Lead Ads | Manychat |
+|---|---|---|
+| Requiere aprobación externa | Sí (App Review + Verificación de Negocio) | No |
+| Complejidad técnica | Media (2 llamadas por lead) | Baja (1 POST entrante) |
+| Tiempo estimado (calendario) | 2–5 semanas | 1–2 semanas |
+| Riesgo principal | Plazo de aprobación de Meta | Confirmar si el plan actual incluye External Request |
+
+### Fuentes
+
+- [Dev Tools: Basics – Manychat Help](https://help.manychat.com/hc/en-us/articles/14281252007580-Dev-Tools-Basics)
+- [Dev Tools: External request – Manychat Help](https://help.manychat.com/hc/en-us/articles/14281285374364-Dev-Tools-External-request)
+- [How to generate a token for the Manychat API](https://help.manychat.com/hc/en-us/articles/14959510331420-How-to-generate-a-token-for-the-Manychat-API-and-where-to-get-parameters)
+- [Pro plan – Manychat Help](https://help.manychat.com/hc/en-us/articles/25800228332572-Pro-plan)
+- [2026 New Pricing Plan: API only available on the $200/month plan?? (comunidad, sin confirmar oficialmente)](https://community.manychat.com/general-q-a-43/2026-new-pricing-plan-api-only-available-on-the-200-month-plan-9535)
+
+---
+
+## Decisión go/no-go: Meta Lead Ads + Manychat (T034 — decidido 2026-07-03, revisado 2026-07-07)
+
+**Decisión original (2026-07-03)**: GO para ambos canales, aprobado con liderazgo.
+
+**Revisión (2026-07-07) — feedback del equipo de ventas**: Manychat pasa a **GO diferido / no-go por ahora**, no por razón técnica sino de negocio. Ventas señaló que con la base de usuarios actual (aún pequeña), la confianza inicial del prospecto se construye mejor con contacto humano directo — automatizar la primera respuesta vía Manychat puede interponerse en ese proceso antes de que haya suficiente volumen para justificarlo. La herramienta sigue siendo útil, pero **prematura en esta etapa**.
+
+**Decisión final**:
+1. **Meta Lead Ads → GO, prioridad única por ahora.** Es un canal de *intención explícita* (el usuario llena un formulario en un anuncio) — no compite con el trato humano de ventas de la misma forma. Además, ya se identificó que la app de Meta de `roasify.ai` reduce el tiempo estimado a 1–3 semanas (ver addendum de Meta Lead Ads discovery) al reutilizar Business Verification y Tech Provider ya aprobados — solo falta el App Review de `leads_retrieval` + `pages_manage_ads`.
+2. **Manychat → en pausa.** No se descarta — se revisita cuando la base de usuarios/conversaciones crezca lo suficiente para que la automatización de primer contacto no reste valor al proceso de ventas actual. El discovery técnico (T033) queda vigente y documentado para cuando se retome.
+
+**Siguiente paso**: crear spec independiente (fuera de `001-crm-mejoras-marketing`) **solo para Meta Lead Ads** por ahora, con alcance, modelo de datos de entidad (destino: `LeadProspect`/`CallLead`) y estimación de esfuerzo. La deduplicación multi-canal (FR-017) se simplifica mientras Manychat no esté activo — se retoma si/cuando se sume ese canal.
+
+**Rationale actualizado**: la decisión técnica (T032/T033) evaluó viabilidad de ingeniería, pero la decisión de negocio prioriza el canal que no interfiere con el proceso de venta actual. Meta Lead Ads no reemplaza el contacto humano — solo capta la intención inicial que hoy se pierde; Manychat sí podría hacerlo prematuramente dado el volumen actual.
+
 **Criterios de diseño**:
 - Marketing Ops puede editar registros (agregar comentarios, etiquetas, actualizar etapa) pero no eliminar — evita pérdida accidental de historial.
 - SDR manager puede eliminar (para limpiar duplicados y contactos erróneos) pero no destruir — la destrucción es irreversible.

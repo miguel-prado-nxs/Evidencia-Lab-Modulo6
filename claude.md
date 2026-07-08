@@ -234,5 +234,5 @@ Base: `/api/v1/`
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/002-pre-commit-quality-gates/plan.md
+at specs/003-meta-lead-ads/plan.md
 <!-- SPECKIT END -->

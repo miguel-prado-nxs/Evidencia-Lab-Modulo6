@@ -330,7 +330,6 @@ async function processInteractionJob(job) {
     },
   });
 
-  const callTimestamp = callDuration != null ? new Date() : null;
   const COUPON_STAGES = new Set(['coupon_sent', 'coupon_redeemed']);
 
   if (!COUPON_STAGES.has(stage)) {
@@ -338,7 +337,7 @@ async function processInteractionJob(job) {
     await twentyService
       .updateCompanyFields(twentyCompanyId, {
         ultimaCampana: campaignName || null,
-        fechaUltimaLlamada: callTimestamp,
+        fechaUltimaLlamada: new Date(),
         totalLlamadasCampana,
       })
       .catch((error) =>

@@ -567,7 +567,10 @@ class TwentyService {
     try {
       const response = await this.client.patch(`/prospectos/${prospectoId}`, data);
       const updated = response.data.data?.updateProspecto || response.data;
-      logger.info(`[TwentyService] Prospecto actualizado: ${prospectoId}`);
+      logger.info(`[TwentyService] Prospecto actualizado: ${prospectoId}`, {
+        responseFields: Object.keys(updated),
+        fullResponse: updated,
+      });
       return updated;
     } catch (error) {
       logger.error('[TwentyService] Error actualizando prospecto:', {
