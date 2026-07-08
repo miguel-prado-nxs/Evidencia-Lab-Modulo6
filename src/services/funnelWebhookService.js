@@ -570,15 +570,19 @@ async function endDiscoveryCall({
     select: { callDuration: true },
   });
 
-  enqueueCampaignSync('discovery', {
-    establishmentId,
-    conversationId,
-    outcome: effectiveOutcome,
-    callSummary,
-    callDuration: discoveryCampaignContact?.callDuration || null,
-    campaignId: discoverySyncResult?.campaignId || null,
-    campaignName: discoverySyncResult?.campaignName || null,
-  });
+  // Solo encolar si hay callDuration disponible
+  // Si no, el webhook fallback lo hará con el valor real
+  if (discoveryCampaignContact?.callDuration != null) {
+    enqueueCampaignSync('discovery', {
+      establishmentId,
+      conversationId,
+      outcome: effectiveOutcome,
+      callSummary,
+      callDuration: discoveryCampaignContact.callDuration,
+      campaignId: discoverySyncResult?.campaignId || null,
+      campaignName: discoverySyncResult?.campaignName || null,
+    });
+  }
 
   return { success: true, outcome };
 }
@@ -836,15 +840,19 @@ async function endActivationCall({
     select: { callDuration: true },
   });
 
-  enqueueCampaignSync('activation', {
-    establishmentId,
-    conversationId,
-    outcome: effectiveOutcome,
-    callSummary,
-    callDuration: activationCampaignContact?.callDuration || null,
-    campaignId: activationSyncResult?.campaignId || null,
-    campaignName: activationSyncResult?.campaignName || null,
-  });
+  // Solo encolar si hay callDuration disponible
+  // Si no, el webhook fallback lo hará con el valor real
+  if (activationCampaignContact?.callDuration != null) {
+    enqueueCampaignSync('activation', {
+      establishmentId,
+      conversationId,
+      outcome: effectiveOutcome,
+      callSummary,
+      callDuration: activationCampaignContact.callDuration,
+      campaignId: activationSyncResult?.campaignId || null,
+      campaignName: activationSyncResult?.campaignName || null,
+    });
+  }
 
   return { success: true, outcome };
 }
@@ -1467,15 +1475,19 @@ async function endQualificationCall({ conversationId, establishmentId, outcome, 
     select: { callDuration: true },
   });
 
-  enqueueCampaignSync('qualification', {
-    establishmentId,
-    conversationId,
-    outcome: effectiveOutcome,
-    callSummary,
-    callDuration: qualificationCampaignContact?.callDuration || null,
-    campaignId: qualificationSyncResult?.campaignId || null,
-    campaignName: qualificationSyncResult?.campaignName || null,
-  });
+  // Solo encolar si hay callDuration disponible
+  // Si no, el webhook fallback lo hará con el valor real
+  if (qualificationCampaignContact?.callDuration != null) {
+    enqueueCampaignSync('qualification', {
+      establishmentId,
+      conversationId,
+      outcome: effectiveOutcome,
+      callSummary,
+      callDuration: qualificationCampaignContact.callDuration,
+      campaignId: qualificationSyncResult?.campaignId || null,
+      campaignName: qualificationSyncResult?.campaignName || null,
+    });
+  }
 
   return { success: true, outcome };
 }
@@ -1827,15 +1839,19 @@ async function endConversionCall({
     select: { callDuration: true },
   });
 
-  enqueueCampaignSync('conversion', {
-    establishmentId,
-    conversationId,
-    outcome: effectiveOutcome,
-    callSummary,
-    callDuration: conversionCampaignContact?.callDuration || null,
-    campaignId: conversionSyncResult?.campaignId || null,
-    campaignName: conversionSyncResult?.campaignName || null,
-  });
+  // Solo encolar si hay callDuration disponible
+  // Si no, el webhook fallback lo hará con el valor real
+  if (conversionCampaignContact?.callDuration != null) {
+    enqueueCampaignSync('conversion', {
+      establishmentId,
+      conversationId,
+      outcome: effectiveOutcome,
+      callSummary,
+      callDuration: conversionCampaignContact.callDuration,
+      campaignId: conversionSyncResult?.campaignId || null,
+      campaignName: conversionSyncResult?.campaignName || null,
+    });
+  }
 
   return { success: true, outcome };
 }
