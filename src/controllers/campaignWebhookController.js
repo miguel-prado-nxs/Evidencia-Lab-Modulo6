@@ -1242,22 +1242,39 @@ const handleElevenLabsWebhook = async (req, res, next) => {
       couponGenerated: webhookData.couponGenerated || null,
     });
 
-    // Fallback: Si la llamada fue no-conversacional y el agente MCP no disparo el hook,
-    // encolar aqui el INTERACTION. El dedupekey garantiza que si ya existe, se ignora.
-    const WEBHOOK_FALLBACK_OUTCOME = new Set(['FAILED', 'NO_ANSWER', 'VOICEMAIL']);
+    // Fallback: Si el agente MCP no disparó el hook, encolar aquí el INTERACTION.
+    // Cubre tanto llamadas exitosas (RESPONDED) como fallidas (FAILED, NO_ANSWER, VOICEMAIL).
+    // El dedupekey garantiza que si ya existe, se ignora (evita duplicación si MCP también lo encola).
+    const WEBHOOK_FALLBACK_OUTCOMES = new Set([
+      'RESPONDED',
+      'CALLED',
+      'FAILED',
+      'NO_ANSWER',
+      'VOICEMAIL',
+    ]);
     const campaignStage = campaignContext?.type?.toLowerCase() || null;
     const fallbackConversationId = updatedContact.conversationId;
 
     if (
-      WEBHOOK_FALLBACK_OUTCOME.has(updatedContact.status) &&
+      WEBHOOK_FALLBACK_OUTCOMES.has(updatedContact.status) &&
       campaignStage &&
       fallbackConversationId
     ) {
+      // Mapear status a outcome para el job INTERACTION
+      const outcomeMap = {
+        RESPONDED: 'COMPLETED',
+        CALLED: 'COMPLETED',
+        FAILED: 'FAILED',
+        NO_ANSWER: 'NO_ANSWER',
+        VOICEMAIL: 'VOICEMAIL',
+      };
+      const fallbackOutcome = outcomeMap[updatedContact.status] || updatedContact.status;
+
       enqueueInteractionSync({
         establishmentId: contact.establishmentId,
         conversationId: fallbackConversationId,
         stage: campaignStage,
-        outcome: updatedContact.status, // Failed, No Answer, Voicemail
+        outcome: fallbackOutcome,
         callSummary: webhookData.transcriptSummary || null,
         callDuration: webhookData.callDuration || null,
         campaignId: updatedContact.campaignId,
@@ -1267,6 +1284,8 @@ const handleElevenLabsWebhook = async (req, res, next) => {
           error: error.message,
           conversationId: fallbackConversationId,
           stage: campaignStage,
+          contactStatus: updatedContact.status,
+          fallbackOutcome,
         })
       );
     }
