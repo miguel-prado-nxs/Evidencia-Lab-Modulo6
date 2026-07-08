@@ -564,12 +564,18 @@ async function endDiscoveryCall({
     callSummary,
   });
 
+  // Recuperar callDuration real de CampaignContact
+  const discoveryCampaignContact = await prisma.campaignContact.findUnique({
+    where: { conversationId },
+    select: { callDuration: true },
+  });
+
   enqueueCampaignSync('discovery', {
     establishmentId,
     conversationId,
     outcome: effectiveOutcome,
     callSummary,
-    callDuration,
+    callDuration: discoveryCampaignContact?.callDuration || null,
     campaignId: discoverySyncResult?.campaignId || null,
     campaignName: discoverySyncResult?.campaignName || null,
   });
@@ -824,12 +830,18 @@ async function endActivationCall({
     callSummary,
   });
 
+  // Recuperar callDuration real de CampaignContact
+  const activationCampaignContact = await prisma.campaignContact.findUnique({
+    where: { conversationId },
+    select: { callDuration: true },
+  });
+
   enqueueCampaignSync('activation', {
     establishmentId,
     conversationId,
     outcome: effectiveOutcome,
     callSummary,
-    callDuration: null,
+    callDuration: activationCampaignContact?.callDuration || null,
     campaignId: activationSyncResult?.campaignId || null,
     campaignName: activationSyncResult?.campaignName || null,
   });
@@ -1449,12 +1461,18 @@ async function endQualificationCall({ conversationId, establishmentId, outcome, 
     callSummary,
   });
 
+  // Recuperar callDuration real de CampaignContact
+  const qualificationCampaignContact = await prisma.campaignContact.findUnique({
+    where: { conversationId },
+    select: { callDuration: true },
+  });
+
   enqueueCampaignSync('qualification', {
     establishmentId,
     conversationId,
     outcome: effectiveOutcome,
     callSummary,
-    callDuration: null,
+    callDuration: qualificationCampaignContact?.callDuration || null,
     campaignId: qualificationSyncResult?.campaignId || null,
     campaignName: qualificationSyncResult?.campaignName || null,
   });
@@ -1803,12 +1821,18 @@ async function endConversionCall({
     callSummary,
   });
 
+  // Recuperar callDuration real de CampaignContact
+  const conversionCampaignContact = await prisma.campaignContact.findUnique({
+    where: { conversationId },
+    select: { callDuration: true },
+  });
+
   enqueueCampaignSync('conversion', {
     establishmentId,
     conversationId,
     outcome: effectiveOutcome,
     callSummary,
-    callDuration: null,
+    callDuration: conversionCampaignContact?.callDuration || null,
     campaignId: conversionSyncResult?.campaignId || null,
     campaignName: conversionSyncResult?.campaignName || null,
   });
