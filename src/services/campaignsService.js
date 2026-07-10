@@ -777,7 +777,20 @@ const getCampaignById = async (id) => {
 };
 
 const listCampaigns = async (filters = {}) => {
-  const { status, createdBy, page = 1, limit = 20, includeQuickActions = false } = filters;
+  const {
+    status,
+    createdBy,
+    page = 1,
+    limit = 20,
+    includeQuickActions = false,
+    search,
+    type,
+    dateFrom,
+    dateTo,
+    couponCode,
+    activityCode,
+    canAdvance = false,
+  } = filters;
 
   const where = {};
   if (status) where.status = status;
@@ -788,6 +801,47 @@ const listCampaigns = async (filters = {}) => {
     where.contactSource = 'QUICK_ACTION';
   } else {
     where.contactSource = { not: 'QUICK_ACTION' };
+  }
+
+  if (search) where.name = { contains: search, mode: 'insensitive' };
+  if (type) where.type = type;
+  if (couponCode) where.couponPrefix = { contains: couponCode, mode: 'insensitive' };
+  if (activityCode) where.activityCodes = { has: activityCode };
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) where.createdAt.lte = new Date(dateTo);
+  }
+
+  // Toggle "Puede avanzar": exclusivo de campañas COMPLETED con etapa siguiente
+  // en el funnel (Conversion no tiene next stage) y con al menos un establishment
+  // elegible para esa siguiente etapa. Se resuelve en dos pasos para no romper
+  // la paginación: primero se determina el set elegible completo, luego se pagina.
+  if (canAdvance) {
+    where.status = 'COMPLETED';
+    where.type = type ? type : { not: 'CONVERSION' };
+
+    const candidates = await prisma.campaign.findMany({
+      where,
+      select: {
+        id: true,
+        type: true,
+        contacts: { select: { establishmentId: true } },
+      },
+    });
+
+    const eligibleCampaignIds = [];
+    for (const candidate of candidates) {
+      if (!NEXT_STAGE[candidate.type]) continue;
+      const establishmentIds = candidate.contacts.map((c) => c.establishmentId).filter(Boolean);
+      const { eligibleIds } = await classifyEstablishmentsByStage(
+        establishmentIds,
+        NEXT_STAGE[candidate.type]
+      );
+      if (eligibleIds.length > 0) eligibleCampaignIds.push(candidate.id);
+    }
+
+    where.id = { in: eligibleCampaignIds };
   }
 
   const [campaigns, total] = await Promise.all([

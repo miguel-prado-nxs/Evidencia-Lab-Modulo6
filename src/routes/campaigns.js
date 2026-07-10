@@ -141,6 +141,22 @@ const reengagementCandidatesSchema = z.object({
   }),
 });
 
+const listCampaignsSchema = z.object({
+  query: z.object({
+    status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED', 'SCHEDULED']).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().max(500).optional(),
+    includeQuickActions: z.enum(['true', 'false']).optional(),
+    search: z.string().max(255).optional(),
+    type: z.enum(['DISCOVERY', 'QUALIFICATION', 'ACTIVATION', 'CONVERSION']).optional(),
+    dateFrom: z.string().optional(),
+    dateTo: z.string().optional(),
+    couponCode: z.string().max(50).optional(),
+    activityCode: z.string().max(50).optional(),
+    canAdvance: z.enum(['true', 'false']).optional(),
+  }),
+});
+
 const continueCampaignSchema = z.object({
   body: z.object({
     name: z.string().optional(),
@@ -163,7 +179,7 @@ router.get('/phone-check', campaignsController.phoneCheck);
 router.post('/csv/preview', uploadCsv, campaignsController.previewCsv);
 
 router.post('/', validate(createCampaignSchema), campaignsController.create);
-router.get('/', campaignsController.list);
+router.get('/', validate(listCampaignsSchema), campaignsController.list);
 router.get('/agents', campaignsController.getAgents);
 router.get('/eligible-count', campaignsController.getEligibleCount);
 // Rutas antes de /:id para evitar colisión de matching

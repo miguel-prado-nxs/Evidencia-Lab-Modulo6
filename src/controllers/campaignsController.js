@@ -202,7 +202,19 @@ const create = async (req, res, next) => {
 
 const list = async (req, res, next) => {
   try {
-    const { status, page, limit, includeQuickActions } = req.query;
+    const {
+      status,
+      page,
+      limit,
+      includeQuickActions,
+      search,
+      type,
+      dateFrom,
+      dateTo,
+      couponCode,
+      activityCode,
+      canAdvance,
+    } = req.query;
 
     const createdBy = req.user?.role === 'ADMIN' ? undefined : req.user?.id;
 
@@ -212,6 +224,13 @@ const list = async (req, res, next) => {
       page: parseInt(page) || 1,
       limit: parseInt(limit) || 20,
       includeQuickActions: includeQuickActions === 'true',
+      search,
+      type,
+      dateFrom,
+      dateTo,
+      couponCode,
+      activityCode,
+      canAdvance: canAdvance === 'true',
     });
 
     res.json({
