@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Npm run",
+      "mcp__huly__get_issue",
+      "mcp__huly__search_issues",
+      "mcp__Claude_Browser__read_network_requests",
+      "Bash(curl -s *)",
+      "mcp__huly__list_projects",
+      "mcp__Claude_Browser__preview_logs",
+      "mcp__Claude_Browser__preview_network",
+      "mcp__Claude_Browser__preview_snapshot",
+      "mcp__huly__list_components",
+      "mcp__Claude_Browser__tabs_context",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__read_console_messages",
+      "mcp__huly__list_documents",
+      "mcp__Claude_Preview__preview_snapshot",
+      "mcp__Claude_Browser__preview_list",
+      "PowerShell(Get-CimInstance Win32_Process *)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__Claude_Browser__preview_console_logs",
+      "mcp__huly__list_teamspaces",
+      "mcp__huly__list_issues"
+    ],
+    "deny": [
+      "Git push"
+    ],
+    "ask": [
+      "Rm"
+    ]
+  }
+}
